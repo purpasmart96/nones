@@ -1,0 +1,11 @@
+*.bin
+*.nes
+callgrind.out.*
+*.json
+*.s
+# vscode
+.vscode/
+*.d
+test.c
+/build
+emu

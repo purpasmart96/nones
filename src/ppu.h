@@ -1,0 +1,7 @@
+#ifndef PPU_H
+#define PPU_H
+
+void PPU_Init(void);
+void PPU_Write8(uint16_t addr, uint8_t data);
+
+#endif
