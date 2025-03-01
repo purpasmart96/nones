@@ -35,6 +35,4 @@ typedef struct
     uint8_t padding2 : 2;
 } NES2_Header;
 
-void PPU_Init(void);
-
 #endif

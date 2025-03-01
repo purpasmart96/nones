@@ -1,6 +1,10 @@
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
+
 #include "cpu.h"
+#include "mem.h"
+#include "ppu.h"
 
 static uint8_t ppu_mem[0x4000];
 static uint8_t vram[0x800];
@@ -85,6 +89,25 @@ typedef union
 
 } PPU_CTRL;
 
+typedef union
+{
+    uint8_t raw;
+    struct {
+        uint8_t open_bus : 5;
+        uint8_t sprite_overflow : 1;
+        uint8_t sprite_hit : 1;
+        uint8_t vblank : 1;
+    };
+
+} PPU_Status;
+
+#define PPU_CTRL 0x2000
+#define PPU_MASK 0x2001
+#define PPU_STATUS 0x2002
+
+#define PPU_SCROLL 0x2005
+#define PPU_ADDR 0x2006
+
 /*
 static PPU_CTRL *ppu_ctrl = NULL;
 static uint8_t *ppu_mask = NULL;
@@ -97,48 +120,179 @@ static uint8_t *ppu_data = NULL;
 static uint8_t *oam_dma = NULL;
 */
 
-
-void PPU_Init(void)
-{
-    MemWrite8(0x2000, 0);
-    MemWrite8(0x2001, 0);
-    MemWrite8(0x2002, 0);
-    MemWrite8(0x2003, 0);
-    MemWrite8(0x2004, 0);
-    MemWrite8(0x2005, 0);
-    MemWrite8(0x2006, 0);
-    MemWrite8(0x2007, 0);
-    MemWrite8(0x2008, 0);
-}
-
-void PPU_Update()
-{
-    MemWrite8(0x2000, 0);
-    MemWrite8(0x2001, 0);
-    MemWrite8(0x2002, 0);
-    MemWrite8(0x2003, 0);
-    MemWrite8(0x2004, 0);
-    MemWrite8(0x2005, 0);
-    MemWrite8(0x2006, 0);
-    MemWrite8(0x2007, 0);
-    MemWrite8(0x2008, 0);
-}
-
-
 void PPU_Write8(uint16_t addr, uint8_t data)
 {
     ppu_mem[addr] = data;
 }
 
-void PPU_Reset()
+void PPU_Init(void)
+{
+    MemWrite8(PPU_CTRL, 0);
+    MemWrite8(PPU_MASK, 0);
+    MemWrite8(PPU_STATUS, 0xA0);
+    MemWrite8(0x2003, 0);
+    MemWrite8(0x2004, 0);
+    MemWrite8(PPU_SCROLL, 0);
+    MemWrite8(PPU_ADDR, 0);
+    MemWrite8(0x2007, 0);
+    //MemWrite8(0x2008, 0);
+}
+
+uint64_t prev_vblank_cycles = 0;
+uint64_t next_vblank_cycles = 27384;
+uint64_t ppu_cycles = 0;
+
+const uint32_t dots_per_frame_odd = 341 * 261 + 340;
+const uint32_t dots_per_frame_even = 341 * 261 + 341;
+const uint32_t cpu_cycles_per_frame = dots_per_frame_even / 3; 
+
+uint64_t ppu_cycle_counter = 0;
+bool nmi_triggered = false;
+
+static uint64_t prev_ppu_cycles = 0;
+static uint64_t prev_cpu_cycles = 0;
+/*
+void PPU_Update(uint64_t cycles)
+{
+    uint64_t ppu_cycles = cycles * 3;
+    uint32_t num_dots = dots_per_frame_even;
+
+    //if (ppu_cycles % 2)
+    //    num_dots = dots_per_frame_odd;
+
+    if (ppu_cycles >= prev_ppu_cycles + num_dots)
+    {        
+        // Get the delta (number of ppu cycles that have passed)
+        uint64_t ppu_cycles_delta = (ppu_cycles - prev_ppu_cycles);
+        // How far off(in ppu cycles) are we?
+        uint32_t dsynched_cycles = ppu_cycles_delta - num_dots;
+        if (dsynched_cycles <= 6)
+        {
+            
+        }
+        prev_ppu_cycles = ppu_cycles;
+        ppu_cycle_counter += ppu_cycles;
+    }
+
+    // Compute current scanline
+    int scanline = (ppu_cycle_counter / 341); // 1 scanline = 341 PPU cycles
+    if (scanline == 241) // VBlank starts at scanline 241
+    {
+        MemWrite8(PPU_STATUS, MemRead8(PPU_STATUS) | 0x80); // Set VBlank bit
+        if (MemRead8(PPU_CTRL) & 0x80) // If NMI is enabled
+        {
+            nmi_triggered = true;
+        }
+    }
+    else if (scanline == 261) // VBlank ends at scanline 261
+    {
+        MemWrite8(PPU_STATUS, MemRead8(PPU_STATUS) & ~0x80); // Clear VBlank bit
+    }
+}
+*/
+/*
+void PPU_Update(uint64_t cpu_cycles)
+{
+    // Accumulate PPU cycles instead of resetting
+    ppu_cycle_counter += cpu_cycles * 3; // 1 CPU cycle = 3 PPU cycles
+
+    // Wrap the cycle counter to prevent overflow beyond a frame
+    if (ppu_cycle_counter >= 89342)
+    {
+        ppu_cycle_counter %= 89342; // Use modulo instead of subtracting
+    }
+
+    // Compute the current scanline and pixel position
+    int scanline = (ppu_cycle_counter / 341) % 262; // NES has 262 scanlines per frame
+    int dot = ppu_cycle_counter % 341; // Position within scanline
+
+    // VBlank starts at scanline 241, dot 1
+    if (scanline == 241 && dot == 1)
+    {
+        MemWrite8(PPU_STATUS, MemRead8(PPU_STATUS) | 0x80); // Set VBlank bit
+
+        if (MemRead8(PPU_CTRL) & 0x80) // If NMI is enabled
+        {
+            nmi_triggered = true;
+        }
+    }
+
+    // VBlank flag should be cleared at the start of the new frame (scanline 261, dot 1)
+    if (scanline == 261 && dot == 1)
+    {
+        MemWrite8(PPU_STATUS, MemRead8(PPU_STATUS) & ~0x80); // Clear VBlank bit
+    }
+}
+*/
+
+bool vblank_set = false; // Prevents multiple VBlank triggers in one frame
+
+void PPU_Update(uint64_t cpu_cycles)
+{
+    // 1 CPU cycle = 3 PPU cycles
+    ppu_cycle_counter += cpu_cycles * 3;
+
+    // NES PPU has ~29780 CPU cycles per frame
+    //bool odd_frame = ppu_cycle_counter % 2;
+    uint32_t num_dots = dots_per_frame_even;
+
+    if (ppu_cycles % 2)
+        num_dots = dots_per_frame_odd;
+
+    //while (ppu_cycle_counter >= num_dots) // 29780 * 3 PPU cycles per frame
+    //{
+    //    ppu_cycle_counter -= num_dots; // Reset cycle counter at end of frame
+    //}
+    if (ppu_cycle_counter >= num_dots)
+    {
+        ppu_cycle_counter %= num_dots; // Correct frame wrapping
+        vblank_set = false;
+    }
+
+    // Compute current scanline
+    int scanline = (ppu_cycle_counter / 341) % 262; // 1 scanline = 341 PPU cycles
+
+    if (scanline == 241 && !vblank_set) // VBlank starts at scanline 241
+    {
+        MemWrite8(PPU_STATUS, MemRead8(PPU_STATUS) | 0x80); // Set VBlank bit
+        vblank_set = true;
+        if (MemRead8(PPU_CTRL) & 0x80) // If NMI is enabled
+        {
+            nmi_triggered = true;
+        }
+    }
+/*
+    else if (scanline == 261) // VBlank ends at scanline 261
+    {
+        MemWrite8(PPU_STATUS, MemRead8(PPU_STATUS) & ~0x80); // Clear VBlank bit
+    }
+*/
+}
+
+/*
+bool PPU_NmiTriggered(void)
+{
+    // Clear the flag after reading
+    return nmi_triggered ? !(nmi_triggered = false) : false;
+}
+*/
+bool PPU_NmiTriggered(void)
+{
+    if (nmi_triggered)
+    {
+        nmi_triggered = false; // Clear the flag after reading
+        return true;
+    }
+    return false;
+}
+
+void PPU_Reset(void)
 {
     MemWrite8(0x2000, 0);
     MemWrite8(0x2001, 0);
     MemWrite8(0x2002, 0);
     MemWrite8(0x2003, 0);
     MemWrite8(0x2004, 0);
-    MemWrite8(0x2005, 0);
-    MemWrite8(0x2006, 0);
     MemWrite8(0x2007, 0);
-    MemWrite8(0x2008, 0);
+    //MemWrite8(0x2008, 0);
 }

@@ -1,11 +1,74 @@
 #ifndef CPU_H
 #define CPU_H
 
-uint8_t MemRead8(uint16_t addr);
-uint16_t MemRead16(uint16_t addr);
+typedef enum
+{
+    Accumulator,
+    Relative,
+    Implied,
+    Immediate,
+    ZeroPage,
+    ZeroPageX,
+    ZeroPageY,
+    Absolute,
+    AbsoluteX,
+    AbsoluteY,
+    Indirect,
+    PreIndexedIndirect,
+    PostIndexedIndirect
+} AddressingMode;
 
-void MemWrite8(uint16_t addr, uint8_t data);
-void MemWrite16(uint16_t addr, uint16_t data);
-uint8_t *MemGetPtr(uint16_t addr);
+typedef union
+{
+    uint8_t raw;
+    struct {
+        uint8_t c : 1;      // Carry Flag (Bit 0)
+        uint8_t z : 1;      // Zero Flag (Bit 1)
+        uint8_t i : 1;      // Interrupt Disable (Bit 2)
+        uint8_t d : 1;      // Decimal Mode (Bit 3)
+        uint8_t b : 1;      // Break Command (Bit 4)
+        uint8_t unused : 1; // Unused (Bit 5)
+        uint8_t v : 1;      // Overflow Flag (Bit 6)
+        uint8_t n : 1;      // Negative Flag (Bit 7)
+    };
+} Flags;
+
+typedef struct
+{
+    uint64_t cycles;
+    uint16_t pc;
+    uint8_t a;
+    uint8_t x;
+    uint8_t y;
+    uint8_t sp;
+    Flags status;
+} Cpu;
+
+#define PAGE_MASK 0xFF
+#define PAGE_SIZE 256
+// MEMORY_SIZE = PAGE_SIZE * PAGE_SIZE
+#define MEMORY_SIZE 0x10000
+#define STACK_START 0x100
+#define STACK_SIZE 0x100
+#define STACK_END (STACK_START + STACK_SIZE)
+
+#define CHECK_BIT(var, pos) ((var) & (1 << (pos)))
+#define GET_NEG_BIT(operand) ((operand >> 7) & 1)
+#define GET_OVERFLOW_BIT(operand) ((operand >> 6) & 1)
+#define UPDATE_FLAGS_NZ(var) \
+    state->status.n = GET_NEG_BIT(var); \
+    state->status.z = (var == 0) ? 1 : 0;
+
+uint8_t CPURead8(const uint16_t addr);
+uint16_t CPURead16(const uint16_t addr);
+void CPUWrite8(const uint16_t addr, const uint8_t data);
+void CPUWrite16(const uint16_t addr, const uint16_t data);
+uint8_t *CPUGetPtr(const uint16_t addr);
+
+void CPU_Init(Cpu *state);
+void CPU_Update(Cpu *state);
+//void CPU_Update(Cpu *state, bool irq_pending, bool nmi_pending);
+void CPU_Reset(Cpu *state);
+void CPU_TriggerNMI(Cpu *state);
 
 #endif
