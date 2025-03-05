@@ -1,6 +1,6 @@
 CC := gcc
-CFLAGS := -Wall -Wextra
-LDFLAGS := 
+CFLAGS := -Wall -Wextra $(shell sdl2-config --cflags)
+LDFLAGS := -lm $(shell sdl2-config --libs)
 REL_FLAGS := -O2 -D DISABLE_DEBUG
 DBG_FLAGS := -ggdb -O0
 # For profiling

@@ -1,70 +1,63 @@
-#include <stdio.h>
-#include <stdint.h>
+
+
 #include <stdlib.h>
-#include <string.h>
-#include <stdbool.h>
-#include <time.h>
-#include <unistd.h>
+#include <stdint.h>
+#include "stdbool.h"
 
 #include <SDL2/SDL.h>
-#include <SDL2/SDL_surface.h>
-#include <SDL2/SDL_video.h>
-#include <SDL2/SDL_timer.h>
-#include <SDL2/SDL_events.h>
-#include <SDL2/SDL_keycode.h>
-#include <SDL2/SDL_scancode.h>
-#include <SDL2/SDL_pixels.h>
-#include <SDL2/SDL_rect.h>
-#include <SDL2/SDL_stdinc.h>
-#include <SDL2/SDL_render.h>
 
 #include "mem.h"
-#include "cpu.h"
-#include "ppu.h"
-#include "apu.h"
 #include "loader.h"
+#include "cpu.h"
+#include "apu.h"
+#include "ppu.h"
+
+//uint8_t *g_prg_rom = NULL; 
+//uint8_t *g_chr_rom = NULL;
+//uint8_t *g_sram = NULL;
 
 #define SCREEN_WIDTH 340
 #define SCREEN_HEIGHT 260
 #define FRAMERATE 60
 #define FRAME_TIME_MS (1000.0 / FRAMERATE)
 
-//CHR ROM data, if present (8192 * y bytes)
+typedef struct {
+    Cpu cpu;
+    //Apu *apu;
+    Ppu ppu;
+    Cart cart;
+} Nones;
 
-
-static char framebuffer[SCREEN_WIDTH][SCREEN_HEIGHT] = {
-
-};
-
-
-int main(int argc, char **argv)
+void NonesRun(Nones *nones, const char *path)
 {
     if (SDL_Init(SDL_INIT_VIDEO) != 0)
     {
         SDL_Log("SDL Init Error: %s", SDL_GetError());
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     SDL_Window *window = SDL_CreateWindow("nones", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, SCREEN_WIDTH, SCREEN_HEIGHT, 0);
-    if (!window) {
+    if (!window)
+    {
         SDL_Log("Window Error: %s", SDL_GetError());
         SDL_Quit();
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    if (!renderer) {
+    if (!renderer)
+    {
         SDL_Log("Renderer Error: %s", SDL_GetError());
         SDL_DestroyWindow(window);
         SDL_Quit();
-        return -1;
+        exit(EXIT_FAILURE);
     }
 
     SDL_Texture *texture = SDL_CreateTexture(renderer,
         SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_STREAMING,
         SCREEN_WIDTH, SCREEN_HEIGHT);
-    //SDL_Surface *window_surface = SDL_GetWindowSurface(window);
+    SDL_Surface *window_surface = SDL_GetWindowSurface(window);
 
     // Allocate pixel buffer
     uint32_t *pixels = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
@@ -72,31 +65,34 @@ int main(int argc, char **argv)
     // Fill buffer with dummy NES image (red and blue checkerboard pattern)
     for (int y = 0; y < SCREEN_HEIGHT; y++) {
         for (int x = 0; x < SCREEN_WIDTH; x++) {
-            uint8_t r = 255;// (x % 2 == y % 2) ? 255 : 0;
-            uint8_t g = 123;
+            uint8_t r = (x % 2 == y % 2) ? 255 : 0;
+            uint8_t g = 0;
             uint8_t b = (x % 2 != y % 2) ? 255 : 0;
             uint8_t a = 255;
             pixels[y * SCREEN_WIDTH + x] = (a << 24) | (b << 16) | (g << 8) | r;
         }
     }
 
+    CPU_Init(&nones->cpu);
+    //MemInit();
+
     NES2_Header hdr;
 
+    /*
     if (argc < 2)
     {
         printf("No file was provided\n");
         return EXIT_FAILURE;
     }
+    */
 
-    LoaderLoadRom(argv[1], &hdr);
-    Cpu cpu;
-    CPU_Init(&cpu);
-    Ppu ppu;
-    PPU_Init(&ppu, hdr.name_table_layout);
+    LoaderLoadRom(path, &hdr);
+    PPU_Init(&nones->ppu, hdr.name_table_layout);
     //MapMem(g_prg_rom, &hdr, hdr.mapper_number_d3d0, &cpu.pc);
     //free(rom);
 
-    CPU_Reset(&cpu);
+
+    CPU_Reset(&nones->cpu);
 
     bool quit = false;
     SDL_Event event;
@@ -113,12 +109,12 @@ int main(int argc, char **argv)
                 quit = true;
         }
 
-        ppu.frame_finished = false;
+        nones->ppu.frame_finished = false;
         do {
-            CPU_Update(&cpu);
-            APU_Update(cpu.cycles);
-            PPU_Update(&ppu, cpu.cycles);
-        } while (!ppu.frame_finished);
+            CPU_Update(&nones->cpu);
+            APU_Update(nones->cpu.cycles);
+            PPU_Update(&nones->ppu, nones->cpu.cycles);
+        } while (!nones->ppu.frame_finished);
          // } while ((cpu.cycles % 29780) != 0);
         //updates++;
 
@@ -144,7 +140,7 @@ int main(int argc, char **argv)
     }
 
     PPU_Reset();
-    CPU_Reset(&cpu);
+    CPU_Reset(&nones->cpu);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
@@ -156,5 +152,5 @@ int main(int argc, char **argv)
         free(g_chr_rom);
     if (g_sram)
         free(g_sram);
-    return 0;
+    return;
 }

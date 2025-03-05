@@ -15,6 +15,100 @@ static uint8_t sram[0x2000];
 static MemMap mappings[10];
 static int num_mappings;
 
+static uint8_t *memory = NULL;
+
+uint16_t MapperAddAddrRange(int num_banks, uint16_t bank_size)
+{
+    return num_banks * bank_size;
+}
+
+uint16_t MapperTranslateAddr(uint16_t addr)
+{
+    return addr + 0x10000;
+}
+
+uint16_t DecodeAddress(uint32_t addr)
+{
+    // System ram
+    if (addr >= 0x800 && addr < 0x2000)
+        return addr & 0x7FF;
+
+    // PPU regs
+    if (addr >= 0x2008 && addr < 0x4000)
+        return addr & 0x2007;
+
+    // Cart
+    if (addr >= 0x4020)
+        return addr;
+    return addr;
+}
+
+/*
+uint8_t CpuRead8(uint16_t addr)
+{
+    uint8_t region = (addr >> 13) & 0x7;  // Extract A15, A14, and A13
+
+    switch (region) {
+        case 0x0:  // $0000 - $1FFF
+            return ram[addr % 0x0800];  // Internal RAM (mirrored)
+
+        case 0x1:  // $2000 - $3FFF
+            return ppu_register_read(addr % 8);  // PPU Registers (mirrored every 8)
+
+        case 0x2:  // $4000 - $5FFF
+            if (addr < 0x4018)
+                return apu_io_read(addr);  // APU & I/O
+            else
+            {
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+
+        case 0x3:  // $6000 - $7FFF
+            return cartridge_ram[addr - 0x6000];  // Battery-backed SRAM (if present)
+
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+            return g_prg_rom[addr - 0x8000];  // PRG-ROM read (could be banked via mapper)
+    }
+    return 0;  // Default case (open bus behavior)
+}
+*/
+
+static uint16_t AddressDecoder(uint16_t addr)
+{
+    // Extract A15, A14, A13
+    uint8_t region = (addr >> 13) & 0x7;
+
+    switch (region)
+    {
+        case 0x0:
+            return addr & 0x7FF;
+        case 0x1:
+            return addr & 7;
+        case 0x2:
+        {
+            if (addr < 0x4018)
+                return addr & 0x7FF;
+            else
+            {
+                printf("Trying to read unknown addr in %x\n", addr);
+            }
+        }
+        break;
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+            return addr - 0x8000; 
+    }
+
+    return 0;
+
+}
+
 static bool MemOverlaps(MemMap *a, MemMap *b)
 {
     if (a->base <= b->base && b->base < (a->base + a->size))
@@ -76,6 +170,7 @@ int MemAddMirror(uint16_t base, uint16_t size, uint16_t mirrored_addr, bool ppu_
     return 0;
 }
 
+/*
 static uint16_t MemMirrorAddrToRealAddr(MemMap *map, uint16_t addr)
 {
     if (map->ppu_mirror_regs)
@@ -165,6 +260,7 @@ void MemWrite8(uint16_t addr, uint8_t data)
 
     printf("Invalid write at 0x%04X\n", addr);
 }
+*/
 
 void MemInit(void)
 {
@@ -176,5 +272,6 @@ void MemInit(void)
     // $3456 is the same as a write to $2006. 
     MemAddMirror(PPU_REGS_MIRROR_START_ADDR, PPU_REGS_MIRROR_SIZE, PPU_REGS_START_ADDR, true);
     //MemAddMap(PPU_REGS_START_ADDR,PPU_REGS_SIZE);
+    MemAddMap(APU_IO_REGS_START_ADDR,APU_IO_REGS_SIZE);
     //MemAddMap(0, 0x800);
 }

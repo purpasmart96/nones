@@ -12,54 +12,250 @@
 #include "nes.h"
 #include "cpu.h"
 
+#include "mapper.h"
 
-static uint8_t memory[MEMORY_SIZE];
+#define SYS_RAM_SIZE 0x2000
+static uint8_t memory[SYS_RAM_SIZE];
+//static uint8_t *memory = NULL;
+
+uint16_t AddressDecode(const uint16_t addr)
+{
+    // Extract A15, A14, and A13
+    uint8_t region = (addr >> 13) & 0x7;
+
+    switch (region)
+    {
+        case 0x0:  // $0000 - $1FFF
+            return addr & 0x7FF;  // Internal RAM (mirrored)
+
+        case 0x1:  // $2000 - $3FFF
+            return addr & 7;  // PPU Registers (mirrored every 8)
+
+        case 0x2:  // $4000 - $5FFF
+            if (addr < 0x4018)
+            {
+                printf("Trying to read APU/IO reg at 0x%04X\n", addr);
+                break;
+                //return apu_io_read(addr);  // APU & I/O
+            }
+            else
+            {
+                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+
+        case 0x3:  // $6000 - $7FFF
+            return addr - 0x6000;  // Battery-backed SRAM (if present)
+
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+            return addr - 0x8000;
+    }
+
+    return 0;  // Default case (open bus behavior)
+}
+
+uint32_t CpuRead(const uint16_t addr, const int size)
+{
+    uint16_t ret;
+    // Extract A15, A14, and A13
+    uint8_t region = (addr >> 13) & 0x7;
+
+    switch (region)
+    {
+        case 0x0:  // $0000 - $1FFF
+        {
+            memcpy(&ret, &memory[addr & 0x7FF], size);
+            return ret;
+        }
+
+        case 0x1:  // $2000 - $3FFF
+        {
+            memcpy(&ret, &g_ppu_regs[addr & 7], size);
+            return ret;
+        }
+
+        case 0x2:  // $4000 - $5FFF
+            if (addr < 0x4018)
+            {
+                //printf("Trying to read APU/IO reg at 0x%04X\n", addr);
+                //break;
+                memcpy(&ret, &g_apu_regs[addr & 0x17], size);
+                return ret;
+                //return apu_io_read(addr);  // APU & I/O
+            }
+            else
+            {
+                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+
+        case 0x3:  // $6000 - $7FFF
+        {
+            memcpy(&ret, &g_sram[addr & 0x1FFF], size);
+            return ret;
+        }
+    
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+        {
+            memcpy(&ret, &g_prg_rom[addr - 0xC000], size);
+            return ret;
+            //return MapperRead(addr, size);
+        }
+    }
+
+    return 0;  // Default case (open bus behavior)
+}
+
+uint8_t CpuRead8(const uint16_t addr)
+{
+    return (uint8_t)CpuRead(addr, 1);
+}
+
+uint16_t CpuRead16(const uint16_t addr)
+{
+    return (uint16_t)CpuRead(addr, 2);
+}
 
 /*
-uint8_t CPURead8(const uint16_t addr)
+uint8_t CpuRead8(const uint16_t addr)
 {
-    return memory[addr];
+    // Extract A15, A14, and A13
+    uint8_t region = (addr >> 13) & 0x7;
+
+    switch (region)
+    {
+        case 0x0:  // $0000 - $1FFF
+            return memory[addr & 0x7FF];  // Internal RAM (mirrored)
+
+        case 0x1:  // $2000 - $3FFF
+            return g_ppu_regs[(addr & 7) - 0x2000];  // PPU Registers (mirrored every 8)
+
+        case 0x2:  // $4000 - $5FFF
+            if (addr < 0x4018)
+            {
+                printf("Trying to read APU/IO reg at 0x%04X\n", addr);
+                break;
+                //return apu_io_read(addr);  // APU & I/O
+            }
+            else
+            {
+                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+
+        case 0x3:  // $6000 - $7FFF
+            return g_sram[addr - 0x6000];  // Battery-backed SRAM (if present)
+
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+            return g_prg_rom[addr - 0x8000];
+    }
+
+    return 0;  // Default case (open bus behavior)
 }
 */
 
-uint8_t CPURead8(const uint16_t addr)
+void CpuWrite8(const uint16_t addr, const uint8_t data)
 {
-    uint8_t value = memory[addr];
+    // Extract A15, A14, and A13
+    uint8_t region = (addr >> 13) & 0x7;
 
-    if (addr == 0x2002) // If reading PPUSTATUS (0x2002)
+    switch (region)
     {
-        memory[0x2002] &= ~0x80; // Clear VBlank flag (bit 7)
+        case 0x0:  // $0000 - $1FFF
+            memory[addr & 0x7FF] = data;  // Internal RAM (mirrored)
+            break;
+
+        case 0x1:  // $2000 - $3FFF
+            g_ppu_regs[(addr & 7)] = data;  // PPU Registers (mirrored every 8)
+            break;
+
+        case 0x2:  // $4000 - $5FFF
+            if (addr < 0x4018)
+            {
+                printf("Writing to APU/IO reg at 0x%04X\n", addr);
+                g_apu_regs[addr % 0x18] = data;
+                break;
+                //return apu_io_read(addr);  // APU & I/O
+            }
+            else
+            {
+                printf("Trying to write unknown (Mapper reg?) value at 0x%04X\n", addr);
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+
+        case 0x3:  // $6000 - $7FFF
+            g_sram[addr - 0x6000] = data;  // Battery-backed SRAM (if present)
+            break;
+
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+            printf("Trying to write to rom at addr 0x%x!\n", addr);
+            break;
+    }
+}
+
+uint8_t *CpuGetPtr(const uint16_t addr)
+{
+    // Extract A15, A14, and A13
+    uint8_t region = (addr >> 13) & 0x7;
+
+    switch (region)
+    {
+        case 0x0:  // $0000 - $1FFF
+        {
+            return &memory[addr & 0x7FF];
+        }
+
+        case 0x1:  // $2000 - $3FFF
+        {
+            return &g_ppu_regs[(addr & 7)];
+        }
+
+        case 0x2:  // $4000 - $5FFF
+            if (addr < 0x4018)
+            {
+                return &g_apu_regs[addr % 0x18];
+                //DEBUG_LOG("Trying to read APU/IO reg at 0x%04X\n", addr);
+                //break;
+                //return apu_io_read(addr);  // APU & I/O
+            }
+            else
+            {
+                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+
+        case 0x3:  // $6000 - $7FFF
+        {
+            return &g_sram[addr - 0x6000];
+        }
+    
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+        {
+            return &g_prg_rom[addr - 0xC000];
+        }
     }
 
-    return value;
-}
-
-
-uint16_t CPURead16(const uint16_t addr)
-{
-    if (addr & 1)
-    {
-        return *(uint16_t*)&memory[addr];
-    }
-
-    uint16_t ret;
-    memcpy(&ret, &memory[addr], sizeof(uint16_t));
-    return ret;
-}
-
-void CPUWrite8(const uint16_t addr, const uint8_t data)
-{
-    memory[addr] = data;
-}
-
-void CPUWrite16(const uint16_t addr, const uint16_t data)
-{
-    memcpy(&memory[addr], &data, sizeof(uint16_t));
-}
-
-uint8_t *CPUGetPtr(const uint16_t addr)
-{
-    return &memory[addr];
+    return NULL;  // Default case (open bus behavior)   
 }
 
 void StackPush(Cpu *state, uint8_t data)
@@ -83,8 +279,8 @@ static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
 // PC += 2 
 static uint16_t GetAbsoluteAddr(Cpu *state)
 {
-    uint8_t addr_low = memory[++state->pc];
-    uint8_t addr_high = memory[++state->pc];
+    uint8_t addr_low = CpuRead8(++state->pc);
+    uint8_t addr_high = CpuRead8(++state->pc);
     uint16_t ret = (uint16_t)addr_high << 8 | addr_low;
     DEBUG_LOG("Absolute addr 0x%04X\n", ret);
     return ret;
@@ -93,7 +289,7 @@ static uint16_t GetAbsoluteAddr(Cpu *state)
 // PC += 2 
 static uint16_t GetAbsoluteXAddr(Cpu *state)
 {
-    uint16_t base_addr = CPURead16(state->pc + 1);
+    uint16_t base_addr = CpuRead16(state->pc + 1);
     uint16_t final_addr = base_addr + state->x;
 
     // Extra cycle if pages are different
@@ -106,7 +302,7 @@ static uint16_t GetAbsoluteXAddr(Cpu *state)
 
 static uint16_t GetAbsoluteXAddr2(Cpu *state, bool add_cycle)
 {
-    uint16_t base_addr = CPURead16(state->pc + 1);
+    uint16_t base_addr = CpuRead16(state->pc + 1);
     uint16_t final_addr = base_addr + state->x;
 
     // Apply extra cycle only if required
@@ -119,7 +315,7 @@ static uint16_t GetAbsoluteXAddr2(Cpu *state, bool add_cycle)
 
 static uint16_t GetAbsoluteYAddr(Cpu *state, bool add_cycle)
 {
-    uint16_t base_addr = CPURead16(state->pc + 1);
+    uint16_t base_addr = CpuRead16(state->pc + 1);
     uint16_t final_addr = base_addr + state->y;
 
     // Apply extra cycle only if required
@@ -133,13 +329,13 @@ static uint16_t GetAbsoluteYAddr(Cpu *state, bool add_cycle)
 // PC += 1
 static uint8_t GetZPAddr(Cpu *state)
 {
-    return memory[++state->pc];
+    return CpuRead8(++state->pc);
 }
 
 // PC += 1
 static uint16_t GetZPIndexedAddr(Cpu *state, uint8_t reg)
 {
-    uint8_t zp_addr = memory[++state->pc];
+    uint8_t zp_addr = CpuRead8(++state->pc);
 
     // Wrap in zero-page
     return (zp_addr + reg) & PAGE_MASK;
@@ -148,19 +344,19 @@ static uint16_t GetZPIndexedAddr(Cpu *state, uint8_t reg)
 // PC += 2
 static uint16_t GetIndirectAddr(Cpu *state)
 {
-    uint8_t ptr_low = memory[++state->pc];
-    uint8_t ptr_high = memory[++state->pc];
+    uint8_t ptr_low = CpuRead8(++state->pc);
+    uint8_t ptr_high = CpuRead8(++state->pc);
     
     uint16_t ptr = (uint16_t)ptr_high << 8 | ptr_low;
     uint16_t new_pc;
     // **6502 Page Boundary Bug** (If ptr is at 0xXXFF, high byte comes from 0xXX00, not 0xXXFF+1)
     if ((ptr & 0xFF) == 0xFF)
     {
-        new_pc = (uint16_t)memory[ptr] | ((uint16_t)memory[ptr & 0xFF00] << 8);
+        new_pc = (uint16_t)CpuRead8(ptr) | ((uint16_t)CpuRead8(ptr & 0xFF00) << 8);
     }
     else
     {
-        new_pc = (uint16_t)memory[ptr] | ((uint16_t)memory[ptr + 1] << 8);
+        new_pc = (uint16_t)CpuRead8(ptr) | ((uint16_t)CpuRead8(ptr + 1) << 8);
     }
 
     return new_pc;
@@ -169,9 +365,9 @@ static uint16_t GetIndirectAddr(Cpu *state)
 // PC += 1
 static uint16_t GetPostIndexedIndirectAddr(Cpu *state)
 {
-    uint8_t zp_addr = memory[++state->pc]; 
-    uint8_t addr_low = memory[zp_addr];
-    uint8_t addr_high = memory[(zp_addr + 1) & PAGE_MASK]; // Fetch high (with zero-page wraparound)
+    uint8_t zp_addr = GetZPAddr(state);
+    uint8_t addr_low = CpuRead8(zp_addr);
+    uint8_t addr_high = CpuRead8((zp_addr + 1) & PAGE_MASK); // Fetch high (with zero-page wraparound)
 
     return (uint16_t)addr_high << 8 | addr_low;
 }
@@ -179,9 +375,9 @@ static uint16_t GetPostIndexedIndirectAddr(Cpu *state)
 // PC += 1
 static uint16_t GetPostIndexedIndirectAddr2(Cpu *state, bool page_cycle)
 {
-    uint8_t zp_addr = memory[++state->pc]; 
-    uint8_t addr_low = memory[zp_addr];
-    uint8_t addr_high = memory[(zp_addr + 1) & PAGE_MASK]; // Fetch high (with zero-page wraparound)
+    uint8_t zp_addr = GetZPAddr(state);
+    uint8_t addr_low = CpuRead8(zp_addr);
+    uint8_t addr_high = CpuRead8((zp_addr + 1) & PAGE_MASK); // Fetch high (with zero-page wraparound)
 
     uint16_t base_addr = (uint16_t)addr_high << 8 | addr_low;
     uint16_t final_addr = base_addr + state->y;
@@ -196,10 +392,10 @@ static uint16_t GetPostIndexedIndirectAddr2(Cpu *state, bool page_cycle)
 // PC += 1
 static uint16_t GetPreIndexedIndirectAddr(Cpu *state, uint8_t reg)
 {
-    uint8_t zp_addr = memory[++state->pc];
+    uint8_t zp_addr = GetZPAddr(state);
     uint8_t effective_ptr = (zp_addr + reg) & PAGE_MASK; // Wrap in zero-page
-    uint8_t addr_low = memory[effective_ptr];
-    uint8_t addr_high = memory[(effective_ptr + 1) & PAGE_MASK]; // Wrap in zero-page
+    uint8_t addr_low = CpuRead8(effective_ptr);
+    uint8_t addr_high = CpuRead8((effective_ptr + 1) & PAGE_MASK); // Wrap in zero-page
     return (uint16_t)addr_high << 8 | addr_low;
 }
 
@@ -295,26 +491,26 @@ uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
             return state->a;
         case Relative:
         case Immediate:
-            return memory[++state->pc];
+            return CpuRead8(++state->pc);
         case ZeroPage:
-            return memory[GetZPAddr(state)];
+            return CpuRead8(GetZPAddr(state));
         case ZeroPageX:
-            return memory[GetZPIndexedAddr(state, state->x)];
+            return CpuRead8(GetZPIndexedAddr(state, state->x));
         case ZeroPageY:
-            return memory[GetZPIndexedAddr(state, state->y)];
+            return CpuRead8(GetZPIndexedAddr(state, state->y));
         case Absolute:
-            return MemRead8(GetAbsoluteAddr(state));
+            return CpuRead8(GetAbsoluteAddr(state));
             //return memory[GetAbsoluteAddr(state)];
         case AbsoluteX:
-            return MemRead8(GetAbsoluteXAddr2(state, page_cycle));
+            return CpuRead8(GetAbsoluteXAddr2(state, page_cycle));
             //return memory[GetAbsoluteAddr(state) + state->x];
         case AbsoluteY:
-            return MemRead8(GetAbsoluteYAddr(state, page_cycle));
+            return CpuRead8(GetAbsoluteYAddr(state, page_cycle));
             //return memory[GetAbsoluteAddr(state) + state->y];
         case PreIndexedIndirect:
-            return memory[GetPreIndexedIndirectAddr(state, state->x)];
+            return CpuRead8(GetPreIndexedIndirectAddr(state, state->x));
         case PostIndexedIndirect:
-            return memory[GetPostIndexedIndirectAddr2(state, page_cycle)];
+            return CpuRead8(GetPostIndexedIndirectAddr2(state, page_cycle));
         case Implied:
         case Indirect:
             break;
@@ -331,34 +527,34 @@ static void SetOperandToMem(Cpu *state, AddressingMode addr_mode, uint8_t operan
         case Accumulator:
         case Relative:
         case Immediate:
-            memory[++state->pc] = operand;
+            CpuWrite8(++state->pc,  operand);
             break;
         case ZeroPage:
-            memory[GetZPAddr(state)] = operand;
+            CpuWrite8(GetZPAddr(state), operand);
             break;
         case ZeroPageX:
-            memory[GetZPIndexedAddr(state, state->x)] = operand;
+            CpuWrite8(GetZPIndexedAddr(state, state->x), operand);
             break;
         case ZeroPageY:
-            memory[GetZPIndexedAddr(state, state->y)] = operand;
+            CpuWrite8(GetZPIndexedAddr(state, state->y), operand);
             break;
         case Absolute:
             //memory[GetAbsoluteAddr(state)] = operand;
-            MemWrite8(GetAbsoluteAddr(state), operand);
+            CpuWrite8(GetAbsoluteAddr(state), operand);
             break;
         case AbsoluteX:
-            MemWrite8(GetAbsoluteAddr(state) + state->x, operand);
+            CpuWrite8(GetAbsoluteAddr(state) + state->x, operand);
             //memory[GetAbsoluteAddr(state) + state->x] = operand;
             break;
         case AbsoluteY:
-            MemWrite8(GetAbsoluteAddr(state) + state->y, operand);
+            CpuWrite8(GetAbsoluteAddr(state) + state->y, operand);
             //memory[GetAbsoluteAddr(state) + state->y] = operand;
             break;
         case PreIndexedIndirect:
-            memory[GetPreIndexedIndirectAddr(state, state->x)] = operand;
+            CpuWrite8(GetPreIndexedIndirectAddr(state, state->x), operand);
             break;
         case PostIndexedIndirect:
-            memory[GetPostIndexedIndirectAddr2(state, false)] = operand;
+            CpuWrite8(GetPostIndexedIndirectAddr2(state, false),  operand);
             break;
         case Implied:
         case Indirect:
@@ -392,25 +588,25 @@ uint8_t *GetOperandPtrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cy
             return &state->a;
         case Relative:
         case Immediate:
-            return &memory[++state->pc];
+            return CpuGetPtr(++state->pc);
         case ZeroPage:
-            return &memory[GetZPAddr(state)];
+            return CpuGetPtr(GetZPAddr(state));
         case ZeroPageX:
-            return &memory[GetZPIndexedAddr(state, state->x)];
+            return CpuGetPtr(GetZPIndexedAddr(state, state->x));
         case ZeroPageY:
-            return &memory[GetZPIndexedAddr(state, state->y)];
+            return CpuGetPtr(GetZPIndexedAddr(state, state->y));
         case Absolute:
-            return &memory[GetAbsoluteAddr(state)];
+            return CpuGetPtr(GetAbsoluteAddr(state));
         case AbsoluteX:
-            return &memory[GetAbsoluteXAddr2(state, page_cycle)];
+            return CpuGetPtr(GetAbsoluteXAddr2(state, page_cycle));
             //return &memory[GetAbsoluteAddr(state) + state->x];
         case AbsoluteY:
-            return &memory[GetAbsoluteYAddr(state, page_cycle)];
+            return CpuGetPtr(GetAbsoluteYAddr(state, page_cycle));
             //return &memory[GetAbsoluteAddr(state) + state->y];
         case PreIndexedIndirect:
-            return &memory[GetPreIndexedIndirectAddr(state, state->x)];
+            return CpuGetPtr(GetPreIndexedIndirectAddr(state, state->x));
         case PostIndexedIndirect:
-            return &memory[GetPostIndexedIndirectAddr2(state, page_cycle)];
+            return CpuGetPtr(GetPostIndexedIndirectAddr2(state, page_cycle));
         case Implied:
         case Indirect:
             return NULL;
@@ -447,7 +643,7 @@ static void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (!state->status.c)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -467,7 +663,7 @@ static void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (state->status.c)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -487,7 +683,7 @@ static void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (state->status.z)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -516,7 +712,7 @@ static void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (state->status.n)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -536,7 +732,7 @@ static void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (!state->status.z)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -556,7 +752,7 @@ static void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (!state->status.n)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -588,7 +784,13 @@ static void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 
     state->status.i = true;
     // Load IRQ/BRK vector ($FFFE-$FFFF) into PC
-    state->pc = MemRead16(0xFFFE);
+    //uint16_t ret = (uint16_t)MemRead8(0xFFFF) << 8 | MemRead8( 0xFFFE);
+    uint16_t brk_non_mirror_addr = CpuRead16(0xFFFE);
+    ////uint16_t ret = 0;
+    uint16_t ret = (uint16_t)CpuRead8(brk_non_mirror_addr + 1) << 8 | CpuRead8(brk_non_mirror_addr);
+    DEBUG_LOG("New PC at 0x%04X\n", ret);
+    //state->pc = MemGetNonMirroredAddr(ret);
+    state->pc = ret;
 
     DEBUG_LOG("Jumping to IRQ vector at 0x%X\n", state->pc);
 }
@@ -599,7 +801,7 @@ static void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (!state->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -618,7 +820,7 @@ static void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)memory[++state->pc];
+    int8_t offset = (int8_t)CpuRead8(++state->pc);
     if (state->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -781,7 +983,15 @@ static void INY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 static void JMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(page_cycle);
-    state->pc = MemGetNonMirroredAddr(GetJMPAddr(state, addr_mode));
+
+    uint16_t new_pc;
+    if (addr_mode == Absolute)
+        new_pc = GetAbsoluteAddr(state);
+    else
+        new_pc = GetIndirectAddr(state);
+
+    //state->pc = MemGetNonMirroredAddr(new_pc);
+    state->pc = new_pc;
 }
 
 static void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -790,13 +1000,14 @@ static void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    uint8_t pc_low = memory[++state->pc];
-    uint8_t pc_high = memory[++state->pc];
+    uint8_t pc_low = CpuRead8(++state->pc);
+    uint8_t pc_high = CpuRead8(++state->pc);
 
     StackPush(state, (state->pc >> 8) & 0xFF);
     StackPush(state, state->pc & 0xFF);
 
-    uint16_t new_pc = MemGetNonMirroredAddr((uint16_t)pc_high << 8 | pc_low);
+    //uint16_t new_pc = MemGetNonMirroredAddr((uint16_t)pc_high << 8 | pc_low);
+    uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
     state->pc = new_pc;
 }
 
@@ -947,7 +1158,8 @@ static void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     uint8_t pc_high = StackPull(state);
 
     uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
-    state->pc = MemGetNonMirroredAddr(new_pc);
+    //state->pc = MemGetNonMirroredAddr(new_pc);
+    state->pc = new_pc;
 }
 
 static void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -960,8 +1172,8 @@ static void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     uint8_t pc_high = StackPull(state);
 
     uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
-    state->pc = MemGetNonMirroredAddr(new_pc);
-
+    //state->pc = MemGetNonMirroredAddr(new_pc);
+    state->pc = new_pc;
     state->pc++;
 }
 
@@ -1315,17 +1527,9 @@ static const OpcodeHandler opcodes[256] =
 
 void ExecuteOpcode(Cpu *state)
 {
-    const uint8_t opcode = memory[state->pc];
+    const uint8_t opcode = CpuRead8(state->pc);
     const OpcodeHandler *handler = &opcodes[opcode];
 
-/*
-    if (state->pc == 0x35a2)
-    {
-        printf("Reached core subroutine of the full binary add/subtract test\n");
-        free(state);
-        exit(EXIT_SUCCESS);
-    }
-*/
     if (handler->InstrFn)
     {
         DEBUG_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, state->pc);
@@ -1334,19 +1538,21 @@ void ExecuteOpcode(Cpu *state)
     }
     else
     {
-        printf("Unhandled opcode: 0x%02X\n", opcode);
+        printf("Unhandled opcode: 0x%02X at PC: 0x%04X\n\n", opcode, state->pc);
         printf("Cycles done: %lu\n", state->cycles);
-        free(state);
-        exit(EXIT_FAILURE);
+        state->pc++;
+        //exit(EXIT_FAILURE);
     }
 }
 
 void CPU_Init(Cpu *state)
 {
     memset(state, 0, sizeof(*state));
-    state->pc = 0xFFFC;
-    state->sp = 0xFD;
-    state->status.i = 1;
+}
+
+static uint16_t ReadVector(uint16_t addr)
+{
+    return (uint16_t)CpuRead8(addr + 1) << 8 | CpuRead8(addr);
 }
 
 void HandleIRQ(Cpu *cpu)
@@ -1355,15 +1561,13 @@ void HandleIRQ(Cpu *cpu)
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);  // Push PC high byte
     StackPush(cpu, cpu->pc & 0xFF); // Push PC low byte
     StackPush(cpu, cpu->status.raw & ~0x10); // Push Processor Status (clear Break flag)
-    cpu->pc = MemRead16(0xFFFE); // Load IRQ vector
-}
+    //cpu->pc = MemRead16(0xFFFE); // Load IRQ vector
 
-uint16_t NMIRead16(uint16_t addr)
-{
-    uint16_t ret = 0;
-    ret |= memory[addr];        // Low byte (at addr)
-    ret |= memory[addr + 1] << 8; // High byte (at addr + 1)
-    return ret;
+    //uint16_t irq_non_mirror_addr = MemGetNonMirroredAddr(0xFFFE);
+    uint16_t ret = ReadVector(0xFFFE);
+    DEBUG_LOG("New PC at 0x%04X\n", ret);
+    //cpu->pc = MemGetNonMirroredAddr(ret);
+    cpu->pc = ret;
 }
 
 void CPU_TriggerNMI(Cpu *state)
@@ -1374,14 +1578,12 @@ void CPU_TriggerNMI(Cpu *state)
     StackPush(state, state->pc & 0xFF);
     StackPush(state, state->status.raw | 0x20); // Push status with bit 5 set
 
-    //state->pc = MemRead16(0xFFFA); // Load NMI vector
-    //state->pc = NMIRead16(MemGetNonMirroredAddr(0xFFFA));
-    uint16_t nmi_non_mirror_addr = MemGetNonMirroredAddr(0xFFFA);
-    uint16_t ret = 0;
-    ret |= MemRead8(nmi_non_mirror_addr); // Low byte (at addr)
-    ret |= MemRead8(nmi_non_mirror_addr + 1) << 8; // High byte (at addr + 1)
-    DEBUG_LOG("New PC at 0x%04X\n", ret);
-    state->pc = MemGetNonMirroredAddr(ret);
+
+    //uint16_t nmi_non_mirror_addr = MemGetNonMirroredAddr(0xFFFA);
+    //uint16_t ret = (uint16_t)MemRead8(nmi_non_mirror_addr + 1) << 8 | MemRead8(nmi_non_mirror_addr);
+    //DEBUG_LOG("New PC at 0x%04X\n", ret);
+    //state->pc = MemGetNonMirroredAddr(ret);
+    state->pc = ReadVector(0xFFFA);
     state->status.i = 1; // Set interrupt disable flag
 }
 
@@ -1410,7 +1612,17 @@ void CPU_Update(Cpu *state)
 
 void CPU_Reset(Cpu *state)
 {
-    state->pc = 0xFFFC;
+    // Read the reset vector from 0xFFFC (little-endian)
+    uint16_t reset_vector = CpuRead8(0xFFFC) | (CpuRead8(0xFFFD) << 8);
+    
+    DEBUG_LOG("New PC at 0x%04X\n", reset_vector);
+
+    // Set PC to the reset vector address
+    state->pc = reset_vector;
+
+    // Stack pointer is decremented by 3 (emulating an interrupt return state)
     state->sp -= 3;
+
+    // Set interrupt disable flag (I) to prevent IRQs immediately after reset
     state->status.i = 1;
 }

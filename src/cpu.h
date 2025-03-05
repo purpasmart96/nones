@@ -22,14 +22,22 @@ typedef union
 {
     uint8_t raw;
     struct {
-        uint8_t c : 1;      // Carry Flag (Bit 0)
-        uint8_t z : 1;      // Zero Flag (Bit 1)
-        uint8_t i : 1;      // Interrupt Disable (Bit 2)
-        uint8_t d : 1;      // Decimal Mode (Bit 3)
-        uint8_t b : 1;      // Break Command (Bit 4)
-        uint8_t unused : 1; // Unused (Bit 5)
-        uint8_t v : 1;      // Overflow Flag (Bit 6)
-        uint8_t n : 1;      // Negative Flag (Bit 7)
+        // Carry Flag (Bit 0)
+        uint8_t c : 1;
+        // Zero Flag (Bit 1)
+        uint8_t z : 1;
+        // Interrupt Disable (Bit 2)
+        uint8_t i : 1;
+        // Decimal Mode (Bit 3)
+        uint8_t d : 1;
+        // Break Command (Bit 4)
+        uint8_t b : 1;
+        // Unused (Bit 5)
+        uint8_t unused : 1;
+        // Overflow Flag (Bit 6)
+        uint8_t v : 1;
+        // Negative Flag (Bit 7)
+        uint8_t n : 1;
     };
 } Flags;
 
@@ -47,7 +55,8 @@ typedef struct
 #define PAGE_MASK 0xFF
 #define PAGE_SIZE 256
 // MEMORY_SIZE = PAGE_SIZE * PAGE_SIZE
-#define MEMORY_SIZE 0x10000
+//#define MEMORY_SIZE 0x10000
+#define MEMORY_SIZE_NES 0x2000
 #define STACK_START 0x100
 #define STACK_SIZE 0x100
 #define STACK_END (STACK_START + STACK_SIZE)
@@ -59,11 +68,11 @@ typedef struct
     state->status.n = GET_NEG_BIT(var); \
     state->status.z = (var == 0) ? 1 : 0;
 
-uint8_t CPURead8(const uint16_t addr);
-uint16_t CPURead16(const uint16_t addr);
-void CPUWrite8(const uint16_t addr, const uint8_t data);
-void CPUWrite16(const uint16_t addr, const uint16_t data);
-uint8_t *CPUGetPtr(const uint16_t addr);
+uint8_t CpuRead8(const uint16_t addr);
+uint16_t CpuRead16(const uint16_t addr);
+void CpuWrite8(const uint16_t addr, const uint8_t data);
+void CpuWrite16(const uint16_t addr, const uint16_t data);
+uint8_t *CpuGetPtr(const uint16_t addr);
 
 void CPU_Init(Cpu *state);
 void CPU_Update(Cpu *state);

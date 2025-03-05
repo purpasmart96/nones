@@ -5,10 +5,9 @@
 #include <string.h>
 
 #include "cpu.h"
+#include "mem.h"
 #include "nes.h"
 #include "ppu.h"
-
-static uint8_t sram[0x2000];
 
 typedef enum {
     NROM_INVALID,
@@ -17,7 +16,35 @@ typedef enum {
 } NromType;
 
 
-void MapperInit(void)
+
+static int mapper_type;
+//static uint32_t prg_rom_size;
+
+uint8_t NromRead8(uint16_t addr)
+{
+    //return g_prg_rom[addr %  g_prg_rom_size];
+}
+
+void NromWrite(uint16_t addr, uint8_t data)
+{
+
+}
+
+
+void Mmc1Read(uint16_t addr, uint8_t data)
+{
+
+}
+
+uint32_t MapperRead(const uint16_t addr, const int size)
+{
+    uint32_t ret;
+    //return NromRead8(addr);
+    memcpy(&ret, &g_prg_rom[addr % g_prg_rom_size], size);
+    return ret;
+}
+
+void MapperWrite(uint16_t addr, uint8_t data)
 {
 
 }
@@ -84,8 +111,8 @@ void MapperMapMem(uint8_t *rom, int mapper, int prg_rom_size)
             {
                 uint16_t base_addr = 0x8000;
 
-                memcpy(CPUGetPtr(0x8000), &rom[0], 0x4000);
-                memcpy(CPUGetPtr(0xC000), &rom[0], 0x4000);
+                //memcpy(CPUGetPtr(0x8000), &rom[0], 0x4000);
+                //memcpy(CPUGetPtr(0xC000), &rom[0], 0x4000);
                 /*
                 if (i == 0)
                 memcpy(&memory[0x8000], &rom[bank_addr - 16], 0x4000);
@@ -95,5 +122,69 @@ void MapperMapMem(uint8_t *rom, int mapper, int prg_rom_size)
             }
             break;
         }
+    }   
+}
+
+void MapMem(uint8_t *rom, NES2_Header *hdr, int mapper, uint16_t *new_pc)
+{
+    switch (mapper)
+    {
+        case 0:
+        {
+            if (hdr->prg_rom_size_lsb == NROM_128)
+            {
+                uint16_t base_addr = 0x8000;
+
+                //memcpy(CPUGetPtr(0x8000), g_prg_rom, 0x4000);
+                //MemAddMap(0x8000, 0x4000);
+                //memcpy(CPUGetPtr(0xC000), g_prg_rom, 0x4000);
+                //MemAddMap(0xC000, 0x4000);
+                if (hdr->chr_rom_size_lsb)
+                {
+                    //memcpy(GetPPUMemPtr(0), g_chr_rom, 0x2000);
+                }
+                //*new_pc = 0xC000;
+                //MemAddMirror(0xC000, 0x4000, 0x8000, false);
+                //MemAddMirror(0xFFF0, 16, 0xBFF0, false);
+                /*
+                if (i == 0)
+                memcpy(&memory[0x8000], &rom[bank_addr - 16], 0x4000);
+            else
+                memcpy(&memory[0xC000], &rom[bank_addr - 16], 0x4000);
+            */
+            }
+            else
+            {
+            
+            }
+            break;
+        }
+        case 1:
+        {
+            //if (hdr->battery)
+            //    MemAddMap(0x6000, 0x2000);
+
+            //memcpy(CPUGetPtr(0x8000), &g_prg_rom[0], 0x4000);
+            //MemAddMap(0x8000, 0x4000);
+            for (int i = 0; i < hdr->prg_rom_size_lsb; i++)
+            {
+                uint16_t bank_addr = (i * 0x4000);
+                //fread(&rom[bank_addr - 16], 1, 0x4000, fp);
+                //fwrite(&rom[bank_addr - 16], 1, 0x4000, bank);
+                if (i != hdr->prg_rom_size_lsb - 1)
+                {
+
+                }
+                else
+                {
+                    //memcpy(CPUGetPtr(0xC000), &g_prg_rom[bank_addr], 0x4000);
+                    //MemAddMap(0xC000, 0x4000);
+                }
+            }
+            break;
+        }
+        default:
+            printf("Unknown mapper %d\n", mapper);
+            break;
     }   
 }

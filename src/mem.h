@@ -33,6 +33,16 @@ typedef struct {
 #define APU_IO_REGS_START_ADDR 0x4000
 #define APU_IO_REGS_SIZE 0x18
 
+extern uint8_t g_ppu_regs[PPU_REGS_SIZE];
+extern uint8_t g_apu_regs[APU_IO_REGS_SIZE];
+
+extern uint8_t *g_sys_ram;
+extern uint8_t *g_sram;
+extern uint8_t *g_prg_rom;
+extern uint32_t g_prg_rom_size;
+extern uint8_t *g_chr_rom;
+extern uint32_t g_chr_rom_size;
+
 void MemInit(void);
 
 int MemAddMap(uint16_t base, uint16_t size);
