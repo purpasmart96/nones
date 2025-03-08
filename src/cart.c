@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "cpu.h"
-#include "nes.h"
 #include "ppu.h"
 #include "mem.h"
 #include "utils.h"

@@ -9,9 +9,8 @@
 #include "utils.h"
 
 #include "mem.h"
-#include "nes.h"
 #include "cpu.h"
-
+#include "ppu.h"
 #include "mapper.h"
 
 #define SYS_RAM_SIZE 0x2000
@@ -34,7 +33,7 @@ uint16_t AddressDecode(const uint16_t addr)
         case 0x2:  // $4000 - $5FFF
             if (addr < 0x4018)
             {
-                printf("Trying to read APU/IO reg at 0x%04X\n", addr);
+                DEBUG_LOG("Trying to read APU/IO reg at 0x%04X\n", addr);
                 break;
                 //return apu_io_read(addr);  // APU & I/O
             }
@@ -60,7 +59,7 @@ uint16_t AddressDecode(const uint16_t addr)
 
 uint32_t CpuRead(const uint16_t addr, const int size)
 {
-    uint16_t ret;
+    uint16_t ret = 0;
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
 
@@ -74,7 +73,11 @@ uint32_t CpuRead(const uint16_t addr, const int size)
 
         case 0x1:  // $2000 - $3FFF
         {
-            memcpy(&ret, &g_ppu_regs[addr & 7], size);
+            if (size == 1)
+            {
+                ret = ReadPPURegister(addr);
+            }
+            //memcpy(&ret, &g_ppu_regs[addr & 7], size);
             return ret;
         }
 
@@ -90,7 +93,7 @@ uint32_t CpuRead(const uint16_t addr, const int size)
             else
             {
                 printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
-                break;  // $4018-$5FFF might be mapper-controlled
+                break;
             }
 
 
@@ -105,13 +108,14 @@ uint32_t CpuRead(const uint16_t addr, const int size)
         case 0x6:  // $C000 - $DFFF
         case 0x7:  // $E000 - $FFFF
         {
-            memcpy(&ret, &g_prg_rom[addr - 0xC000], size);
+            //memcpy(&ret, &g_prg_rom[addr - 0xC000], size);
+            memcpy(&ret, &g_prg_rom[addr % g_prg_rom_size], size);
             return ret;
             //return MapperRead(addr, size);
         }
     }
 
-    return 0;  // Default case (open bus behavior)
+    return 0;  // open bus
 }
 
 uint8_t CpuRead8(const uint16_t addr)
@@ -174,18 +178,28 @@ void CpuWrite8(const uint16_t addr, const uint8_t data)
     switch (region)
     {
         case 0x0:  // $0000 - $1FFF
-            memory[addr & 0x7FF] = data;  // Internal RAM (mirrored)
+            // Internal RAM (mirrored)
+            memory[addr & 0x7FF] = data;
             break;
 
         case 0x1:  // $2000 - $3FFF
-            g_ppu_regs[(addr & 7)] = data;  // PPU Registers (mirrored every 8)
+            // PPU Registers (mirrored every 8)
+            g_ppu_regs[(addr & 7)] = data;
+            //WritePPURegister(addr, data);
             break;
 
         case 0x2:  // $4000 - $5FFF
             if (addr < 0x4018)
             {
-                printf("Writing to APU/IO reg at 0x%04X\n", addr);
+                if (addr == 0x4014)
+                {
+                    DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
+                    OAM_Dma(data);
+                    break;
+                }
+                DEBUG_LOG("Writing to APU/IO reg at 0x%04X\n", addr);
                 g_apu_regs[addr % 0x18] = data;
+
                 break;
                 //return apu_io_read(addr);  // APU & I/O
             }
@@ -197,7 +211,7 @@ void CpuWrite8(const uint16_t addr, const uint8_t data)
 
 
         case 0x3:  // $6000 - $7FFF
-            g_sram[addr - 0x6000] = data;  // Battery-backed SRAM (if present)
+            g_sram[addr & 0x1FFF] = data;  // Battery-backed SRAM (if present)
             break;
 
         case 0x4:  // $8000 - $9FFF
@@ -205,6 +219,10 @@ void CpuWrite8(const uint16_t addr, const uint8_t data)
         case 0x6:  // $C000 - $DFFF
         case 0x7:  // $E000 - $FFFF
             printf("Trying to write to rom at addr 0x%x!\n", addr);
+            // Hack
+            //g_prg_rom[addr % g_prg_rom_size] = data;
+            // Something like this?
+            /// MapperWrite(addr, data, 1);
             break;
     }
 }
@@ -243,7 +261,7 @@ uint8_t *CpuGetPtr(const uint16_t addr)
 
         case 0x3:  // $6000 - $7FFF
         {
-            return &g_sram[addr - 0x6000];
+            return &g_sram[addr & 0x1FFF];
         }
     
         case 0x4:  // $8000 - $9FFF
@@ -363,17 +381,7 @@ static uint16_t GetIndirectAddr(Cpu *state)
 }
 
 // PC += 1
-static uint16_t GetPostIndexedIndirectAddr(Cpu *state)
-{
-    uint8_t zp_addr = GetZPAddr(state);
-    uint8_t addr_low = CpuRead8(zp_addr);
-    uint8_t addr_high = CpuRead8((zp_addr + 1) & PAGE_MASK); // Fetch high (with zero-page wraparound)
-
-    return (uint16_t)addr_high << 8 | addr_low;
-}
-
-// PC += 1
-static uint16_t GetPostIndexedIndirectAddr2(Cpu *state, bool page_cycle)
+static uint16_t GetPostIndexedIndirectAddr(Cpu *state, bool page_cycle)
 {
     uint8_t zp_addr = GetZPAddr(state);
     uint8_t addr_low = CpuRead8(zp_addr);
@@ -510,7 +518,7 @@ uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
         case PreIndexedIndirect:
             return CpuRead8(GetPreIndexedIndirectAddr(state, state->x));
         case PostIndexedIndirect:
-            return CpuRead8(GetPostIndexedIndirectAddr2(state, page_cycle));
+            return CpuRead8(GetPostIndexedIndirectAddr(state, page_cycle));
         case Implied:
         case Indirect:
             break;
@@ -554,7 +562,7 @@ static void SetOperandToMem(Cpu *state, AddressingMode addr_mode, uint8_t operan
             CpuWrite8(GetPreIndexedIndirectAddr(state, state->x), operand);
             break;
         case PostIndexedIndirect:
-            CpuWrite8(GetPostIndexedIndirectAddr2(state, false),  operand);
+            CpuWrite8(GetPostIndexedIndirectAddr(state, false),  operand);
             break;
         case Implied:
         case Indirect:
@@ -606,7 +614,7 @@ uint8_t *GetOperandPtrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cy
         case PreIndexedIndirect:
             return CpuGetPtr(GetPreIndexedIndirectAddr(state, state->x));
         case PostIndexedIndirect:
-            return CpuGetPtr(GetPostIndexedIndirectAddr2(state, page_cycle));
+            return CpuGetPtr(GetPostIndexedIndirectAddr(state, page_cycle));
         case Implied:
         case Indirect:
             return NULL;
@@ -1625,4 +1633,7 @@ void CPU_Reset(Cpu *state)
 
     // Set interrupt disable flag (I) to prevent IRQs immediately after reset
     state->status.i = 1;
+
+    // Reset cycles
+    state->cycles = 7;
 }

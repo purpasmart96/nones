@@ -30,17 +30,33 @@ typedef enum {
     NAMETABLE_FOUR_SCREEN,
 } NameTableMirror;
 
+typedef enum
+{
+    PPU_CLEARING_SECONDARY_OAM,
+    PPU_SPRITE_EVAL,
+    PPU_SPRITE_FETCH
+} PpuState;
+
 typedef struct
 {
     uint64_t cycles;
     uint64_t prev_cpu_cycles;
+
+    struct {
+        // vram addr or scroll position
+        uint16_t v;
+        // When rendering, the coarse-x scroll for the next scanline and the starting y scroll for the screen.
+        // Outside of rendering, holds the scroll or VRAM address before transferring it to v
+        uint16_t t;
+        // Fine-x position of the current scroll, used during rendering alongside v.
+        uint8_t x : 3;
+        // write toggle
+        bool w;
+    };
+
+    NameTableMirror nt_mirror_mode;
     int prev_scanline;
     bool frame_finished;
-    NameTableMirror nt_mirror_mode;
-    uint16_t vram_addr;
-    uint16_t temp_vram_addr;
-    uint8_t x : 3;
-    bool write;
 } Ppu;
 
 typedef union
@@ -50,6 +66,7 @@ typedef union
         // Base nametable address
         // (0 = $2000; 1 = $2400; 2 = $2800; 3 = $2C00)
         uint8_t base_name_table_addr : 2;
+        // (0: add 1, going across; 1: add 32, going down)
         uint8_t vram_addr_inc : 1;
         // Sprite pattern table address for 8x8 sprite
         // (0: $0000; 1: $1000; ignored in 8x16 mode)
@@ -80,7 +97,10 @@ void PPU_Init(Ppu *ppu, int name_table_layout);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
 void PPU_Reset(void);
 void PPU_Write8(uint16_t addr, uint8_t data);
+uint8_t ReadPPURegister(const uint16_t addr);
+void WritePPURegister(const uint16_t addr, const uint8_t data);
 uint8_t *GetPPUMemPtr(uint16_t addr);
+void OAM_Dma(const uint16_t addr);
 
 bool PPU_NmiTriggered(void);
 

@@ -10,4 +10,6 @@ do { fprintf(stdout, fmt, __VA_ARGS__); } while (0)
 
 #define UNUSED(var) ((void)(var))
 
+#define ARRAY_SIZE(s) (sizeof(s) / sizeof((s)[0]))
+
 #endif

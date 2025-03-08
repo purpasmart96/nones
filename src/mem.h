@@ -43,14 +43,14 @@ extern uint32_t g_prg_rom_size;
 extern uint8_t *g_chr_rom;
 extern uint32_t g_chr_rom_size;
 
-void MemInit(void);
+//void MemInit(void);
 
 int MemAddMap(uint16_t base, uint16_t size);
 int MemAddMirror(uint16_t base, uint16_t size, uint16_t mirrored_addr, bool ppu_mirror_regs);
 uint16_t MemGetNonMirroredAddr(uint16_t addr);
 
-uint8_t MemRead8(uint16_t addr);
-uint8_t MemRead16(uint16_t addr);
-void MemWrite8(uint16_t addr, uint8_t data);
+//uint8_t MemRead8(uint16_t addr);
+//uint8_t MemRead16(uint16_t addr);
+//void MemWrite8(uint16_t addr, uint8_t data);
 
 #endif

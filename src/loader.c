@@ -20,14 +20,14 @@ int LoaderLoadRom(const char *path, NES2_Header *hdr)
     if (!fp)
         return -1;
 
-    //NES2_Header *nes2 = malloc(sizeof(*nes2));
     fread(hdr, 1, 16, fp);
 
     // iNES / NES2 header magic
     const char magic[4] = { 0x4E, 0x45, 0x53, 0x1A };
+
     if (memcmp(magic, hdr->id_string, 4))
     {
-        printf("Not a valid file format!\n");
+        printf("Not a valid iNES/NES2 file format!\n");
         fclose(fp);
         return -1;
     }
@@ -109,6 +109,7 @@ int LoaderLoadCart(const char *path, Cart *cart)
 
     // iNES / NES2 header magic
     const char magic[4] = { 0x4E, 0x45, 0x53, 0x1A };
+
     if (memcmp(magic, hdr.id_string, 4))
     {
         printf("Not a valid file format!\n");
@@ -187,6 +188,6 @@ void LoaderFreeCart(Cart *cart)
 
     if (cart->chr_rom_size)
         free(cart->chr_rom);
-    if (cart->sram)
+    if (cart->battery)
         free(cart->sram);
 }

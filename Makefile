@@ -1,6 +1,6 @@
 CC := gcc
-CFLAGS := -Wall -Wextra $(shell sdl2-config --cflags)
-LDFLAGS := -lm $(shell sdl2-config --libs)
+CFLAGS := -Wall -Wextra
+LDFLAGS := -lm -lSDL3
 REL_FLAGS := -O2 -D DISABLE_DEBUG
 DBG_FLAGS := -ggdb -O0
 # For profiling
@@ -14,7 +14,7 @@ else ifeq ($(ARCH), i386)
     ARCH := x86
 endif
 
-BIN := emu
+BIN := nones
 VERSION ?= 0.1
 TARBALL_NAME := $(BIN)-$(VERSION)-linux-$(ARCH).tar.gz
 
@@ -58,7 +58,7 @@ $(DBG_DIR)/%.o: src/%.c
 	$(CC) $(DBG_FLAGS) $(CFLAGS) -c -o $@ $<
 
 run:
-	./emu
+	./$(BIN)
 
 clean:
 	@rm -rf $(BUILD_DIR)
