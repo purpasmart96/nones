@@ -1,5 +1,5 @@
 CC := gcc
-CFLAGS := -Wall -Wextra
+CFLAGS := -std=c11 -Wall -Wextra
 LDFLAGS := -lm -lSDL3
 REL_FLAGS := -O2 -D DISABLE_DEBUG
 DBG_FLAGS := -ggdb -O0
