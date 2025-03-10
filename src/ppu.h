@@ -37,28 +37,6 @@ typedef enum
     PPU_SPRITE_FETCH
 } PpuState;
 
-typedef struct
-{
-    uint64_t cycles;
-    uint64_t prev_cpu_cycles;
-
-    struct {
-        // vram addr or scroll position
-        uint16_t v;
-        // When rendering, the coarse-x scroll for the next scanline and the starting y scroll for the screen.
-        // Outside of rendering, holds the scroll or VRAM address before transferring it to v
-        uint16_t t;
-        // Fine-x position of the current scroll, used during rendering alongside v.
-        uint8_t x : 3;
-        // write toggle
-        bool w;
-    };
-
-    NameTableMirror nt_mirror_mode;
-    int prev_scanline;
-    bool frame_finished;
-} Ppu;
-
 typedef union
 {
     uint8_t raw;
@@ -93,7 +71,62 @@ typedef union
 
 } PpuStatus;
 
-void PPU_Init(Ppu *ppu, int name_table_layout);
+typedef struct
+{
+    uint64_t cycles;
+    uint64_t prev_cpu_cycles;
+
+    // PPU internel regs
+    struct {
+        // vram addr or scroll position
+        uint16_t v;
+        // When rendering, the coarse-x scroll for the next scanline and the starting y scroll for the screen.
+        // Outside of rendering, holds the scroll or VRAM address before transferring it to v
+        uint16_t t;
+        // Fine-x position of the current scroll, used during rendering alongside v.
+        uint8_t x : 3;
+        // write toggle
+        bool w;
+    };
+
+    NameTableMirror nt_mirror_mode;
+    int prev_scanline;
+    bool frame_finished;
+    uint8_t buffered_data; // Read buffer for $2007
+
+    // External regs for cpu
+    PpuCtrl ctrl;
+    uint8_t mask;
+    uint8_t oam_addr;
+    PpuStatus status;
+    uint32_t *buffer;
+} Ppu;
+
+typedef union
+{
+    uint8_t raw;
+    struct {
+        uint8_t palette : 2;
+        uint8_t padding : 3;
+        uint8_t priority : 1;
+        uint8_t horz_flip : 1;
+        uint8_t vert_flip : 1;
+    };
+} Attribs;
+
+typedef union
+{
+    uint8_t raw[4];
+    struct
+    {
+        uint8_t y;
+        uint8_t tile_id;
+        Attribs attribs;
+        uint8_t x;
+    };
+} Sprite;
+
+void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t *pixels);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
 void PPU_Reset(void);
 void PPU_Write8(uint16_t addr, uint8_t data);

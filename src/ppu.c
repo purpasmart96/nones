@@ -1,8 +1,10 @@
+#include <SDL3/SDL_stdinc.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/types.h>
 
 #include "cpu.h"
 #include "mem.h"
@@ -10,33 +12,13 @@
 #include "utils.h"
 
 
-uint8_t g_ppu_regs[8] = { 0 };
+//uint8_t g_ppu_regs[8] = { 0 };
 
 static uint8_t vram[0x800];
 //static uint8_t vram[0x800];
 static uint8_t name_table[32 * 30];
 // Pointers to handle mirroring
 uint8_t *nametables[4];
-
-typedef union {
-    uint8_t raw;
-    struct {
-        uint8_t palette : 2;
-        uint8_t padding : 3;
-        uint8_t priority : 1;
-        uint8_t horz_flip : 1;
-        uint8_t vert_flip : 1;
-    };
-} Attribs;
-
-typedef struct
-{
-    //uint8_t raw[4];
-    uint8_t y;
-    uint8_t tile_id;
-    Attribs attribs;
-    uint8_t x;
-} Sprite;
 
 // OAM
 static Sprite sprites[64];
@@ -64,40 +46,75 @@ const uint8_t PaletteLUT_2C04_0001[64] =
     0x2E,0x19,0x10,0x0A,0x39,0x03,0x37,0x17,0x0F,0x11,0x0B,0x0D,0x38,0x25,0x18,0x3A
 };
 
-const uint8_t PaletteLUT_2C04_0002[64] =
+static const uint8_t ntsc_palette[] =
 {
-    0x2E,0x27,0x18,0x39,0x3A,0x25,0x1C,0x31,0x16,0x13,0x38,0x34,0x20,0x23,0x3C,0x0B,
-    0x0F,0x21,0x06,0x3D,0x1B,0x29,0x1E,0x22,0x1D,0x24,0x0E,0x2B,0x32,0x08,0x2E,0x03,
-    0x04,0x36,0x26,0x33,0x11,0x1F,0x10,0x02,0x14,0x3F,0x00,0x09,0x12,0x2E,0x28,0x20,
-    0x3E,0x0D,0x2A,0x17,0x0C,0x01,0x15,0x19,0x2E,0x2C,0x07,0x37,0x35,0x05,0x0A,0x2D
+    0x80, 0x80, 0x80,
+    0x00, 0x3D, 0xA6,
+    0x00, 0x12, 0xB0, 
+    0x44, 0x00, 0x96,
+    0xA1, 0x00, 0x5E,
+    0xC7, 0x00, 0x28,
+    0xBA, 0x06, 0x00, 
+    0x8C, 0x17, 0x00,
+    0x5C, 0x2F, 0x00,
+    0x10, 0x45, 0x00,
+    0x05, 0x4A, 0x00, 
+    0x00, 0x47, 0x2E, 
+    0x00, 0x41, 0x66,
+    0x00, 0x00, 0x00,
+    0x05, 0x05, 0x05,
+    0x05, 0x05, 0x05,
+    0xC7, 0xC7, 0xC7,
+    0x00, 0x77, 0xFF,
+    0x21, 0x55, 0xFF,
+    0x82, 0x37, 0xFA,
+    0xEB, 0x2F, 0xB5,
+    0xFF, 0x29, 0x50,
+    0xFF, 0x22, 0x00,
+    0xD6, 0x32, 0x00,
+    0xC4, 0x62, 0x00,
+    0x35, 0x80, 0x00,
+    0x05, 0x8F, 0x00,
+    0x00, 0x8A, 0x55,
+    0x00, 0x99, 0xCC,
+    0x21, 0x21, 0x21,
+    0x09, 0x09, 0x09,
+    0x09, 0x09, 0x09,
+    0xFF, 0xFF, 0xFF,
+    0x0F, 0xD7, 0xFF,
+    0x69, 0xA2, 0xFF,
+    0xD4, 0x80, 0xFF,
+    0xFF, 0x45, 0xF3, 
+    0xFF, 0x61, 0x8B,
+    0xFF, 0x88, 0x33, 
+    0xFF, 0x9C, 0x12,
+    0xFA, 0xBC, 0x20,
+    0x9F, 0xE3, 0x0E,
+    0x2B, 0xF0, 0x35,
+    0x0C, 0xF0, 0xA4,
+    0x05, 0xFB, 0xFF,
+    0x5E, 0x5E, 0x5E,
+    0x0D, 0x0D, 0x0D,
+    0x0D, 0x0D, 0x0D,
+    0xFF, 0xFF, 0xFF,
+    0xA6, 0xFC, 0xFF,
+    0xB3, 0xEC, 0xFF,
+    0xDA, 0xAB, 0xEB,
+    0xFF, 0xA8, 0xF9,
+    0xFF, 0xAB, 0xB3,
+    0xFF, 0xD2, 0xB0,
+    0xFF, 0xEF, 0xA6,
+    0xFF, 0xF7, 0x9C,
+    0xD7, 0xE8, 0x95,
+    0xA6, 0xED, 0xAF,
+    0xA2, 0xF2, 0xDA,
+    0x99, 0xFF, 0xFC,
+    0xDD, 0xDD, 0xDD, 
+    0x11, 0x11, 0x11,
+    0x11, 0x11, 0x11
 };
 
-const uint8_t PaletteLUT_2C04_0003[64] =
-{
-    0x14,0x25,0x3A,0x10,0x0B,0x20,0x31,0x09,0x01,0x2E,0x36,0x08,0x15,0x3D,0x3E,0x3C,
-    0x22,0x1C,0x05,0x12,0x19,0x18,0x17,0x1B,0x00,0x03,0x2E,0x02,0x16,0x06,0x34,0x35,
-    0x23,0x0F,0x0E,0x37,0x0D,0x27,0x26,0x20,0x29,0x04,0x21,0x24,0x11,0x2D,0x2E,0x1F,
-    0x2C,0x1E,0x39,0x33,0x07,0x2A,0x28,0x1D,0x0A,0x2E,0x32,0x38,0x13,0x2B,0x3F,0x0C
-};
-
-const uint8_t PaletteLUT_2C04_0004[64] =
-{
-    0x18,0x03,0x1C,0x28,0x2E,0x35,0x01,0x17,0x10,0x1F,0x2A,0x0E,0x36,0x37,0x0B,0x39,
-    0x25,0x1E,0x12,0x34,0x2E,0x1D,0x06,0x26,0x3E,0x1B,0x22,0x19,0x04,0x2E,0x3A,0x21,
-    0x05,0x0A,0x07,0x02,0x13,0x14,0x00,0x15,0x0C,0x3D,0x11,0x0F,0x0D,0x38,0x2D,0x24,
-    0x33,0x20,0x08,0x16,0x3F,0x2B,0x20,0x3C,0x2E,0x27,0x23,0x31,0x29,0x32,0x2C,0x09
-};
-
-static PpuCtrl *ppu_ctrl = NULL;
-static uint8_t *ppu_mask = NULL;
-static PpuStatus *ppu_status = NULL;
-static uint8_t *oam_addr = NULL;
-static uint8_t *oam_data = NULL;
-static uint8_t *ppu_scroll = NULL;
-static uint8_t *ppu_addr = NULL;
-static uint8_t *ppu_data = NULL;
-static uint8_t *oam_dma = NULL;
-
+static Ppu *ppu_ptr = NULL;
 static uint64_t prev_ppu_cycles = 0;
 
 typedef union {
@@ -139,7 +156,6 @@ static void UpdateCtrlReg(uint8_t data)
     //ppu_ctrl
 }
 
-static bool high = true;
 static void UpdateAddrReg(Ppu *ppu, uint16_t data)
 {
     uint8_t high_addr = (data >> 8) & 0xFF;
@@ -149,131 +165,178 @@ static void UpdateAddrReg(Ppu *ppu, uint16_t data)
         //// Push high first
         //StackPush(state, (state->pc >> 8) & 0xFF);
         //// Push low next
-        //StackPush(state, state->pc & 0xFF);
-        //StackPush(state, state->status.raw | 0x20); // Push status with bit 5 set
-    //ppu_ctrl
-}
-
-
-
-void WritePPURegister(const uint16_t addr, const uint8_t data)
-{
-    if ((prev_ppu_cycles < 88974) && (addr == PPU_CTRL))
-        return;
-    if ((prev_ppu_cycles < 88974) && (addr == PPU_MASK))
-        return;
-    if ((prev_ppu_cycles < 88974) && (addr == PPU_SCROLL))
-        return;
-    if ((prev_ppu_cycles < 88974) && (addr == PPU_ADDR))
-        return;
-
-    switch (addr)
-    {
-        case PPU_CTRL:
-            g_ppu_regs[0] = data;
-            break;
-        case PPU_MASK:
-            g_ppu_regs[1] = data;
-            break;
-        case PPU_STATUS:
-            g_ppu_regs[2] = data;
-            break;
-        case OAM_ADDR:
-            g_ppu_regs[3] = data;
-            break;
-        case OAM_DATA:
-            g_ppu_regs[4] = data;
-            break;
-        case PPU_SCROLL:
-        case PPU_ADDR:
-            g_ppu_regs[5] = data;
-            break;
-    }
 }
 
 static void PPU_UpdateVramAddr(Ppu *ppu)
 {
-    ppu->v += ppu_ctrl->vram_addr_inc ? 32 : 1;
+    ppu->v += ppu->ctrl.vram_addr_inc ? 32 : 1;
 }
 
-void write_ppu2006(Ppu *ppu, uint8_t value) {
-    if (!ppu->w)
+void PPU_WriteAddrReg(const uint8_t value)
+{
+    if (!ppu_ptr->w)
     {
-        // First write: high byte (6 bits used)
-        ppu->v = (value & 0x3F) << 8;  // Only 14-bit address
-    } else {
-        // Second write: low byte
-        ppu->v |= value;
-    }
-    ppu->w = !ppu->w;
-}
-
-void PPU_WriteAddrReg(Ppu *ppu, uint8_t value) {
-    if (!ppu->w)
-    {
-        ppu->t = (ppu->t & 0x7F00) | ((value & 0x3F) << 8); // Set high byte of `t`
+        ppu_ptr->t = (ppu_ptr->t & 0x00FF) | ((value & 0x3F) << 8); // Set high byte of `t`
     }
     else
     {
-        ppu->t = (ppu->t & 0xFF00) | value; // Set low byte of `t`
+        ppu_ptr->t = (ppu_ptr->t & 0xFF00) | value; // Set low byte of `t`
         // Transfer `t` to `v`
-        ppu->v = ppu->t;
+        ppu_ptr->v = ppu_ptr->t;
     }
-    ppu->w = !ppu->w;
+    ppu_ptr->w = !ppu_ptr->w;
 }
 
-void write_ppu2005(Ppu *ppu, uint8_t value)
+
+void WriteToNametable(uint16_t addr, uint8_t data)
 {
-    if (!ppu->w)
+    addr &= 0x2FFF;  // Force address within 0x2000-0x2FFF range
+    uint8_t table_index = (addr >> 10) & 3;  // Select which nametable
+    nametables[table_index][addr & 0x3FF] = data;
+}
+
+void PPU_WriteData(const uint8_t data)
+{
+    // Extract A13, A12, A11 for region decoding
+    uint8_t ppu_region = (ppu_ptr->v >> 11) & 0x7;
+    switch (ppu_region)
+    {
+        case 0x0:
+        case 0x1:
+        case 0x2:
+        case 0x3:
+        {
+            // chr rom is actually chr ram
+            g_chr_rom[ppu_ptr->v % g_chr_rom_size] = data;
+            break;
+        }
+        case 0x4:
+        case 0x5:
+            //vram[ppu_ptr->v & 0x1FFF] = data;
+            WriteToNametable(ppu_ptr->v, data);
+            break;
+        case 0x7:
+            palette_table[ppu_ptr->v & 0x1F] = data;
+        default:
+            break;
+    }
+
+    // Auto-increment address
+    ppu_ptr->v += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
+}
+
+void write_ppu2005(const uint8_t value)
+{
+    if (!ppu_ptr->w)
     {
         // First write: X scroll (fine X + coarse X)
-        ppu->t = (ppu->t & 0xFFE0) | (value >> 3);
-        ppu->x = value & 0x07; // Fine X scroll
+        ppu_ptr->t = (ppu_ptr->t & 0xFFE0) | (value >> 3);
+        ppu_ptr->x = value & 0x7; // Fine X scroll
     } else {
         // Second write: Y scroll (fine Y + coarse Y)
-        ppu->t = (ppu->t & 0x8C1F) | ((value & 0x7) << 12) | ((value & 0xF8) << 2);
+        ppu_ptr->t = (ppu_ptr->t & 0x8C1F) | ((value & 0x7) << 12) | ((value & 0xF8) << 2);
     }
-    ppu->w = !ppu->w;
+    ppu_ptr->w = !ppu_ptr->w;
 }
 
-uint8_t ReadPPURegister(const uint16_t addr)
+uint8_t PPU_ReadStatus(/*Ppu *ppu*/)
 {
-    uint8_t ret = 0;
+    uint8_t status_value = ppu_ptr->status.raw;
+
+    // **Clear VBlank flag and reset write toggle**
+    ppu_ptr->status.vblank = 0;
+    ppu_ptr->w = 0;
+
+    return status_value;
+}
+
+uint8_t PPU_ReadData(/*Ppu *ppu*/)
+{
+    uint16_t addr = ppu_ptr->v & 0x3FFF;
+    uint8_t data;
+
+    if (addr >= 0x3F00)
+    {  
+        // Palette memory (no buffering)
+        data = vram[addr & 0x1F];  // Mirror palette range
+    }
+    else if (addr <= 0x1FFF)
+    {  
+        // VRAM/CHR memory (buffered)
+        //data = ppu_ptr->buffered_data;  // Return stale buffer value
+        //ppu_ptr->buffered_data = vram[addr];  // Load new data into buffer
+        data = ppu_ptr->buffered_data;  // Return stale buffer value
+        ppu_ptr->buffered_data = g_chr_rom[addr];  // Load new data into buffer
+    }
+    else if (addr <= 0x2FFF)
+    {  
+        // VRAM/CHR memory (buffered)
+        data = ppu_ptr->buffered_data;  // Return stale buffer value
+        ppu_ptr->buffered_data = vram[addr];  // Load new data into buffer
+    }
+
+    // Auto-increment address
+    ppu_ptr->v += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
+
+    return data;
+}
+
+
+uint8_t ReadPPURegister(const uint16_t address)
+{
+    switch (address) {
+        case PPU_STATUS:  // PPUSTATUS
+            return PPU_ReadStatus();
+        case OAM_DATA:  // OAMDATA (reads from OAM memory)
+            return sprites[ppu_ptr->oam_addr & 63].raw[ppu_ptr->oam_addr & 3];
+        case PPU_DATA:  // PPUDATA (reads from VRAM)
+            return PPU_ReadData();
+        default:
+            return 0;  // Unhandled read (usually open bus behavior)
+    }
+}
+
+void WritePPURegister(const uint16_t addr, const uint8_t data)
+{
+    //if ((prev_ppu_cycles < 88974) && (addr == PPU_CTRL))
+    //    return;
+    //if ((prev_ppu_cycles < 88974) && (addr == PPU_MASK))
+    //    return;
+    //if ((prev_ppu_cycles < 88974) && (addr == PPU_SCROLL))
+    //    return;
+    //if ((prev_ppu_cycles < 88974) && (addr == PPU_ADDR))
+    //    return;
+
     switch (addr)
     {
         case PPU_CTRL:
-            ret = g_ppu_regs[0];
+            ppu_ptr->ctrl.raw = data;
+            ppu_ptr->t = (ppu_ptr->t & 0xF3FF) | ((data & 0x03) << 10);  // Update t (Name table bits)
             break;
         case PPU_MASK:
-            ret = g_ppu_regs[1];
+            ppu_ptr->mask = data;
             break;
-        case PPU_STATUS:
+        case OAM_ADDR:
+            ppu_ptr->oam_addr = data;
+            break;
+        case OAM_DATA:  // OAMDATA (writes to OAM memory)
         {
-            ret = g_ppu_regs[2]; //ppu_status->vblank;
-            ppu_status->vblank = 0;
+            //const int oam_n = ppu_ptr->oam_addr & 63;
+            const int oam_m = ppu_ptr->oam_addr & 3;
+            
+            sprites[ppu_ptr->oam_addr++ & 63].raw[oam_m] = data;
             break;
         }
-        case OAM_ADDR:
-            ret = g_ppu_regs[3];
-            break;
-        case OAM_DATA:
-            ret = g_ppu_regs[4];
-            break;
-        case PPU_SCROLL:
-            ret = g_ppu_regs[5];
+        case PPU_SCROLL:  // PPUSCROLL
+            write_ppu2005(data);
             break;
         case PPU_ADDR:
-            ret = g_ppu_regs[6];
+            PPU_WriteAddrReg(data);
             break;
         case PPU_DATA:
-            ret = g_ppu_regs[7];
-            break;
-        default:
-            printf("Bad ppu reg read at addr 0x%04X\n", addr);
+            PPU_WriteData(data);
             break;
     }
-
-    return ret;
 }
 
 void OAM_Dma(const uint16_t addr)
@@ -303,7 +366,7 @@ uint8_t *GetPPUMemPtr(uint16_t addr)
     return &vram[addr & 0x3FFF];
 }
 
-uint8_t ppu_read(uint16_t addr) {
+uint8_t ReadNametable(uint16_t addr) {
     addr &= 0x2FFF;  // Force address within 0x2000-0x2FFF range
     uint8_t table_index = (addr >> 10) & 3;  // Select which nametable
     return nametables[table_index][addr & 0x3FF];
@@ -340,14 +403,13 @@ void NametableMirroringInit(NameTableMirror mode)
 }
 
 
-void PPU_Init(Ppu *ppu, int name_table_layout)
+void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t *pixels)
 {
     memset(ppu, 0, sizeof(*ppu));
     ppu->nt_mirror_mode = name_table_layout;
     NametableMirroringInit(ppu->nt_mirror_mode);
-
-    ppu_ctrl = (PpuCtrl*)&g_ppu_regs[0];
-    ppu_status = (PpuStatus*)&g_ppu_regs[2];
+    ppu->buffer = pixels;
+    ppu_ptr = ppu;
 }
 
 uint64_t prev_vblank_cycles = 0;
@@ -370,6 +432,90 @@ const uint32_t dots_per_frame_odd = 341 * 261 + 340;
 const uint32_t dots_per_frame_even = 341 * 261 + 341;
 const uint32_t cpu_cycles_per_frame = dots_per_frame_even / 3; 
 
+static void DrawSprite(uint32_t *buffer, int xpos, int ypos, int h, int w, uint8_t *rgb)
+{
+    //buffer[y * SCREEN_WIDTH + x] = 0;
+    //buffer[y * SCREEN_WIDTH + x + 1] = 0;
+    //buffer[y * SCREEN_WIDTH + x + 2] = 0;
+    //buffer[y * SCREEN_WIDTH + x + 3] = 0;
+
+    for (int x = xpos; x < xpos + w; x++)
+    {
+        for (int y = ypos; y < ypos + h; y++)
+        {
+            uint8_t a = 255;
+            buffer[y * 340 + x] = (a << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
+        }
+    }
+}
+
+// Function to set a pixel in the frame
+static void SetPixel(uint32_t *buffer, int x, int y, uint8_t* rgb)
+{
+    buffer[y * 340 + x] = (0 << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
+}
+
+ void Render(Ppu *ppu)
+ {
+    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+ 
+    for (uint16_t i = 0; i < 0x03c0; i++)
+    {
+        // just for now, lets use the first nametable
+        uint16_t tile = vram[i];
+        int tile_x = i % 32;
+        int tile_y = i / 32;
+
+        size_t tile_offset = (bank + tile * 16);
+        const uint8_t *tile_data = &g_chr_rom[tile_offset];
+ 
+        for (int y = 0; y < 8; y++)
+        {
+            uint8_t upper = tile_data[y];
+            uint8_t lower = tile_data[y + 8];
+ 
+            for (int x = 8; x > 0; x--)  // Reverse order
+            {
+                int value = (1 & upper) << 1 | (1 & lower);
+                upper = upper >> 1;
+                lower = lower >> 1;
+                uint8_t *rgb_ptr = NULL;
+                switch (value)
+                {
+                    case 0:
+                    {
+                        uint8_t rgb[] = {ntsc_palette[0], ntsc_palette[1], ntsc_palette[2]};
+                        rgb_ptr = rgb;
+                        break;
+                    }
+                    case 1:
+                    {
+                        uint8_t rgb[] = {ntsc_palette[3], ntsc_palette[4], ntsc_palette[5]};
+                        rgb_ptr = rgb;
+                        break;
+                    }
+                    case 2:
+                    {
+                        uint8_t rgb[] = {ntsc_palette[6], ntsc_palette[7], ntsc_palette[8]};
+                        rgb_ptr = rgb;
+                        break;
+                    }
+                    case 3:
+                    {
+                        uint8_t rgb[] = {ntsc_palette[9], ntsc_palette[10], ntsc_palette[11]};
+                        rgb_ptr = rgb;
+                        break;
+                    }
+                    default: 
+                        printf("Unexpected tile value!\n");
+                        return;
+                }
+                SetPixel(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, rgb_ptr);
+            }
+        }
+    }
+ }
+
 static void PPU_IsFrameDone(Ppu *ppu)
 {
     // NES PPU has ~29780 CPU cycles per frame
@@ -383,6 +529,7 @@ static void PPU_IsFrameDone(Ppu *ppu)
     {
         prev_ppu_cycles = ppu->cycles;
         ppu->frame_finished = true;
+        //Render(ppu);
     }
 }
 
@@ -400,7 +547,7 @@ static int m = 0;
 
 static int GetSpriteHeight(void)
 {
-    return ppu_ctrl->sprite_size ? 16 : 8;
+    return ppu_ptr->ctrl.sprite_size ? 16 : 8;
 }
 
 // 192 cycles
@@ -422,7 +569,7 @@ static void SpriteEval(int scanline, int cycle)
         {
             sprite_y = sprites[sprite_index].y;
         }
-        else if (scanline >= sprite_y && scanline < sprite_y + (ppu_ctrl->sprite_size ? 16 : 8))
+        else if (scanline >= sprite_y && scanline < sprite_y + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
         {
             if (sprite_count < 8)
             {
@@ -432,7 +579,7 @@ static void SpriteEval(int scanline, int cycle)
             }
             else
             {
-                ppu_status->sprite_overflow = 1;
+                ppu_ptr->status.sprite_overflow = 1;
             }
         }
 
@@ -609,14 +756,17 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             // Cycles 321-340+0: Background render pipeline initialization
             // Read the first byte in secondary OAM (while the PPU fetches the first two background tiles for the next scanline)
             PrepareSpriteData(scanline, ppu_cycle_counter);
-                
+            if (scanline == 0 && ppu_cycle_counter == 1)
+            {
+                Render(ppu);
+            }
         }
         else if (scanline == 241 && ppu_cycle_counter == 1)
         {
             // VBlank starts at scanline 241
-            ppu_status->vblank = 1;
+            ppu->status.vblank = 1;
             // If NMI is enabled
-            if (ppu_ctrl->vblank_nmi)
+            if (ppu->ctrl.vblank_nmi)
             {
                 nmi_triggered = true;
             }
@@ -625,9 +775,9 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         // This might be a hack, should prob set it when the register is read?
         else if (scanline == 261 && ppu_cycle_counter == 1)
         {
-            ppu_status->vblank = 0;
+            ppu->status.vblank = 0;
             //ppu_status->sprite_hit = 0;
-            ppu_status->sprite_overflow = 0;
+            ppu->status.sprite_overflow = 0;
             // Hack for smb
             //ppu_status->sprite_hit = !ppu_status->sprite_hit;
 
@@ -636,7 +786,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         {
             //ppu_status->vblank = 0;
             // Hack for smb
-            ppu_status->sprite_hit = !ppu_status->sprite_hit;
+            ppu->status.sprite_hit = !ppu->status.sprite_hit;
 
         }
     }

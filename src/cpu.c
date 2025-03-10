@@ -11,7 +11,7 @@
 #include "mem.h"
 #include "cpu.h"
 #include "ppu.h"
-#include "mapper.h"
+//#include "mapper.h"
 
 #define SYS_RAM_SIZE 0x2000
 static uint8_t memory[SYS_RAM_SIZE];
@@ -184,7 +184,8 @@ void CpuWrite8(const uint16_t addr, const uint8_t data)
 
         case 0x1:  // $2000 - $3FFF
             // PPU Registers (mirrored every 8)
-            g_ppu_regs[(addr & 7)] = data;
+            //g_ppu_regs[(addr & 7)] = data;
+            WritePPURegister(addr, data);
             //WritePPURegister(addr, data);
             break;
 
@@ -241,7 +242,8 @@ uint8_t *CpuGetPtr(const uint16_t addr)
 
         case 0x1:  // $2000 - $3FFF
         {
-            return &g_ppu_regs[(addr & 7)];
+            printf("NOT DONE\n");
+            return NULL; //&g_ppu_regs[(addr & 7)];
         }
 
         case 0x2:  // $4000 - $5FFF
@@ -1606,7 +1608,7 @@ void CPU_Update(Cpu *state)
     // NMI always comes first
     if (PPU_NmiTriggered())
     {
-        printf("NMI triggered!\n");
+        //printf("NMI triggered!\n");
         CPU_TriggerNMI(state);
     }
 

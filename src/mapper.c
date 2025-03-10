@@ -7,6 +7,8 @@
 #include "cpu.h"
 #include "mem.h"
 #include "ppu.h"
+#include "loader.h"
+#include "mapper.h"
 
 typedef enum {
     NROM_INVALID,
@@ -14,19 +16,12 @@ typedef enum {
     NROM_256
 } NromType;
 
-
-
 static int mapper_type;
 //static uint32_t prg_rom_size;
 
-uint8_t NromRead8(uint16_t addr)
+static uint8_t NromRead8(PrgRom *prg_rom, uint16_t addr)
 {
-    //return g_prg_rom[addr %  g_prg_rom_size];
-}
-
-void NromWrite(uint16_t addr, uint8_t data)
-{
-
+    return prg_rom->data[addr & (prg_rom->size - 1)];
 }
 
 
@@ -35,6 +30,7 @@ void Mmc1Read(uint16_t addr, uint8_t data)
 
 }
 
+/*
 uint32_t MapperRead(const uint16_t addr, const int size)
 {
     uint32_t ret;
@@ -42,10 +38,34 @@ uint32_t MapperRead(const uint16_t addr, const int size)
     memcpy(&ret, &g_prg_rom[addr % g_prg_rom_size], size);
     return ret;
 }
+*/
 
-void MapperWrite(uint16_t addr, uint8_t data)
+uint8_t MapperRead(Cart *cart, const uint16_t addr)
 {
+    switch (cart->mapper)
+    {
+        case 0:
+            return NromRead8(&cart->prg_rom, addr);
+//       case 1:
+//
+//           break;
+        default:
+            printf("Mapper %d is not implemented! (Read at addr 0x%04X)\n",
+                    cart->mapper, addr);
+    }
 
+    return 0;
+}
+
+void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
+{
+    switch (cart->mapper)
+    {
+        case 0:
+            break;
+        case 1:
+            break;
+    }
 }
 
 /*

@@ -47,6 +47,24 @@ static void DrawSprite(uint32_t *buffer, int xpos, int ypos, int h, int w)
     //}
 }
 
+
+static void DrawSprite2(uint32_t *buffer, int xpos, int ypos, int h, int w, uint8_t *rgb)
+{
+    //buffer[y * SCREEN_WIDTH + x] = 0;
+    //buffer[y * SCREEN_WIDTH + x + 1] = 0;
+    //buffer[y * SCREEN_WIDTH + x + 2] = 0;
+    //buffer[y * SCREEN_WIDTH + x + 3] = 0;
+
+    for (int x = xpos; x < xpos + w; x++)
+    {
+        for (int y = ypos; y < ypos + h; y++)
+        {
+            uint8_t a = 255;
+            buffer[y * SCREEN_WIDTH + x] = (a << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
+        }
+    }
+}
+
 static void ArenaTest(void)
 {
     Arena *arena = arena_create(0x10000);
@@ -101,6 +119,11 @@ void NonesRun(Nones *nones, const char *path)
         exit(EXIT_FAILURE);
     }
 
+    //SDL_Texture *texture = SDL_CreateTexture(renderer,
+    //    SDL_PIXELFORMAT_RGBA8888,
+    //    SDL_TEXTUREACCESS_STREAMING,
+    //    SCREEN_WIDTH, SCREEN_HEIGHT);
+
     SDL_Texture *texture = SDL_CreateTexture(renderer,
         SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_STREAMING,
@@ -108,24 +131,24 @@ void NonesRun(Nones *nones, const char *path)
 
     // Allocate pixel buffer
     uint32_t *pixels = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
-
+    //uint8_t *pixels = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint8_t));
     // Fill buffer with dummy NES image (red and blue checkerboard pattern)
-    for (int y = 0; y < SCREEN_HEIGHT; y++) {
-        for (int x = 0; x < SCREEN_WIDTH; x++) {
-            uint8_t r = (x % 2 == y % 2) ? 255 : 0;
-            uint8_t g = 0;
-            uint8_t b = (x % 2 != y % 2) ? 255 : 0;
-            uint8_t a = 255;
-            pixels[y * SCREEN_WIDTH + x] = (a << 24) | (b << 16) | (g << 8) | r;
-        }
-    }
+    //for (int y = 0; y < SCREEN_HEIGHT; y++) {
+    //    for (int x = 0; x < SCREEN_WIDTH; x++) {
+    //        uint8_t r = (x % 2 == y % 2) ? 255 : 0;
+    //        uint8_t g = 0;
+    //        uint8_t b = (x % 2 != y % 2) ? 255 : 0;
+    //        uint8_t a = 255;
+    //        pixels[y * SCREEN_WIDTH + x] = (a << 24) | (b << 16) | (g << 8) | r;
+    //    }
+    //}
 
     CPU_Init(&nones->cpu);
 
     NES2_Header hdr;
     LoaderLoadRom(path, &hdr);
     CPU_Init(&nones->cpu);
-    PPU_Init(&nones->ppu, hdr.name_table_layout);
+    PPU_Init(&nones->ppu, hdr.name_table_layout, pixels);
 
     CPU_Reset(&nones->cpu);
 
@@ -136,7 +159,7 @@ void NonesRun(Nones *nones, const char *path)
 
     while (!quit)
     {
-        memset(pixels, 255, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
+        memset(pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
         uint64_t start_time = SDL_GetTicksNS();
 
         while (SDL_PollEvent(&event))
@@ -155,12 +178,12 @@ void NonesRun(Nones *nones, const char *path)
             APU_Update(nones->cpu.cycles);
             PPU_Update(&nones->ppu, nones->cpu.cycles);
         } while (!nones->ppu.frame_finished);
-         // } while ((cpu.cycles % 29780) != 0);
+        //} while ((nones->cpu.cycles % 29780) != 0);
         //updates++;
 
-        int rand_x = rand() % SCREEN_WIDTH / 2;
-        int rand_y = rand() % SCREEN_HEIGHT / 2;
-        DrawSprite(pixels, rand_x, rand_y, 50, 50);
+        //int rand_x = rand() % SCREEN_WIDTH / 2;
+        //int rand_y = rand() % SCREEN_HEIGHT / 2;
+        //DrawSprite(pixels, rand_x, rand_y, 50, 50);
 
         SDL_UpdateTexture(texture, NULL, pixels, SCREEN_WIDTH * 4);
         SDL_RenderClear(renderer);

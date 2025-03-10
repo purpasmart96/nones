@@ -12,4 +12,10 @@ do { fprintf(stdout, fmt, __VA_ARGS__); } while (0)
 
 #define ARRAY_SIZE(s) (sizeof(s) / sizeof((s)[0]))
 
+#define GET_HIGH_LE(v) (((v >> 8) & 0xFF))
+#define GET_LOW_LE(v) ((v & 0xFF))
+
+#define GET_HIGH_BE(v) ((v & 0xFF))
+#define GET_LOW_BE(v) (((v >> 8) & 0xFF))
+
 #endif

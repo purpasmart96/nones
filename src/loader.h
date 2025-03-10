@@ -35,15 +35,25 @@ typedef struct
     uint8_t padding2 : 2;
 } NES2_Header;
 
+typedef struct
+{
+    uint8_t *data;
+    uint32_t size;
+} PrgRom;
+
+typedef struct
+{
+    uint8_t *data;
+    uint32_t size;
+    bool is_ram;
+} ChrRom;
 
 typedef struct {
-    uint8_t *prg_rom;
-    uint8_t *chr_rom;
+    PrgRom prg_rom;
+    ChrRom chr_rom;
     uint8_t *sram;
-    uint32_t prg_rom_size;
-    uint32_t chr_rom_size;
     int mapper;
-    int name_table_layout;
+    int mirroring;
     bool battery;
 } Cart;
 

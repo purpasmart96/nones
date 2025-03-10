@@ -7,6 +7,7 @@
 #include "ppu.h"
 #include "apu.h"
 #include "loader.h"
+#include "bus.h"
 
 #define SCREEN_WIDTH 340
 #define SCREEN_HEIGHT 260
@@ -19,6 +20,7 @@ typedef struct {
     //Apu *apu;
     Ppu ppu;
     Cart cart;
+    Bus bus;
 } Nones;
 
 void NonesRun(Nones *nones, const char *path);
