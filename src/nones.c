@@ -159,7 +159,7 @@ void NonesRun(Nones *nones, const char *path)
 
     while (!quit)
     {
-        memset(pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
+        //memset(pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
         uint64_t start_time = SDL_GetTicksNS();
 
         while (SDL_PollEvent(&event))

@@ -1,4 +1,3 @@
-#include <SDL3/SDL_stdinc.h>
 #include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
@@ -18,7 +17,7 @@ static uint8_t vram[0x800];
 //static uint8_t vram[0x800];
 static uint8_t name_table[32 * 30];
 // Pointers to handle mirroring
-uint8_t *nametables[4];
+static uint8_t *nametables[4];
 
 // OAM
 static Sprite sprites[64];
@@ -114,25 +113,174 @@ static const uint8_t ntsc_palette[] =
     0x11, 0x11, 0x11
 };
 
+// NES NTSC system palette (64 colors) in 0xRRGGBB format
+//static const uint32_t SYSTEM_PALETTE[64] = {
+//    0x666666, 0x002A88, 0x1412A7, 0x3B00A4, 0x5C007E, 0x6E0040, 0x6C0700, 0x561D00,
+//    0x333500, 0x0B4800, 0x005200, 0x004F08, 0x00404D, 0x000000, 0x000000, 0x000000,
+//    0xADADAD, 0x155FD9, 0x4240FF, 0x7527FE, 0xA01ACC, 0xB71E7B, 0xB53120, 0x994E00,
+//    0x6B6D00, 0x388700, 0x0C9300, 0x008F32, 0x007C8D, 0x000000, 0x000000, 0x000000,
+//    0xFFFEFF, 0x64B0FF, 0x9290FF, 0xC676FF, 0xF36AFF, 0xFE6ECC, 0xFE8170, 0xEA9E22,
+//    0xBCBE00, 0x88D800, 0x5CE430, 0x45E082, 0x48CDDE, 0x4F4F4F, 0x000000, 0x000000,
+//    0xFFFEFF, 0xC0DFFF, 0xD3D2FF, 0xE8C8FF, 0xFBC2FF, 0xFFC4EA, 0xFFCCB3, 0xF4D88E,
+//    0xE0E67C, 0xC8F07E, 0xADEF8E, 0x9DE8C5, 0xA4E2EA, 0xA8A8A8, 0x000000, 0x000000
+//};
+
+// NES NTSC system palette (64 colors) stored as 3-byte RGB values
+static uint8_t SYSTEM_PALETTE[64][3] = {
+    {0x66, 0x66, 0x66}, {0x00, 0x2A, 0x88}, {0x14, 0x12, 0xA7}, {0x3B, 0x00, 0xA4}, 
+    {0x5C, 0x00, 0x7E}, {0x6E, 0x00, 0x40}, {0x6C, 0x07, 0x00}, {0x56, 0x1D, 0x00},
+    {0x33, 0x35, 0x00}, {0x0B, 0x48, 0x00}, {0x00, 0x52, 0x00}, {0x00, 0x4F, 0x08},
+    {0x00, 0x40, 0x4D}, {0x00, 0x00, 0x00}, {0x00, 0x00, 0x00}, {0x00, 0x00, 0x00},
+    {0xAD, 0xAD, 0xAD}, {0x15, 0x5F, 0xD9}, {0x42, 0x40, 0xFF}, {0x75, 0x27, 0xFE},
+    {0xA0, 0x1A, 0xCC}, {0xB7, 0x1E, 0x7B}, {0xB5, 0x31, 0x20}, {0x99, 0x4E, 0x00},
+    {0x6B, 0x6D, 0x00}, {0x38, 0x87, 0x00}, {0x0C, 0x93, 0x00}, {0x00, 0x8F, 0x32},
+    {0x00, 0x7C, 0x8D}, {0x00, 0x00, 0x00}, {0x00, 0x00, 0x00}, {0x00, 0x00, 0x00},
+    {0xFF, 0xFE, 0xFF}, {0x64, 0xB0, 0xFF}, {0x92, 0x90, 0xFF}, {0xC6, 0x76, 0xFF},
+    {0xF3, 0x6A, 0xFF}, {0xFE, 0x6E, 0xCC}, {0xFE, 0x81, 0x70}, {0xEA, 0x9E, 0x22},
+    {0xBC, 0xBE, 0x00}, {0x88, 0xD8, 0x00}, {0x5C, 0xE4, 0x30}, {0x45, 0xE0, 0x82},
+    {0x48, 0xCD, 0xDE}, {0x4F, 0x4F, 0x4F}, {0x00, 0x00, 0x00}, {0x00, 0x00, 0x00},
+    {0xFF, 0xFE, 0xFF}, {0xC0, 0xDF, 0xFF}, {0xD3, 0xD2, 0xFF}, {0xE8, 0xC8, 0xFF},
+    {0xFB, 0xC2, 0xFF}, {0xFF, 0xC4, 0xEA}, {0xFF, 0xCC, 0xB3}, {0xF4, 0xD8, 0x8E},
+    {0xE0, 0xE6, 0x7C}, {0xC8, 0xF0, 0x7E}, {0xAD, 0xEF, 0x8E}, {0x9D, 0xE8, 0xC5},
+    {0xA4, 0xE2, 0xEA}, {0xA8, 0xA8, 0xA8}, {0x00, 0x00, 0x00}, {0x00, 0x00, 0x00}
+};
+
+typedef struct
+{
+    //uint8_t raw[4];
+    //struct {
+        uint8_t r;
+        uint8_t g;
+        uint8_t b;
+        uint8_t a;
+    //};
+
+} Color;
+
+static Color sys_palette2[64] =
+{
+    
+    {0x66, 0x66, 0x66, 255},
+    {0x00, 0x2A, 0x88, 255}, 
+    {0x14, 0x12, 0xA7, 255},
+    {0x3B, 0x00, 0xA4, 255}, 
+    {0x5C, 0x00, 0x7E, 255},
+    {0x6E, 0x00, 0x40, 255},
+    {0x6C, 0x07, 0x00, 255},
+    {0x56, 0x1D, 0x00, 255},
+    {0x33, 0x35, 0x00, 255},
+    {0x0B, 0x48, 0x00, 255},
+    {0x00, 0x52, 0x00, 255},
+    {0x00, 0x4F, 0x08, 255},
+    {0x00, 0x40, 0x4D, 255}, 
+    {0x00, 0x00, 0x00, 255},
+    {0x00, 0x00, 0x00, 255},
+    {0x00, 0x00, 0x00, 255},
+    {0xAD, 0xAD, 0xAD, 255}, 
+    {0x15, 0x5F, 0xD9, 255},
+    {0x42, 0x40, 0xFF, 255}, 
+    {0x75, 0x27, 0xFE, 255},
+    {0xA0, 0x1A, 0xCC, 255},
+    {0xB7, 0x1E, 0x7B, 255},
+    {0xB5, 0x31, 0x20, 255}, 
+    {0x99, 0x4E, 0x00, 255},
+    {0x6B, 0x6D, 0x00, 255},
+    {0x38, 0x87, 0x00, 255},
+    {0x0C, 0x93, 0x00, 255}, 
+    {0x00, 0x8F, 0x32, 255},
+    {0x00, 0x7C, 0x8D, 255}, 
+    {0x00, 0x00, 0x00, 255},
+    {0x00, 0x00, 0x00, 255}, 
+    {0x00, 0x00, 0x00, 255},
+    {0xFF, 0xFE, 0xFF, 255}, 
+    {0x64, 0xB0, 0xFF, 255},
+    {0x92, 0x90, 0xFF, 255}, 
+    {0xC6, 0x76, 0xFF, 255},
+    {0xF3, 0x6A, 0xFF, 255}, 
+    {0xFE, 0x6E, 0xCC, 255},
+    {0xFE, 0x81, 0x70, 255}, 
+    {0xEA, 0x9E, 0x22, 255},
+    {0xBC, 0xBE, 0x00, 255}, 
+    {0x88, 0xD8, 0x00, 255},
+    {0x5C, 0xE4, 0x30, 255}, 
+    {0x45, 0xE0, 0x82, 255},
+    {0x48, 0xCD, 0xDE, 255}, 
+    {0x4F, 0x4F, 0x4F, 255},
+    {0x00, 0x00, 0x00, 255}, 
+    {0x00, 0x00, 0x00, 255},
+    {0xFF, 0xFE, 0xFF, 255}, 
+    {0xC0, 0xDF, 0xFF, 255},
+    {0xD3, 0xD2, 0xFF, 255}, 
+    {0xE8, 0xC8, 0xFF, 255},
+    {0xFB, 0xC2, 0xFF, 255}, 
+    {0xFF, 0xC4, 0xEA, 255},
+    {0xFF, 0xCC, 0xB3, 255}, 
+    {0xF4, 0xD8, 0x8E, 255},
+    {0xE0, 0xE6, 0x7C, 255}, 
+    {0xC8, 0xF0, 0x7E, 255},
+    {0xAD, 0xEF, 0x8E, 255}, 
+    {0x9D, 0xE8, 0xC5, 255},
+    {0xA4, 0xE2, 0xEA, 255}, 
+    {0xA8, 0xA8, 0xA8, 255},
+    {0x00, 0x00, 0x00, 255}, 
+    {0x00, 0x00, 0x00, 255}
+};
+
+static const Color sys_palette[64] = {
+    {0x80, 0x80, 0x80}, {0x00, 0x3D, 0xA6}, {0x00, 0x12, 0xB0}, {0x44, 0x00, 0x96},
+    {0xA1, 0x00, 0x5E}, {0xC7, 0x00, 0x28}, {0xBA, 0x06, 0x00}, {0x8C, 0x17, 0x00},
+    {0x5C, 0x2F, 0x00}, {0x10, 0x45, 0x00}, {0x05, 0x4A, 0x00}, {0x00, 0x47, 0x2E},
+    {0x00, 0x41, 0x66}, {0x00, 0x00, 0x00}, {0x05, 0x05, 0x05}, {0x05, 0x05, 0x05},
+    {0xC7, 0xC7, 0xC7}, {0x00, 0x77, 0xFF}, {0x21, 0x55, 0xFF}, {0x82, 0x37, 0xFA},
+    {0xEB, 0x2F, 0xB5}, {0xFF, 0x29, 0x50}, {0xFF, 0x22, 0x00}, {0xD6, 0x32, 0x00},
+    {0xC4, 0x62, 0x00}, {0x35, 0x80, 0x00}, {0x05, 0x8F, 0x00}, {0x00, 0x8A, 0x55},
+    {0x00, 0x99, 0xCC}, {0x21, 0x21, 0x21}, {0x09, 0x09, 0x09}, {0x09, 0x09, 0x09},
+    {0xFF, 0xFF, 0xFF}, {0x0F, 0xD7, 0xFF}, {0x69, 0xA2, 0xFF}, {0xD4, 0x80, 0xFF},
+    {0xFF, 0x45, 0xF3}, {0xFF, 0x61, 0x8B}, {0xFF, 0x88, 0x33}, {0xFF, 0x9C, 0x12},
+    {0xFA, 0xBC, 0x20}, {0x9F, 0xE3, 0x0E}, {0x2B, 0xF0, 0x35}, {0x0C, 0xF0, 0xA4},
+    {0x05, 0xFB, 0xFF}, {0x5E, 0x5E, 0x5E}, {0x0D, 0x0D, 0x0D}, {0x0D, 0x0D, 0x0D},
+    {0xFF, 0xFF, 0xFF}, {0xA6, 0xFC, 0xFF}, {0xB3, 0xEC, 0xFF}, {0xDA, 0xAB, 0xEB},
+    {0xFF, 0xA8, 0xF9}, {0xFF, 0xAB, 0xB3}, {0xFF, 0xD2, 0xB0}, {0xFF, 0xEF, 0xA6},
+    {0xFF, 0xF7, 0x9C}, {0xD7, 0xE8, 0x95}, {0xA6, 0xED, 0xAF}, {0xA2, 0xF2, 0xDA},
+    {0x99, 0xFF, 0xFC}, {0xDD, 0xDD, 0xDD}, {0x11, 0x11, 0x11}, {0x11, 0x11, 0x11},
+};
+
+uint8_t* get_color(uint8_t palette_index, uint8_t value) {
+    // Ensure value is within range (0-3)
+    value &= 0x03;
+
+    // Compute palette memory address
+    uint16_t palette_addr = 0x3F00 + (palette_index * 4) + value;
+
+    // Read the color index from PPU palette memory
+    uint8_t color_index = palette_table[palette_addr & 0x1F]; // Mask to fit in 32-byte palette RAM
+
+    // Return the pointer to the RGB color
+    return SYSTEM_PALETTE[color_index & 0x3F]; // Mask to ensure it's within 64 system colors
+    //uint8_t color_index = palette_table[(palette_index * 4) + value] & 0x3F;
+    //return SYSTEM_PALETTE[color_index];
+}
+
+static Color GetColor(uint8_t palette_index, uint8_t value)
+{
+    // Ensure value is within range (0-3)
+    value &= 0x3;
+
+    // Compute palette memory address
+    uint16_t palette_addr = 0x3F00 + (palette_index * 4) + value;
+
+    // Read the color index from PPU palette memory
+    uint8_t color_index = palette_table[palette_addr & 0x1F]; // Mask to fit in 32-byte palette RAM
+
+    // Return the pointer to the RGB color
+    return sys_palette[color_index & 0x3F]; // Mask to ensure it's within 64 system colors
+    //uint8_t color_index = palette_table[(palette_index * 4) + value] & 0x3F;
+    //return SYSTEM_PALETTE[color_index];
+}
+
+
 static Ppu *ppu_ptr = NULL;
 static uint64_t prev_ppu_cycles = 0;
-
-typedef union {
-    uint16_t raw_addr;
-    struct {
-        // Fine Y offset, the row number within a tile
-        uint8_t y_offset : 3;// Bits 0-2
-        // Bit plane (0: less significant bit; 1: more significant bit)
-        bool bit_plane_msb : 1; // Bit 3
-        // Tile number from name table
-        uint16_t tile_num  : 8; // Bits 4-12
-        // Half of pattern table (0: "left"; 1: "right")
-        bool pattern_table_half : 1; // Bit 13
-        // Pattern table is at $0000-$1FFF
-        bool pattern_table_low_addr : 1; // Bit 14 
-    };
-
-} PpuAddrReg;
 
 static uint16_t PatternTableDecodeAddress(uint16_t addr)
 {
@@ -169,7 +317,7 @@ static void UpdateAddrReg(Ppu *ppu, uint16_t data)
 
 static void PPU_UpdateVramAddr(Ppu *ppu)
 {
-    ppu->v += ppu->ctrl.vram_addr_inc ? 32 : 1;
+    ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
 }
 
 void PPU_WriteAddrReg(const uint8_t value)
@@ -182,11 +330,20 @@ void PPU_WriteAddrReg(const uint8_t value)
     {
         ppu_ptr->t = (ppu_ptr->t & 0xFF00) | value; // Set low byte of `t`
         // Transfer `t` to `v`
-        ppu_ptr->v = ppu_ptr->t;
+        ppu_ptr->v.raw = ppu_ptr->t;
     }
     ppu_ptr->w = !ppu_ptr->w;
 }
 
+static int GetNameTableIndex(uint16_t addr)
+{
+    return (addr >> 10) & 0x3;
+}
+
+static int GetAttribOffset(uint16_t addr)
+{
+    return (addr >> 6) & 0xF;
+}
 
 void WriteToNametable(uint16_t addr, uint8_t data)
 {
@@ -195,10 +352,17 @@ void WriteToNametable(uint16_t addr, uint8_t data)
     nametables[table_index][addr & 0x3FF] = data;
 }
 
+uint8_t ReadNametable(uint16_t addr)
+{
+    //addr &= 0x2FFF;  // Force address within 0x2000-0x2FFF range
+    uint8_t table_index = (addr >> 10) & 3;  // Select which nametable
+    return nametables[table_index][addr & 0x3FF];
+}
+
 void PPU_WriteData(const uint8_t data)
 {
     // Extract A13, A12, A11 for region decoding
-    uint8_t ppu_region = (ppu_ptr->v >> 11) & 0x7;
+    uint8_t ppu_region = (ppu_ptr->v.raw >> 11) & 0x7;
     switch (ppu_region)
     {
         case 0x0:
@@ -207,22 +371,22 @@ void PPU_WriteData(const uint8_t data)
         case 0x3:
         {
             // chr rom is actually chr ram
-            g_chr_rom[ppu_ptr->v % g_chr_rom_size] = data;
+            g_chr_rom[ppu_ptr->v.raw % g_chr_rom_size] = data;
             break;
         }
         case 0x4:
         case 0x5:
             //vram[ppu_ptr->v & 0x1FFF] = data;
-            WriteToNametable(ppu_ptr->v, data);
+            WriteToNametable(ppu_ptr->v.raw, data);
             break;
         case 0x7:
-            palette_table[ppu_ptr->v & 0x1F] = data;
+            palette_table[ppu_ptr->v.raw & 0x1F] = data;
         default:
             break;
     }
 
     // Auto-increment address
-    ppu_ptr->v += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
+    ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
 }
 
 void write_ppu2005(const uint8_t value)
@@ -252,13 +416,13 @@ uint8_t PPU_ReadStatus(/*Ppu *ppu*/)
 
 uint8_t PPU_ReadData(/*Ppu *ppu*/)
 {
-    uint16_t addr = ppu_ptr->v & 0x3FFF;
-    uint8_t data;
+    uint16_t addr = ppu_ptr->v.raw & 0x3FFF;
+    uint8_t data = 0;
 
     if (addr >= 0x3F00)
     {  
         // Palette memory (no buffering)
-        data = vram[addr & 0x1F];  // Mirror palette range
+        data = palette_table[addr & 0x1F];  // Mirror palette range
     }
     else if (addr <= 0x1FFF)
     {  
@@ -272,11 +436,11 @@ uint8_t PPU_ReadData(/*Ppu *ppu*/)
     {  
         // VRAM/CHR memory (buffered)
         data = ppu_ptr->buffered_data;  // Return stale buffer value
-        ppu_ptr->buffered_data = vram[addr];  // Load new data into buffer
+        ppu_ptr->buffered_data = vram[addr & 0x1FFF];  // Load new data into buffer
     }
 
     // Auto-increment address
-    ppu_ptr->v += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
+    ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
 
     return data;
 }
@@ -366,12 +530,6 @@ uint8_t *GetPPUMemPtr(uint16_t addr)
     return &vram[addr & 0x3FFF];
 }
 
-uint8_t ReadNametable(uint16_t addr) {
-    addr &= 0x2FFF;  // Force address within 0x2000-0x2FFF range
-    uint8_t table_index = (addr >> 10) & 3;  // Select which nametable
-    return nametables[table_index][addr & 0x3FF];
-}
-
 uint8_t PPU_ReadChrRom(uint16_t addr)
 {
     return g_chr_rom[addr & 0x1FFF];
@@ -383,17 +541,17 @@ void NametableMirroringInit(NameTableMirror mode)
 {
     switch (mode) {
         case NAMETABLE_HORIZONTAL:
-            nametables[0] = &vram[0x0000];      // NT0 (0x2000)
-            nametables[1] = &vram[0x0000];      // NT0 (Mirrored at 0x2400)
-            nametables[2] = &vram[0x0800];  // NT1 (0x2800)
-            nametables[3] = &vram[0x0800];  // NT1 (Mirrored at 0x2C00)
+            nametables[0] = &vram[0x000];      // NT0 (0x2000)
+            nametables[1] = &vram[0x000];      // NT0 (Mirrored at 0x2400)
+            nametables[2] = &vram[0x400];  // NT1 (0x2800)
+            nametables[3] = &vram[0x400];  // NT1 (Mirrored at 0x2C00)
             break;
         
         case NAMETABLE_VERTICAL:
-            nametables[0] = &vram[0x0000];      // NT0 (0x2000)
-            nametables[1] = &vram[0x0400];  // NT1 (0x2400)
-            nametables[2] = &vram[0x0000];      // NT0 (Mirrored at 0x2800)
-            nametables[3] = &vram[0x0400];  // NT1 (Mirrored at 0x2C00)
+            nametables[0] = &vram[0x000];      // NT0 (0x2000)
+            nametables[1] = &vram[0x400];  // NT1 (0x2400)
+            nametables[2] = &vram[0x000];      // NT0 (Mirrored at 0x2800)
+            nametables[3] = &vram[0x400];  // NT1 (Mirrored at 0x2C00)
             break;
 
         default:
@@ -455,10 +613,113 @@ static void SetPixel(uint32_t *buffer, int x, int y, uint8_t* rgb)
     buffer[y * 340 + x] = (0 << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
 }
 
- void Render(Ppu *ppu)
- {
-    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+static void SetPixel2(uint32_t *buffer, int x, int y, uint32_t rgb)
+{
+    buffer[y * 340 + x] = rgb;
+}
+
+#define pack_rgba(r, g, b, a) (uint32_t)(r<<24|g<<16|b<<8|a)
+static void SetPixel3(uint32_t *buffer, int x, int y, Color color)
+{
+    buffer[y * 340 + x] = (uint32_t)((color.r << 24) | (color.g << 16) | (color.b << 8) | color.a);
+}
+
+uint16_t GetBGPallette(Ppu *ppu, uint16_t tile_column, uint16_t tile_row)
+{
+    uint16_t attr_table_idx = (tile_row / 4) * 8 +  tile_column / 4;
+    uint16_t attr_byte = vram[0x3c0 + attr_table_idx];  // note: still using hardcoded first nametable
+
+    uint16_t pallet_idx[2] = {(tile_column % 4) / 2, (tile_row % 4) / 2};
+
+    uint16_t palette = 0;
+    if (pallet_idx[0] == 0 && pallet_idx[1] == 0)
+        palette = attr_byte & 0b11;
+    else if (pallet_idx[0] == 0 && pallet_idx[1] == 0)
+    {
+        palette = (attr_byte >> 2) & 0b11;
+    }
+    else if (pallet_idx[0] == 1 && pallet_idx[1] == 0)
+    {
+        palette = (attr_byte >> 4) & 0b11;
+    }
+    else if (pallet_idx[0] == 1 && pallet_idx[1] == 1)
+    {
+        palette = (attr_byte >> 6) & 0b11;
+    }
+    
+    //let pallet_idx = match (tile_column %4 / 2, tile_row % 4 / 2)
+    //{
+    //    (0,0) => attr_byte & 0b11,
+    //    (1,0) => (attr_byte >> 2) & 0b11,
+    //    (0,1) => (attr_byte >> 4) & 0b11,
+    //    (1,1) => (attr_byte >> 6) & 0b11,
+    //    (_,_) => panic!("should not happen"),
+    //};
  
+    //let pallete_start: usize = 1 + (pallet_idx as usize)*4;
+    // [ppu.palette_table[0], ppu.palette_table[pallete_start], ppu.palette_table[pallete_start+1], ppu.palette_table[pallete_start+2]]
+
+    //uint16_t pallete_start = 1 + palette  * 4;
+}
+
+void get_bg_palette(Ppu *ppu, size_t tile_column, size_t tile_row, Color *color)
+{
+    size_t attr_table_idx = (tile_row / 4) * 8 + (tile_column / 4);
+
+    uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
+    uint8_t *attribute_table = &nametable[0x3C0];
+    //uint8_t attr_byte = vram[0x3C0 + attr_table_idx];  // Hardcoded first nametable
+    uint8_t attr_byte = attribute_table[attr_table_idx];
+
+    uint16_t palette_idx;
+    switch ((tile_column % 4) / 2 + 2 * ((tile_row % 4) / 2)) {
+        case 0:
+            palette_idx = attr_byte & 0b11;
+            break;
+        case 1:
+            palette_idx = (attr_byte >> 2) & 0b11;
+            break;
+        case 2:
+            palette_idx = (attr_byte >> 4) & 0b11;
+            break;
+        case 3:
+            palette_idx = (attr_byte >> 6) & 0b11;
+            break;
+        default:
+            return;  // Should never happen
+    }
+
+/*
+    uint16_t pallet_idx[2] = {(tile_column % 4) / 2, (tile_row % 4) / 2};
+    
+    uint16_t palette = 0;
+    if (pallet_idx[0] == 0 && pallet_idx[1] == 0)
+        palette = attr_byte & 0b11;
+    else if (pallet_idx[0] == 0 && pallet_idx[1] == 0)
+    {
+        palette = (attr_byte >> 2) & 0b11;
+    }
+    else if (pallet_idx[0] == 1 && pallet_idx[1] == 0)
+    {
+        palette = (attr_byte >> 4) & 0b11;
+    }
+    else if (pallet_idx[0] == 1 && pallet_idx[1] == 1)
+    {
+        palette = (attr_byte >> 6) & 0b11;
+    }
+*/
+    size_t palette_start = 1 + (palette_idx * 4);
+    color->r = palette_table[0];  // Universal background color
+    color->g = palette_table[palette_start];
+    color->b = palette_table[palette_start + 1];
+    color->a = palette_table[palette_start + 2];
+}
+
+
+void Render(Ppu *ppu)
+{
+    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+    //uint8_t *attribute_table = nametables[(ppu->v.raw >> 10) & 3];
     for (uint16_t i = 0; i < 0x03c0; i++)
     {
         // just for now, lets use the first nametable
@@ -468,7 +729,9 @@ static void SetPixel(uint32_t *buffer, int x, int y, uint8_t* rgb)
 
         size_t tile_offset = (bank + tile * 16);
         const uint8_t *tile_data = &g_chr_rom[tile_offset];
- 
+        //int palette = GetBGPallette(ppu, tile_x, tile_y);
+        Color bg_palette;
+        get_bg_palette(ppu, tile_x, tile_y, &bg_palette);
         for (int y = 0; y < 8; y++)
         {
             uint8_t upper = tile_data[y];
@@ -476,41 +739,59 @@ static void SetPixel(uint32_t *buffer, int x, int y, uint8_t* rgb)
  
             for (int x = 8; x > 0; x--)  // Reverse order
             {
-                int value = (1 & upper) << 1 | (1 & lower);
-                upper = upper >> 1;
-                lower = lower >> 1;
-                uint8_t *rgb_ptr = NULL;
+                uint8_t value = ((upper & 1) << 1) | (lower & 1);
+                upper >>= 1;
+                lower >>= 1;
+                //uint8_t *rgb_ptr = NULL;
+                Color color;
+                color.a = 255;
                 switch (value)
                 {
                     case 0:
                     {
-                        uint8_t rgb[] = {ntsc_palette[0], ntsc_palette[1], ntsc_palette[2]};
-                        rgb_ptr = rgb;
+                        //uint8_t rgb[] = {ntsc_palette[0], ntsc_palette[1], ntsc_palette[2]};
+                        //rgb_ptr = rgb;
+                        //color = sys_palette[0x01];//sys_palette[palette_table[0]];
+                        color = sys_palette2[palette_table[0]];
                         break;
                     }
                     case 1:
                     {
-                        uint8_t rgb[] = {ntsc_palette[3], ntsc_palette[4], ntsc_palette[5]};
-                        rgb_ptr = rgb;
+                        //uint8_t rgb[] = {ntsc_palette[3], ntsc_palette[4], ntsc_palette[5]};
+                        //rgb_ptr = rgb;
+                        color = sys_palette2[bg_palette.b];
+                        //color = sys_palette[0x23];
                         break;
                     }
                     case 2:
                     {
-                        uint8_t rgb[] = {ntsc_palette[6], ntsc_palette[7], ntsc_palette[8]};
-                        rgb_ptr = rgb;
+                        //uint8_t rgb[] = {ntsc_palette[6], ntsc_palette[7], ntsc_palette[8]};
+                        //rgb_ptr = rgb;
+                        //color = sys_palette[0x27];
+                        color = sys_palette2[bg_palette.g];
                         break;
                     }
                     case 3:
                     {
-                        uint8_t rgb[] = {ntsc_palette[9], ntsc_palette[10], ntsc_palette[11]};
-                        rgb_ptr = rgb;
+                        //uint8_t rgb[] = {ntsc_palette[9], ntsc_palette[10], ntsc_palette[11]};
+                        //rgb_ptr = rgb;
+                        //color = sys_palette[0x30];
+                        color = sys_palette2[bg_palette.a];
                         break;
                     }
                     default: 
                         printf("Unexpected tile value!\n");
                         return;
                 }
-                SetPixel(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, rgb_ptr);
+                //uint8_t *rgb = get_color(0, value);
+ 
+                //Color color = GetColor(palette, value);
+                //Color *temp = &color;
+
+                //uint32_t color_casted = *(uint32_t*)temp;
+                //SetPixel2(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, color_casted);
+                SetPixel3(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, color);
+                //SetPixel(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, rgb_ptr);
             }
         }
     }
@@ -688,6 +969,64 @@ END FOR
 */
 }
 
+uint32_t get_color2(uint8_t palette_index, uint8_t value)
+{
+    // Ensure value is within range (0-3)
+    value &= 0x03;
+
+    // Compute palette memory address
+    uint8_t palette_addr = 0x3F00 + (palette_index * 4) + value;
+
+    // Read the color index from PPU palette memory
+    uint8_t color_index = palette_table[palette_addr & 0x1F]; // Mask to fit in 32-byte palette RAM
+
+    // Return the RGB color from the system palette
+    return ntsc_palette[color_index & 0x3F]; // Mask to ensure it's within 64 system colors
+}
+
+static void PPU_DrawScanline(Ppu *ppu, int scanline)
+{
+    for (int x = 0; x < 256; x++)
+    {
+        uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
+        uint8_t *attribute_table = &nametable[0x3C0];
+
+        //uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+        //uint16_t attib_addr = 0x23C0 | (ppu->v.fetching.name_table_sel << 10) |
+        //                      ((ppu->v.fetching.coarse_y >> 2) << 3) | (ppu->v.fetching.coarse_x >> 2);
+        uint16_t v = ppu->v.raw;
+        uint16_t tile_addr      = 0x2000 | (ppu->v.raw & 0x0FFF);
+        uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+        uint16_t attrib_addr2 = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+        uint16_t attrib_data = attribute_table[attrib_addr2 & 0x03FF];
+
+        uint16_t tile_index = nametable[tile_addr & 0x03FF];
+        int shift = ((v >> 4) & 4) | (v & 2);  // Determines which palette to use
+        int palette_index = (attrib_data >> shift) & 0x03;
+
+        uint16_t tile_offset = tile_index * 16 + ((v >> 12) & 0x07);
+        const uint8_t *tile_data = &g_chr_rom[tile_offset];
+        uint16_t pattern_table = (ppu->ctrl.bg_pat_table_addr) ? 0x1000 : 0x0000; // Pattern table select
+        uint8_t upper = g_chr_rom[pattern_table + tile_offset];
+        uint8_t lower = g_chr_rom[pattern_table + tile_offset + 8];
+
+        // 5. Extract pixel color
+        int bit_shift = 7 - (v & 0x07);  // Fine X shift
+        uint8_t value = ((upper >> bit_shift) & 1) << 1 | ((lower >> bit_shift) & 1);
+
+        uint8_t *color = get_color(palette_index, value);
+        //ppu->buffer[scanline * 256 + ppu_cycle_counter] = 0;
+        SetPixel(ppu->buffer, x, scanline, color);
+    }
+
+}
+
+//bool is_sprite_0_hit(Ppu *ppu) {
+//    uint8_t y = self.oam_data[0];
+//    let x = self.oam_data[3] as usize;
+//    (y == self.scanline as usize) && x <= cycle && self.mask.show_sprites()
+//}
+
 // We need to catch up to the cpu
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
 {
@@ -709,10 +1048,112 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         if (scanline <= 240)
         {
             // Render stuff in here
-
             // Nametables
             // Conceptually, the PPU does this 33 times for each scanline:
             //Fetch a nametable entry from $2000-$2FFF.
+            if (scanline < 240 && ppu_cycle_counter > 0 && ppu_cycle_counter < 257)
+            {
+                //uint8_t rgb[] = {244, 244, 135};
+                //uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+                //uint16_t tile = vram[ppu->v.raw & 0x1FFF];
+                //uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+                //uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+                ////uint8_t *attribute_table = &nametable[0x3C0]
+                //uint16_t attrib_data = vram[attrib_addr & 0x1FFF];
+                //uint16_t tile_index = vram[tile_addr & 0x1FFF];
+                //uint16_t tile_offset = tile_index * 16 + ((ppu->v.raw >> 12) & 0x07);
+                ////int shift = ((ppu->v.pattern_table. >> 4) & 4) | (v & 2);  // Determines which palette to use
+                //int palette_index = 0;// (attrib_data >> shift) & 0x03;
+                //int bit_shift = 7 - (ppu->v.raw & 0x07);  // Fine X shift
+                //uint16_t pattern_table = (ppu->ctrl.bg_pat_table_addr) ? 0x1000 : 0x0000; // Pattern table select
+                //uint8_t upper = g_chr_rom[pattern_table + tile_offset];
+                //uint8_t lower = g_chr_rom[pattern_table + tile_offset + 8];
+                //uint8_t value = ((upper >> bit_shift) & 1) << 1 | ((lower >> bit_shift) & 1);
+                //uint8_t *color = get_color(palette_index, value);
+//
+                //SetPixel(ppu->buffer, ppu_cycle_counter, scanline, color);
+            //    uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
+            //    uint8_t *attribute_table = &nametable[0x3C0];
+//
+            //    //uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+            //    //uint16_t attib_addr = 0x23C0 | (ppu->v.fetching.name_table_sel << 10) |
+            //    //                      ((ppu->v.fetching.coarse_y >> 2) << 3) | (ppu->v.fetching.coarse_x >> 2);
+            //    uint16_t v = ppu->v.raw;
+            //    uint16_t tile_addr      = 0x2000 | (ppu->v.raw & 0x0FFF);
+            //    uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+            //    uint16_t attrib_addr2 = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+            //    uint16_t attrib_data = attribute_table[attrib_addr2 & 0x03FF];
+//
+            //    uint16_t tile_index = nametable[tile_addr & 0x03FF];
+            //    int shift = ((v >> 4) & 4) | (v & 2);  // Determines which palette to use
+            //    int palette_index = (attrib_data >> shift) & 0x03;
+//
+            //    uint16_t tile_offset = tile_index * 16 + ((v >> 12) & 0x07);
+            //    const uint8_t *tile_data = &g_chr_rom[tile_offset];
+            //    uint16_t pattern_table = (ppu->ctrl.bg_pat_table_addr) ? 0x1000 : 0x0000; // Pattern table select
+            //    uint8_t upper = g_chr_rom[pattern_table + tile_offset];
+            //    uint8_t lower = g_chr_rom[pattern_table + tile_offset + 8];
+//
+            //    // 5. Extract pixel color
+            //    int bit_shift = 7 - (v & 0x07);  // Fine X shift
+            //    uint8_t value = ((upper >> bit_shift) & 1) << 1 | ((lower >> bit_shift) & 1);
+//
+            //    uint8_t *color = get_color(palette_index, value);
+            //    //ppu->buffer[scanline * 256 + ppu_cycle_counter] = 0;
+            //    SetPixel(ppu->buffer, ppu_cycle_counter, scanline, color);
+            }
+
+/*
+            if (scanline < 240 && ppu_cycle_counter == 256)
+            {
+                // Nametables
+                // Conceptually, the PPU does this 33 times for each scanline:
+                //Fetch a nametable entry from $2000-$2FFF.
+                //uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
+                //uint8_t *attribute_table = &nametable[0x3C0];
+//
+                ////uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+                ////uint16_t attib_addr = 0x23C0 | (ppu->v.fetching.name_table_sel << 10) |
+                ////                      ((ppu->v.fetching.coarse_y >> 2) << 3) | (ppu->v.fetching.coarse_x >> 2);
+                //uint16_t v = ppu->v.raw;
+                //uint16_t tile_addr      = 0x2000 | (ppu->v.raw & 0x0FFF);
+                //uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+                //uint16_t attrib_addr2 = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+                //uint16_t attrib_data = attribute_table[attrib_addr2];
+                // 4. Draw the pixel
+                //ppu->pixels[scanline * 256 + x] = color;
+                //PPU_DrawScanline(ppu, scanline);
+                if ((ppu->v.raw & 0x7000) != 0x7000)        // if fine Y < 7
+                    ppu->v.raw += 0x1000;                      // increment fine Y
+                else
+                {
+                    ppu->v.raw &= ~0x7000;                     // fine Y = 0
+                    int y = (ppu->v.raw & 0x03E0) >> 5;        // let y = coarse Y
+                    if (y == 29)
+                    {
+                        y = 0;         // coarse Y = 0
+                        ppu->v.raw ^= 0x0800;   // switch vertical nametable
+                    }
+                    else if (y == 31)
+                        y = 0;                                 // coarse Y = 0, nametable not switched
+                    else
+                        y += 1;                                // increment coarse Y
+                    ppu->v.raw = (ppu->v.raw & ~0x03E0) | (y << 5);    // put coarse Y back into v
+                }
+            }
+            else if (scanline < 240 && ppu_cycle_counter == 328)
+            {
+                if ((ppu->v.raw & 0x001F) == 31) // if coarse X == 31
+                {
+                    ppu->v.raw &= ~0x001F; // coarse X = 0
+                    ppu->v.raw ^= 0x0400; // switch horizontal nametable
+                }
+                else
+                {
+                    ppu->v.raw += 1;             // increment coarse X
+                }
+            }
+*/
             //Fetch the corresponding attribute table entry from $23C0-$2FFF and increment the current VRAM address within the same row.
             //Fetch the low-order byte of an 8x1 pixel sliver of pattern table from $0000-$0FF7 or $1000-$1FF7.
             //Fetch the high-order byte of this sliver from an address 8 bytes higher.
@@ -756,7 +1197,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             // Cycles 321-340+0: Background render pipeline initialization
             // Read the first byte in secondary OAM (while the PPU fetches the first two background tiles for the next scanline)
             PrepareSpriteData(scanline, ppu_cycle_counter);
-            if (scanline == 0 && ppu_cycle_counter == 1)
+            if (scanline > 0 && scanline < 240 && ppu_cycle_counter == 256)
             {
                 Render(ppu);
             }
@@ -779,15 +1220,19 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             //ppu_status->sprite_hit = 0;
             ppu->status.sprite_overflow = 0;
             // Hack for smb
-            //ppu_status->sprite_hit = !ppu_status->sprite_hit;
+            //ppu->status.sprite_hit = 0; //!ppu_status->sprite_hit;
 
+        }
+        else if (scanline == 261 && ppu_cycle_counter == 257)
+        {
+            // reset scroll
+            //ppu->v.raw = (ppu->v.raw & ~0x7BE0) | (ppu->t & 0x7BE0);
         }
         else if (scanline == 261 && ppu_cycle_counter == 340)
         {
             //ppu_status->vblank = 0;
             // Hack for smb
             ppu->status.sprite_hit = !ppu->status.sprite_hit;
-
         }
     }
     PPU_IsFrameDone(ppu);
@@ -797,9 +1242,9 @@ static int FetchBackgroundPixel(int scanline, int pixel_x)
 {
     int tile_x = pixel_x / 8;
     int tile_y = scanline / 8;
-
 /*
     int tile_index = ReadNametable(tile_x, tile_y);
+    uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
     uint32_t attribute_data = ReadAttributeTable(tile_x, tile_y);
     
     int tile_pattern = ReadPatternTable(tile_index)
@@ -808,15 +1253,6 @@ static int FetchBackgroundPixel(int scanline, int pixel_x)
     return MapPixelToPalette(pixel_value, attribute_data);
 */
     return 0;
-}
-
-static void PPU_DrawScanline(int scanline)
-{
-    for (int x = 0; x < 260; x++)
-    {
-
-    }
-
 }
 
 bool PPU_NmiTriggered(void)

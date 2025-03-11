@@ -71,6 +71,36 @@ typedef union
 
 } PpuStatus;
 
+typedef union
+{
+    uint16_t raw : 15;
+    struct {
+        // Fine Y offset, the row number within a tile
+        uint8_t y_offset : 3;// Bits 0-2
+        // Bit plane (0: less significant bit; 1: more significant bit)
+        bool bit_plane_msb : 1; // Bit 3
+        // Tile number from name table
+        uint16_t tile_num  : 8; // Bits 4-12
+        // Half of pattern table (0: "left"; 1: "right")
+        bool pattern_table_half : 1; // Bit 13
+        // Pattern table is at $0000-$1FFF
+        bool pattern_table_low_addr : 1; // Bit 14 
+    } pattern_table;
+
+    struct
+    {
+        //NN 1111 YYY XXX
+        //|| |||| ||| +++-- high 3 bits of coarse X (x/4)
+        //|| |||| +++------ high 3 bits of coarse Y (y/4)
+        //|| ++++---------- attribute offset (960 bytes)
+        //++--------------- nametable select
+        uint8_t coarse_x : 3;
+        uint8_t coarse_y : 3;
+        uint8_t attrib_offset : 4;
+        uint8_t name_table_sel : 2;
+    } fetching;
+} PpuAddrReg;
+
 typedef struct
 {
     uint64_t cycles;
@@ -79,7 +109,7 @@ typedef struct
     // PPU internel regs
     struct {
         // vram addr or scroll position
-        uint16_t v;
+        PpuAddrReg v;
         // When rendering, the coarse-x scroll for the next scanline and the starting y scroll for the screen.
         // Outside of rendering, holds the scroll or VRAM address before transferring it to v
         uint16_t t;
