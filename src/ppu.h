@@ -63,6 +63,28 @@ typedef union
 {
     uint8_t raw;
     struct {
+        // Greyscale (0: normal color, 1: greyscale)
+        uint8_t grey_scale : 1;
+        // 1: Show background in leftmost 8 pixels of screen, 0: Hide
+        uint8_t show_bg_left_corner : 1;
+        // 1: Show sprites in leftmost 8 pixels of screen, 0: Hide
+        uint8_t show_sprites_left_corner : 1;
+        // 1: Enable background rendering
+        uint8_t bg_rendering : 1;
+        // 1: Enable sprite rendering
+        uint8_t sprites_rendering : 1;
+        // (Red / Blue / Green) Emphasize
+        uint8_t emphasize_red : 1;
+        uint8_t emphasize_green : 1;
+        uint8_t emphasize_blue : 1;
+    };
+
+} PpuMask;
+
+typedef union
+{
+    uint8_t raw;
+    struct {
         uint8_t open_bus : 5;
         uint8_t sprite_overflow : 1;
         uint8_t sprite_hit : 1;
@@ -74,17 +96,33 @@ typedef union
 typedef union
 {
     uint16_t raw : 15;
+
+    struct
+    {
+        // Coarse X (tile column) (Bits 0-4)
+        uint16_t coarse_x : 5;
+
+        // Coarse Y (tile row) (Bits 5-9)
+        uint16_t coarse_y : 5;
+
+        // Nametable select (Bits 10-11)
+        uint16_t name_table_sel : 2;
+
+        // Fine Y offset (Vertical offset within a tile) (Bits 12-14)
+        uint16_t fine_y : 3;
+    } scrolling;
+
     struct {
         // Fine Y offset, the row number within a tile
-        uint8_t y_offset : 3;// Bits 0-2
+        uint16_t y_offset : 3;// Bits 0-2
         // Bit plane (0: less significant bit; 1: more significant bit)
-        bool bit_plane_msb : 1; // Bit 3
+        uint16_t bit_plane_msb : 1; // Bit 3
         // Tile number from name table
         uint16_t tile_num  : 8; // Bits 4-12
         // Half of pattern table (0: "left"; 1: "right")
-        bool pattern_table_half : 1; // Bit 13
+        uint16_t pattern_table_half : 1; // Bit 13
         // Pattern table is at $0000-$1FFF
-        bool pattern_table_low_addr : 1; // Bit 14 
+        uint16_t pattern_table_low_addr : 1; // Bit 14 
     } pattern_table;
 
     struct
@@ -94,11 +132,41 @@ typedef union
         //|| |||| +++------ high 3 bits of coarse Y (y/4)
         //|| ++++---------- attribute offset (960 bytes)
         //++--------------- nametable select
-        uint8_t coarse_x : 3;
-        uint8_t coarse_y : 3;
-        uint8_t attrib_offset : 4;
-        uint8_t name_table_sel : 2;
+        uint16_t coarse_x : 3;
+        uint16_t coarse_y : 3;
+        uint16_t attrib_offset : 4;
+        uint16_t name_table_sel : 2;
     } fetching;
+
+    // The 16-bit address is written to PPUADDR one byte at a time, high byte first.
+    // Whether this is the first or second write is tracked by the PPU's internal w register, which is shared with PPUSCROLL.
+    // If w is not 0 or its state is not known, it must be cleared by reading PPUSTATUS before writing the address.
+    // For example, to set the VRAM address to $2108 after w is known to be 0: 
+    struct
+    {
+        uint16_t low : 8;
+        uint16_t high : 6;
+        uint16_t  bit_z: 1;
+    } writing;
+
+    struct {
+        uint16_t bit0 : 1;
+        uint16_t bit1 : 1;
+        uint16_t bit2 : 1;
+        uint16_t bit3 : 1;
+        uint16_t bit4 : 1;
+        uint16_t bit5 : 1;
+        uint16_t bit6 : 1;
+        uint16_t bit7 : 1;
+        uint16_t bit8 : 1;
+        uint16_t bit9 : 1;
+        uint16_t bit10 : 1;
+        uint16_t bit11 : 1;
+        uint16_t bit12 : 1;
+        uint16_t bit13 : 1;
+        uint16_t bit14 : 1;
+    } raw_bits;
+
 } PpuAddrReg;
 
 typedef struct
@@ -112,7 +180,8 @@ typedef struct
         PpuAddrReg v;
         // When rendering, the coarse-x scroll for the next scanline and the starting y scroll for the screen.
         // Outside of rendering, holds the scroll or VRAM address before transferring it to v
-        uint16_t t;
+        //uint16_t t;
+        PpuAddrReg t;
         // Fine-x position of the current scroll, used during rendering alongside v.
         uint8_t x : 3;
         // write toggle
@@ -120,16 +189,19 @@ typedef struct
     };
 
     NameTableMirror nt_mirror_mode;
-    int prev_scanline;
+    int scanline;
+    bool rendering;
+    bool prev_rendering;
     bool frame_finished;
     uint8_t buffered_data; // Read buffer for $2007
 
+    // Pixel buffer for SDL3
+    uint32_t *buffer;
     // External regs for cpu
     PpuCtrl ctrl;
-    uint8_t mask;
+    PpuMask mask;
     uint8_t oam_addr;
     PpuStatus status;
-    uint32_t *buffer;
 } Ppu;
 
 typedef union

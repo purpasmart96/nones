@@ -5,12 +5,14 @@
 #include <stdbool.h>
 #include <time.h>
 
+#include "joypad.h"
 #include "ppu.h"
 #include "utils.h"
 
 #include "mem.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "joypad.h"
 //#include "mapper.h"
 
 #define SYS_RAM_SIZE 0x2000
@@ -84,6 +86,12 @@ uint32_t CpuRead(const uint16_t addr, const int size)
         case 0x2:  // $4000 - $5FFF
             if (addr < 0x4018)
             {
+                if (addr == 0x4016)
+                {
+                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    //return g_joypad_reg;
+                    return ReadJoyPadReg();
+                }
                 //printf("Trying to read APU/IO reg at 0x%04X\n", addr);
                 //break;
                 memcpy(&ret, &g_apu_regs[addr & 0x17], size);
@@ -196,6 +204,14 @@ void CpuWrite8(const uint16_t addr, const uint8_t data)
                 {
                     DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
                     OAM_Dma(data);
+                    break;
+                }
+                if (addr == 0x4016)
+                {
+                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    WriteJoyPadReg(data);
+                    //g_joypad_reg = data;
+                    //WriteJoyPadReg(Buttons button)
                     break;
                 }
                 DEBUG_LOG("Writing to APU/IO reg at 0x%04X\n", addr);

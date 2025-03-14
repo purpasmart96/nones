@@ -4,8 +4,11 @@
 #include <string.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdalign.h>
 
 #include "arena.h"
+
+static const size_t ALIGN = alignof(max_align_t);
 
 Arena *arena_create(size_t bytes)
 {
@@ -20,11 +23,13 @@ Arena *arena_create(size_t bytes)
 // TODO: Handle misalignment
 void *arena_add(Arena *arena, size_t bytes)
 {
-    if ((arena->size + bytes) > arena->capacity)
+    size_t padded_size = (bytes + ALIGN - 1) & ~(ALIGN - 1);
+    if ((arena->size + padded_size) > arena->capacity)
         return NULL;
 
     void *ptr = &arena->heap[arena->size];
-    arena->size += bytes;
+    printf("Adding a %zd byte block to the arena\n", padded_size);
+    arena->size += padded_size;
 
     return ptr;
 }
