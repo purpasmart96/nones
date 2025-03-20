@@ -9,3 +9,4 @@ callgrind.out.*
 test.c
 /build
 emu
+*.o

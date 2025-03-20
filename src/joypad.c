@@ -23,7 +23,8 @@ static JoyPad joy_pad;
 
 void WriteJoyPadReg(uint8_t data)
 {
-    joy_pad.strobe = (data & 1) == 1;
+    joy_pad.strobe = (data & 1);
+    //joy_pad.strobe = !joy_pad.strobe;
     if (joy_pad.strobe)
     {
         joy_pad.button_index = 0;
@@ -69,7 +70,7 @@ uint8_t ReadJoyPadReg()
 }
 
 // Set button pressed state
-void joypad_set_button_pressed_status(JoypadButton button, bool pressed)
+void JoyPadSetButton(JoypadButton button, bool pressed)
 {
     if (pressed) {
         joy_pad.button_status |= button;

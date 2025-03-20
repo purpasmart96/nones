@@ -5,7 +5,6 @@
 #include <string.h>
 
 #include "cpu.h"
-#include "mem.h"
 #include "ppu.h"
 #include "loader.h"
 #include "mapper.h"

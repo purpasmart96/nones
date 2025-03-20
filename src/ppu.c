@@ -7,8 +7,11 @@
 #include <sys/types.h>
 
 #include "cpu.h"
-#include "mem.h"
+#include "nones.h"
 #include "ppu.h"
+#include "loader.h"
+#include "arena.h"
+#include "bus.h"
 #include "utils.h"
 
 
@@ -168,7 +171,7 @@ static Color sys_palette2[64] =
     {0x00, 0x40, 0x4D, 255}, 
     {0x00, 0x00, 0x00, 255},
     {0x00, 0x00, 0x00, 255},
-    {0x00, 0x00, 0x00, 255},
+    {0x00, 0x00, 0x0, 255},
     {0xAD, 0xAD, 0xAD, 255}, 
     {0x15, 0x5F, 0xD9, 255},
     {0x42, 0x40, 0xFF, 255}, 
@@ -238,25 +241,43 @@ static const Color sys_palette[64] = {
     {0x99, 0xFF, 0xFC}, {0xDD, 0xDD, 0xDD}, {0x11, 0x11, 0x11}, {0x11, 0x11, 0x11},
 };
 
-static Color GetColor(uint8_t palette_index, uint8_t value)
-{
-    // Ensure value is within range (0-3)
-    //value &= 0x3;
-
-    // Compute palette memory address
-    uint16_t palette_addr = 0x3F00 + (palette_index * 4) + value;
-
-    // Read the color index from PPU palette memory
-    uint8_t color_index = palette_table[palette_addr & 0x1F];
-
-    // Return the pointer to the RGB color
-    return sys_palette2[color_index & 0x3F]; // Mask to ensure it's within 64 system colors
-    //uint8_t color_index = palette_table[(palette_index * 4) + value] & 0x3F;
-    //return SYSTEM_PALETTE[color_index];
-}
 
 static Ppu *ppu_ptr = NULL;
 static uint64_t prev_ppu_cycles = 0;
+
+static Color GetColor(uint8_t palette_index, uint8_t pixel)
+{
+    // Compute palette memory address
+    uint16_t palette_addr = 0x3F00 + (palette_index * 4) + pixel;
+
+    // Read the color index from PPU palette memory
+    uint16_t color_index = palette_table[palette_addr & 0x1F];
+
+    if (!pixel)
+    {
+        color_index = palette_table[0];
+    }
+
+    return sys_palette2[color_index & 0x3F];
+
+}
+
+static Color GetspriteColor(uint8_t palette_index, uint8_t pixel)
+{
+    uint16_t palette_addr = 0x10 + (palette_index * 4) + pixel;
+
+    uint16_t color_index = palette_table[palette_addr];
+
+    return sys_palette2[color_index & 0x3F];
+}
+
+static void DrawBackDrop(Ppu *ppu)
+{
+    if (!ppu->rendering)
+    {
+
+    }
+}
 
 static uint16_t PatternTableDecodeAddress(uint16_t addr)
 {
@@ -269,7 +290,7 @@ static uint16_t PatternTableDecodeAddress(uint16_t addr)
     // Half of pattern table (0: "left"; 1: "right")
     bool pattern_table_half = (addr >> 13) & 1; // Bit 13
     // Pattern table is at $0000-$1FFF
-    bool pattern_table_low_addr = (addr >> 15) & 1; // Bit 14 
+    bool pattern_table_low_addr = (addr >> 14) & 1; // Bit 14 
 
     return 0;
 
@@ -284,15 +305,16 @@ void PPU_WriteAddrReg(const uint8_t value)
 {
     if (!ppu_ptr->w)
     {
-        //ppu_ptr->t.raw = (ppu_ptr->t.raw & 0x00FF) | ((value & 0x3F) << 8); // Set high byte of `t`
+        //ppu_ptr->t.raw = (ppu_ptr->t.raw & 0x00FF) | ((value & 0x3F) << 8);
+        // Set high byte of t
         ppu_ptr->t.writing.high = value & 0x3F;
         ppu_ptr->t.writing.bit_z = 0;
     }
     else
     {
         // Set low byte of t
-        ppu_ptr->t.writing.low = value; // Set low byte of `t`
-        // Transfer `t` to `v`
+        ppu_ptr->t.writing.low = value;
+        // Transfer t to v
         ppu_ptr->v.raw = ppu_ptr->t.raw;
     }
     ppu_ptr->w = !ppu_ptr->w;
@@ -367,6 +389,35 @@ static void IncY()
     }
 }
 
+static uint8_t *background_palettes[4];
+static uint8_t *sprite_palettes[4];
+
+static void WriteToPaletteTable(uint16_t addr, const uint8_t data)
+{
+    //if ((addr & 0x3) == 0) {
+    //    addr &= ~0x10;
+    //}
+    //palette_table[addr] = data;
+
+    if ((addr & 0x3) == 0)
+    {
+        if (addr < 0x10)
+        {
+            background_palettes[addr >> 3][0] = data;
+            sprite_palettes[addr >> 3][0] = data;
+        }
+        else
+        {
+            background_palettes[(addr - 0x10) >> 3][0] = data;
+            sprite_palettes[(addr - 0x10) >> 3][0] = data;
+        }
+    }
+    else
+    {
+        palette_table[addr] = data;
+    }
+}
+
 void PPU_WriteData(const uint8_t data)
 {
     // Extract A13, A12, A11 for region decoding
@@ -387,22 +438,29 @@ void PPU_WriteData(const uint8_t data)
             //vram[ppu_ptr->v & 0x1FFF] = data;
             WriteToNametable(ppu_ptr->v.raw, data);
             break;
+        case 0x6:
+            printf("ppu v: 0x%04X\n", ppu_ptr->v.raw);
+            break;
         case 0x7:
-            palette_table[ppu_ptr->v.raw & 0x1F] = data;
+            WriteToPaletteTable(ppu_ptr->v.raw & 0x1F, data);
+            //palette_table[ppu_ptr->v.raw & 0x1F] = data;
+            break;
         default:
             break;
     }
 
-    // Auto-increment address
-    //ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
-    // Auto-increment address
-    //if (!ppu_ptr->rendering)
+    // Outside of rendering, reads from or writes to $2007 will add either 1 or 32 to v depending on the VRAM increment bit set via $2000.
+    // During rendering (on the pre-render line and the visible lines 0-239, provided either background or sprite rendering is enabled),
+    // it will update v in an odd way, triggering a coarse X increment and a Y increment simultaneously (with normal wrapping behavior).
+    if (ppu_ptr->rendering && (ppu_ptr->scanline < 240 || ppu_ptr->scanline == 261))
+    {
+        IncX();
+        IncY();
+    }
+    else
+    {
         ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
-    //else
-    //{
-    //    IncX();
-    //    IncY();
-    //}
+    }
 }
 
 static void PPU_WriteScroll(const uint8_t value)
@@ -426,7 +484,7 @@ uint8_t PPU_ReadStatus(/*Ppu *ppu*/)
 {
     uint8_t status_value = ppu_ptr->status.raw;
 
-    // **Clear VBlank flag and reset write toggle**
+    // Clear VBlank and write toggle
     ppu_ptr->status.vblank = 0;
     ppu_ptr->w = 0;
 
@@ -455,16 +513,18 @@ uint8_t PPU_ReadData(/*Ppu *ppu*/)
     {  
         // VRAM/CHR memory (buffered)
         data = ppu_ptr->buffered_data;  // Return stale buffer value
-        ppu_ptr->buffered_data = vram[addr & 0x1FFF];  // Load new data into buffer
+        ppu_ptr->buffered_data = vram[addr & 0x7FF];  // Load new data into buffer
     }
 
-    // Auto-increment address
-    if (!ppu_ptr->rendering)
-        ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
-    else
+    if (ppu_ptr->rendering && (ppu_ptr->scanline < 240 || ppu_ptr->scanline == 261))
     {
         IncX();
         IncY();
+    }
+    else
+    {
+        // Auto-increment address
+        ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
     }
 
     return data;
@@ -487,14 +547,14 @@ uint8_t ReadPPURegister(const uint16_t address)
 
 void WritePPURegister(const uint16_t addr, const uint8_t data)
 {
-    //if ((ppu_ptr->cycles < 88974) && (addr == PPU_CTRL))
-    //    return;
-    //if ((ppu_ptr->cycles < 88974) && (addr == PPU_MASK))
-    //    return;
-    //if ((ppu_ptr->cycles < 88974) && (addr == PPU_SCROLL))
-    //    return;
-    //if ((ppu_ptr->cycles < 88974) && (addr == PPU_ADDR))
-    //    return;
+    if ((ppu_ptr->cycles < 88974) && (addr == PPU_CTRL))
+        return;
+    if ((ppu_ptr->cycles < 88974) && (addr == PPU_MASK))
+        return;
+    if ((ppu_ptr->cycles < 88974) && (addr == PPU_SCROLL))
+        return;
+    if ((ppu_ptr->cycles < 88974) && (addr == PPU_ADDR))
+        return;
 
     switch (addr)
     {
@@ -586,12 +646,21 @@ void NametableMirroringInit(NameTableMirror mode)
     }
 }
 
-
 void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t *pixels)
 {
     memset(ppu, 0, sizeof(*ppu));
     ppu->nt_mirror_mode = name_table_layout;
     NametableMirroringInit(ppu->nt_mirror_mode);
+    background_palettes[0] = &palette_table[0];
+    background_palettes[1] = &palette_table[0x4];
+    background_palettes[2] = &palette_table[0x8];
+    background_palettes[3] = &palette_table[0xC];
+
+    sprite_palettes[0] = &palette_table[0x10];
+    sprite_palettes[1] = &palette_table[0x14];
+    sprite_palettes[2] = &palette_table[0x18];
+    sprite_palettes[3] = &palette_table[0x1C];
+
     ppu->rendering = false;
     ppu->prev_rendering = false;
     ppu->buffer = pixels;
@@ -602,9 +671,6 @@ uint64_t prev_vblank_cycles = 0;
 uint64_t next_vblank_cycles = 27384;
 bool nmi_triggered = false;
 bool vblank_set = false; // Prevents multiple VBlank triggers in one frame
-
-//int scanline = 0; // Track current scanline
-//int dot = 0;      // Track the dot (pixel) position within a scanline
 
 const float CPU_FREQ  = 1789773.0;  // 1.789 Mhz
 const float FRAME_RATE = 60.0;
@@ -618,146 +684,80 @@ const uint32_t dots_per_frame_odd = 341 * 261 + 340;
 const uint32_t dots_per_frame_even = 341 * 261 + 341;
 const uint32_t cpu_cycles_per_frame = dots_per_frame_even / 3; 
 
+
 static void DrawPixel(uint32_t *buffer, int x, int y, Color color)
 {
-    buffer[y * 340 + x] = (uint32_t)((color.r << 24) | (color.g << 16) | (color.b << 8) | color.a);
+    if (x < 0 || y < 0 || x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT)
+        return;
+    //assert(x >= 0 && x <= SCREEN_WIDTH);
+    //assert(y >= 0 && y <= SCREEN_HEIGHT);
+    buffer[y * SCREEN_WIDTH + x] = (uint32_t)((color.r << 24) | (color.g << 16) | (color.b << 8) | color.a);
 }
 
-
-void get_bg_palette(Ppu *ppu, size_t tile_column, size_t tile_row, Color *color)
+static void DrawSprite(uint32_t *buffer, int xpos, int ypos, int size, Color color)
 {
-    size_t attr_table_idx = (tile_row / 4) * 8 + (tile_column / 4);
-
-    uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
-    uint8_t *attribute_table = &nametable[0x3C0];
-    //uint8_t attr_byte = vram[0x3C0 + attr_table_idx];  // Hardcoded first nametable
-    uint8_t attr_byte = attribute_table[attr_table_idx];
-
-    uint16_t palette_idx;
-    switch ((tile_column % 4) / 2 + 2 * ((tile_row % 4) / 2)) {
-        case 0:
-            palette_idx = attr_byte & 0b11;
-            break;
-        case 1:
-            palette_idx = (attr_byte >> 2) & 0b11;
-            break;
-        case 2:
-            palette_idx = (attr_byte >> 4) & 0b11;
-            break;
-        case 3:
-            palette_idx = (attr_byte >> 6) & 0b11;
-            break;
-        default:
-            return;  // Should never happen
-    }
-
-/*
-    uint16_t pallet_idx[2] = {(tile_column % 4) / 2, (tile_row % 4) / 2};
-    
-    uint16_t palette = 0;
-    if (pallet_idx[0] == 0 && pallet_idx[1] == 0)
-        palette = attr_byte & 0b11;
-    else if (pallet_idx[0] == 0 && pallet_idx[1] == 0)
+    for (int x = xpos; x < xpos + 8; x++)
     {
-        palette = (attr_byte >> 2) & 0b11;
-    }
-    else if (pallet_idx[0] == 1 && pallet_idx[1] == 0)
-    {
-        palette = (attr_byte >> 4) & 0b11;
-    }
-    else if (pallet_idx[0] == 1 && pallet_idx[1] == 1)
-    {
-        palette = (attr_byte >> 6) & 0b11;
-    }
-*/
-    size_t palette_start = 1 + (palette_idx * 4);
-    color->r = palette_table[0];  // Universal background color
-    color->g = palette_table[palette_start];
-    color->b = palette_table[palette_start + 1];
-    color->a = palette_table[palette_start + 2];
-}
-
-
-void Render(Ppu *ppu)
-{
-    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
-    //uint8_t *attribute_table = nametables[(ppu->v.raw >> 10) & 3];
-    for (uint16_t i = 0; i < 0x03c0; i++)
-    {
-        // just for now, lets use the first nametable
-        uint16_t tile = vram[i];
-        int tile_x = i % 32;
-        int tile_y = i / 32;
-
-        size_t tile_offset = (bank + tile * 16);
-        const uint8_t *tile_data = &g_chr_rom[tile_offset];
-        //int palette = GetBGPallette(ppu, tile_x, tile_y);
-        Color bg_palette;
-        get_bg_palette(ppu, tile_x, tile_y, &bg_palette);
-        for (int y = 0; y < 8; y++)
+        for (int y = ypos; y < ypos + size; y++)
         {
-            uint8_t upper = tile_data[y];
-            uint8_t lower = tile_data[y + 8];
- 
-            for (int x = 8; x > 0; x--)  // Reverse order
-            {
-                uint8_t value = ((upper & 1) << 1) | (lower & 1);
-                upper >>= 1;
-                lower >>= 1;
-                //uint8_t *rgb_ptr = NULL;
-                Color color;
-                color.a = 255;
-                switch (value)
-                {
-                    case 0:
-                    {
-                        //uint8_t rgb[] = {ntsc_palette[0], ntsc_palette[1], ntsc_palette[2]};
-                        //rgb_ptr = rgb;
-                        //color = sys_palette[0x01];//sys_palette[palette_table[0]];
-                        color = sys_palette2[palette_table[0]];
-                        break;
-                    }
-                    case 1:
-                    {
-                        //uint8_t rgb[] = {ntsc_palette[3], ntsc_palette[4], ntsc_palette[5]};
-                        //rgb_ptr = rgb;
-                        color = sys_palette2[bg_palette.b];
-                        //color = sys_palette[0x23];
-                        break;
-                    }
-                    case 2:
-                    {
-                        //uint8_t rgb[] = {ntsc_palette[6], ntsc_palette[7], ntsc_palette[8]};
-                        //rgb_ptr = rgb;
-                        //color = sys_palette[0x27];
-                        color = sys_palette2[bg_palette.g];
-                        break;
-                    }
-                    case 3:
-                    {
-                        //uint8_t rgb[] = {ntsc_palette[9], ntsc_palette[10], ntsc_palette[11]};
-                        //rgb_ptr = rgb;
-                        //color = sys_palette[0x30];
-                        color = sys_palette2[bg_palette.a];
-                        break;
-                    }
-                    default: 
-                        printf("Unexpected tile value!\n");
-                        return;
-                }
-                //uint8_t *rgb = get_color(0, value);
- 
-                //Color color = GetColor(palette, value);
-                //Color *temp = &color;
-
-                //uint32_t color_casted = *(uint32_t*)temp;
-                //SetPixel2(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, color_casted);
-                DrawPixel(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, color);
-                //SetPixel(ppu->buffer, tile_x * 8 + x, tile_y * 8 + y, rgb_ptr);
-            }
+            DrawPixel(buffer, x, y, color);
         }
     }
- }
+}
+
+static void PpuDrawSprite(Ppu *ppu, uint16_t bank, int tile_offset, int tile_x, int tile_y, int palette, bool flip_horz, bool flip_vert)
+{
+    const uint8_t *tile_data = &g_chr_rom[tile_offset];
+
+    for (int y = 0; y < 8; y++)
+    {
+        uint8_t upper = tile_data[y];
+        uint8_t lower = tile_data[y + 8];
+
+        for (int x = 7; x >= 0; x--)
+        {
+            uint8_t pixel = (1 & lower) << 1 | (1 & upper);
+            upper >>= 1;
+            lower >>= 1;
+
+            if (!pixel)
+                continue;
+    
+            Color color = GetspriteColor(palette, pixel);
+
+            if (flip_horz && flip_vert)
+                DrawPixel(ppu->buffer, tile_x + 7 - x, tile_y + 7 - y, color);
+            else if (flip_horz)
+                DrawPixel(ppu->buffer, tile_x + 7 - x, tile_y + y, color);
+            else if (flip_vert)
+                DrawPixel(ppu->buffer, tile_x + x, tile_y + 7 - y, color);
+            else
+                DrawPixel(ppu->buffer, tile_x + x, tile_y + y, color);
+        }
+    }
+}
+
+static void DrawSpritePlaceholder(Ppu *ppu, int scanline, int cycle)
+{
+    uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
+
+    for (int n = 0; n < 64; n++)
+    {
+        Sprite *curr_sprite =  &sprites[n];
+
+        uint16_t palette = curr_sprite->attribs.palette;
+        size_t tile_offset = bank + (curr_sprite->tile_id * 16);
+        if (curr_sprite->y < 240 && curr_sprite->x < 255)
+            PpuDrawSprite(ppu, bank, tile_offset, curr_sprite->x, curr_sprite->y, palette,
+                curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+        //uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
+        //uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+        //Color color = GetColor(curr_sprite->attribs.palette, ppu->v.pattern_table.bit_plane_msb);
+        //if (scanline >= curr_sprite->y && scanline < curr_sprite->y + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
+        //    DrawSprite(ppu->buffer, curr_sprite->x, curr_sprite->y, 8, color);
+    }
+}
+
 
 static void PPU_IsFrameDone(Ppu *ppu)
 {
@@ -773,6 +773,7 @@ static void PPU_IsFrameDone(Ppu *ppu)
         prev_ppu_cycles = ppu->cycles;
         ppu->frame_finished = true;
         //Render(ppu);
+        DrawSpritePlaceholder(ppu, 240, 256);
     }
 }
 
@@ -817,31 +818,22 @@ static void TileFetch(Ppu *ppu)
     lower >>= 1;
 }
 
-// 192 cycles
-// 65 -> 256 cycles
-static void SpriteEval(int scanline, int cycle)
+
+
+static void SpriteEval2(int scanline, int cycle)
 {
-    if (cycle < 65 || cycle > 257)
-        return;
-
-    if (cycle == 65)
+    int n;
+    int m;
+step1:
+    for (n = 0; n < 64; n++)
     {
-        sprite_index = 0;
-        sprite_count = 0;
-    }
-
-    if (sprite_index < 64)
-    {
-        if (cycle & 1)
-        {
-            sprite_y = sprites[sprite_index].y;
-        }
-        else if (scanline >= sprite_y && scanline < sprite_y + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
+        int y_coord = sprites[n].raw[0];
+        if (scanline >= y_coord && scanline < y_coord + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
         {
             if (sprite_count < 8)
             {
                 // Copy full sprite data into secondary OAM
-                sprites_secondary[sprite_count] = sprites[sprite_index];
+                sprites_secondary[sprite_count] = sprites[n];
                 sprite_count++;
             }
             else
@@ -849,12 +841,131 @@ static void SpriteEval(int scanline, int cycle)
                 ppu_ptr->status.sprite_overflow = 1;
             }
         }
-
-        if (++sprite_index == 64)
+    }
+    if (sprite_count == 8)
+        return;
+    else if (sprite_count < 8)
+        goto step1;
+    else
+        goto step4;
+step3:
+    m = 0;
+    for (m = 0; m < 4; m++)
+    {
+        int y_coord = sprites[n].raw[m];
+        if (scanline >= y_coord && scanline < y_coord + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
         {
-            sprite_index = 0;
+    
         }
     }
+    int y_coord = sprites[n].raw[m];
+    if (scanline >= y_coord && scanline < y_coord + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
+    {
+
+    }
+    else 
+    {
+
+    }
+step4:
+    n++;
+    return;
+}
+static void Step3(int *n, int scanline, int cycle)
+{
+    //int m = 0;
+
+    for (int m = 0; m < 4; m++)
+    {
+        int y_coord = sprites[*n].raw[m];
+        if (scanline >= y_coord && scanline < y_coord + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
+        {
+            ppu_ptr->status.sprite_overflow = 1;
+        }
+        else 
+        {
+            *n = *n += 1;
+        }
+    }
+
+    if (scanline >= sprite_y && scanline < sprite_y + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
+    {
+        if (sprite_count < 8)
+        {
+            // Copy full sprite data into secondary OAM
+            sprites_secondary[sprite_count] = sprites[sprite_index];
+            sprite_count++;
+        }
+        else
+        {
+            ppu_ptr->status.sprite_overflow = 1;
+        }
+    }
+}
+
+static int Step4(int *n, int scanline, int cycle)
+{
+
+}
+
+
+// 192 cycles
+// 65 -> 256 cycles
+static void SpriteEval(int scanline, int cycle)
+{
+    //if (cycle < 65 || cycle > 257)
+    //    return;
+//
+    //if (cycle == 65)
+    //{
+    //    sprite_index = 0;
+    //    sprite_count = 0;
+    //}
+
+    if (cycle != 256)
+        return;
+
+    //while (sprite_index < 64)
+    int n = 0;
+    int m = 0;
+    for (int i = 1; i <= 192; i++)
+    {
+        while (n < 64)
+        if (i & 1)
+        {
+            sprite_y = sprites[sprite_index].y;
+        }
+        else
+        {
+        
+        }
+    }
+
+    //if (sprite_index < 64)
+    //{
+    //    if (cycle & 1)
+    //    {
+    //        sprite_y = sprites[sprite_index].y;
+    //    }
+    //    else if (scanline >= sprite_y && scanline < sprite_y + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
+    //    {
+    //        if (sprite_count < 8)
+    //        {
+    //            // Copy full sprite data into secondary OAM
+    //            sprites_secondary[sprite_count] = sprites[sprite_index];
+    //            sprite_count++;
+    //        }
+    //        else
+    //        {
+    //            ppu_ptr->status.sprite_overflow = 1;
+    //        }
+    //    }
+    //
+    //    if (++sprite_index == 64)
+    //    {
+    //        sprite_index = 0;
+    //    }
+    //}
 
 //    if (cycle == 256)
 //    {
@@ -1093,8 +1204,127 @@ static void PPU_DrawScanline2(Ppu *ppu, int scanline)
             IncX();
     }
     IncY();
-    IncX();
+    //IncX();
 }
+
+static void PPU_DrawTile(Ppu *ppu, int scanline)
+{
+    int row = scanline / 8;
+    uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
+    uint8_t *attribute_table = &nametable[0x3C0];
+    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+    for (int x = 0; x < 8; x++)
+    {
+        int column = x / 8;
+        int fine_x = x & 7;  // Pixel within tile (0-7)
+        int fine_y = scanline & 7; // Row within tile
+        //uint16_t tile_addr = row * column;
+        //uint16_t tile_addr = row * 32 + column;
+        //uint16_t tile_index = nametable[tile_addr];
+        uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+        uint16_t tile_index = vram[tile_addr & 0x7FF];
+        //uint16_t attrib_addr = (row / 4) * 8 + (column / 4);
+        uint16_t attrib_addr = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+        uint16_t attrib_data = attribute_table[attrib_addr & 0x3F];
+
+        // Select the 2-bit palette for this tile
+        int shift = ((row & 3) / 2) * 4 + ((column & 3) / 2) * 2;
+        uint8_t palette_select = (attrib_data >> shift) & 0x03;
+        //int shift = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
+        //uint8_t palette_select = (attrib_data >> shift) & 0x03;
+
+        // Get pattern table address for this tile
+        size_t tile_offset = bank + (tile_index * 16) + fine_y;
+        uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
+        uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+
+        // Extract the correct pixel from bitplanes
+        uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
+        uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+
+        Color color = GetColor(palette_select, value);
+        DrawPixel(ppu->buffer, x, scanline, color);
+        if (x && ppu->prev_rendering && !(x & 7))
+            IncX();
+    }
+    //IncY();
+    //IncX();
+}
+
+/*
+static void PPU_DrawTile2(Ppu *ppu, int cycle)
+{
+    //uint16_t pattern_shift_low  <<= 1;
+    //uint16_t pattern_shift_high <<= 1;
+    //uint16_t attrib_shift_low  <<= 1;
+    //uint16_t attrib_shift_high <<= 1;
+
+    uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
+    uint8_t *attribute_table = &nametable[0x3C0];
+    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+
+    // At specific cycles (every 8), reload shift registers with next tile data
+    switch (cycle & 7)
+    {
+        case 1:
+        {
+            // Fetch tile index from nametable
+            uint16_t addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+            ppu->next_tile_index = vram[addr & 0x7FF];
+            break;
+        }
+    
+        case 3:
+        {
+            // Fetch attribute byte
+            uint16_t attr_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.scrolling.coarse_y >> 2) << 3) | (ppu->v.scrolling.coarse_x >> 2);
+            ppu->next_tile_attrib = vram[attr_addr & 0x7FF];
+            break;
+        }
+
+        case 5:
+        {
+            // Fetch pattern table LSB
+            uint16_t tile_addr = (ppu->ctrl.bg_pat_table_addr << 12) + (ppu->next_tile_index * 16) + ppu->v.scrolling.fine_y;
+            ppu->next_tile_lsb = g_chr_rom[tile_addr];
+            break;
+        }
+
+        case 7:
+            // Fetch pattern table MSB
+            tile_addr = (ppu->ctrl.bg_pattern_table << 12) + (ppu->next_tile_index * 16) + ppu->v.scrolling.fine_y;
+            ppu->next_tile_msb = g_chr_rom[tile_addr + 8];
+            break;
+
+        case 0:
+            // Load fetched data into shift registers
+            ppu->pattern_shift_low  = (ppu->pattern_shift_low  & 0xFF00) | ppu->next_tile_lsb;
+            ppu->pattern_shift_high = (ppu->pattern_shift_high & 0xFF00) | ppu->next_tile_msb;
+
+            // Decode attribute bits for the tile
+            uint8_t quadrant = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
+            uint8_t attrib_bits = (ppu->next_tile_attrib >> quadrant) & 0x03;
+            ppu->attrib_shift_low  = (ppu->attrib_shift_low  & 0xFF00) | ((attrib_bits & 1) ? 0xFF : 0x00);
+            ppu->attrib_shift_high = (ppu->attrib_shift_high & 0xFF00) | ((attrib_bits & 2) ? 0xFF : 0x00);
+
+            // Increment coarse X (scrolling)
+            IncX();
+            break;
+    }
+
+    // Rendering a pixel (every dot)
+    uint8_t bit_mux = 0x8000 >> ppu->x;  // fine X scroll masks shift registers
+    uint8_t pixel_low  = (ppu->pattern_shift_low  & bit_mux) ? 1 : 0;
+    uint8_t pixel_high = (ppu->pattern_shift_high & bit_mux) ? 1 : 0;
+    uint8_t palette_low  = (ppu->attrib_shift_low  & bit_mux) ? 1 : 0;
+    uint8_t palette_high = (ppu->attrib_shift_high & bit_mux) ? 1 : 0;
+
+    uint8_t color_id = (palette_high << 3) | (palette_low << 2) | (pixel_high << 1) | pixel_low;
+
+    // Final color = get_color(color_id)
+    DrawPixel(x, y, color_id);
+}
+*/
 
 static void PPU_DrawDotv2(Ppu *ppu, int scanline, int cycle)
 {
@@ -1107,36 +1337,19 @@ static void PPU_DrawDotv2(Ppu *ppu, int scanline, int cycle)
     uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
 
     int column = cycle / 8;
-    //int fine_x = ppu->x;  // Pixel within tile (0-7)
+    //int fine_x = ppu->x & 7;  // Pixel within tile (0-7)
     int fine_y = ppu->v.scrolling.fine_y; // Row within tile
-    int fine_x = (cycle - 1 )& 7 ;  // Pixel within tile (0-7)
+    int fine_x = (cycle - 1) & 7;  // Pixel within tile (0-7)
     //int fine_y = scanline & 7; // Row within tile
-    //uint16_t tile_addr = row * column;
-    //uint16_t tile_addr = row * 32 + column;
-    //uint16_t tile_index = nametable[tile_addr];
-    //uint16_t attrib_addr1 = (row / 4) * 8 + (column / 4);
-    //uint16_t attrib_data = attribute_table[attrib_addr & 0x03F];
 
-    uint16_t attrib_addr2 = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
     //uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
     uint16_t attrib_addr = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
     //uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
     uint16_t tile_addr = (ppu->v.raw & 0x0FFF);
 
-    //uint16_t tile_addr = row * 32 + column;
-    uint16_t tile_index1 = nametable[tile_addr & 0x3FF];
-    uint16_t attrib_addr3 = 0x3C0 + ((ppu->v.scrolling.coarse_y >> 2) * 8) + (ppu->v.scrolling.coarse_x >> 2);
-    uint16_t attrib_addr4 = ((ppu->v.scrolling.coarse_y >> 2) * 8) + (ppu->v.scrolling.coarse_x >> 2);
-    //uint16_t tile_addr = (ppu->v.raw & 0x0FFF);
-   // uint16_t tile_index = vram[tile_addr & 0x7FF];
-    uint16_t tile_index2 = vram[tile_addr & 0x7FF];
-    uint16_t tile_index = nametable[(ppu->v.scrolling.coarse_y * 32) + ppu->v.scrolling.coarse_x];
     // Correct
-    uint16_t attrib_data2 = attribute_table[attrib_addr4];
-    uint16_t attrib_data1 = attribute_table[attrib_addr4];
-
-    uint16_t attrib_data = attribute_table[attrib_addr & 63];
-    uint16_t attrib_data3 = attribute_table[attrib_addr2 & 63];
+    uint16_t tile_index = nametable[tile_addr & 0x3FF];
+    uint16_t attrib_data = attribute_table[attrib_addr & 0x3f];
 
     // Select the 2-bit palette for this tile
     //int shift = ((row & 3) / 2) * 4 + ((column & 3) / 2) * 2;
@@ -1154,8 +1367,110 @@ static void PPU_DrawDotv2(Ppu *ppu, int scanline, int cycle)
     // Extract the correct pixel from bitplanes
     uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
     uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+
     Color color = GetColor(palette_select, value);
+
+    DrawPixel(ppu->buffer, cycle - 1, scanline, color);
+    if (ppu->rendering && !(cycle & 7))
+        IncX();
+}
+
+static void PPU_DrawSprite(Ppu *ppu, int cycle, int scanline)
+{
+    if (!ppu->mask.sprites_rendering)
+        return;
+    uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
+    uint8_t *attribute_table = &nametable[0x3C0];
+    uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
+    //for (int n = 0; n < 64; n++)
+    //{
+
+    int n = cycle / 4; 
+    Sprite *curr_sprite =  &sprites[n];
+
+    uint16_t palette = curr_sprite->attribs.palette;
+    size_t tile_offset = bank + (curr_sprite->tile_id * 16); // + (scanline & 7);//; + ppu->v.scrolling.fine_y;
+    uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
+    uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+
+    uint8_t bit = 7 - (cycle - 1) & 7; // NES tiles are stored MSB first
+    uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+
+    Color color = GetColor(curr_sprite->attribs.palette, value);
+    DrawPixel(ppu->buffer, curr_sprite->x, curr_sprite->y, color);
+        //for (int y = 0; y < 8; y++)
+        //{
+        //    //uint8_t upper = tile_data[y];
+        //    //uint8_t lower = tile_data[y + 8];
+ //
+        //    for (int x = 8; x > 0; x--)  // Reverse order
+        //    {
+        //        upper = upper >> 1;
+        //        lower = lower >> 1;
+        //        //uint8_t value = ((upper & 1) << 1) | (lower & 1);
+//
+        //        if (curr_sprite->attribs.horz_flip && curr_sprite->attribs.vert_flip)
+        //            DrawPixel(ppu->buffer, curr_sprite->x + 7 - x, curr_sprite->y + 7 - y, color);
+        //        else
+        //            DrawPixel(ppu->buffer, curr_sprite->x + x, curr_sprite->y + y, color);
+        //    }
+        //}
+        // Extract the correct pixel from bitplanes
+        //int fine_x = (cycle - 1) & 7;
+        //uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
+        //uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+//
+        //Color color = GetColor(curr_sprite->attribs.palette, value);
+//
+        //DrawPixel(ppu->buffer, curr_sprite->x, curr_sprite->y, color);
+
+        //DrawSprite(ppu->buffer, curr_sprite->x, curr_sprite->y, 4, color);
+        //bool flip_vert = curr_sprite->attribs.vert_flip;
+        //bool flip_horz = curr_sprite->attribs.horz_flip;
+}
+
+static void PPU_DrawDotv4(Ppu *ppu, int scanline, int cycle)
+{
+    // Y max = 240
+    // X max = 256
+    uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
+    uint8_t *attribute_table = &nametable[0x3C0];
+    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+
+    int fine_x = ppu->x;  // Pixel within tile (0-7)
+    int fine_y = ppu->v.scrolling.fine_y; // Row within tile
+    int fine_x2 = (cycle - 1) & 7 ;  // Pixel within tile (0-7)
+
+    uint16_t attrib_addr = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+    uint16_t tile_addr = (ppu->v.raw & 0x0FFF);
+    uint16_t tile_index = vram[tile_addr & 0x7FF];
+    uint16_t attrib_data = attribute_table[attrib_addr & 63];
+    int shift = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
+    uint8_t palette_select = (attrib_data >> shift) & 0x03;
+
+    // Get pattern table address for this tile
+    size_t tile_offset = bank + (tile_index * 16) + fine_y;
+    uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
+    uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+
+    uint8_t bit2 = 7 - fine_x2; // NES tiles are stored MSB first
+    uint8_t value2 = ((upper >> bit2) & 1) | (((lower >> bit2) & 1) << 1);
+    // Extract the correct pixel from bitplanes
+    //uint8_t bit = fine_x; // NES tiles are stored MSB first
+    //uint8_t value = ((upper >> fine_x) & 1) | (((lower >> fine_x) & 1) << 1);
+    //uint8_t value = (((upper & 1) << 1) | (lower & 1));
+    //uint8_t pixel_value = (attr_bit1 << 3) | (attr_bit0 << 2) | (pattern_bit1 << 1) | pattern_bit0;
+    //uint8_t bit3 = 15 - fine_x;
+    //uint8_t pattern_bit0 = (lower  >> bit) & 1;
+    //uint8_t pattern_bit1 = (upper >> bit) & 1;
+    uint8_t bit = 7 - fine_x;
+    uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+
+
+    Color color = GetColor(palette_select, value);
+
     DrawPixel(ppu->buffer, cycle, scanline, color);
+
     if (ppu->rendering && !(cycle & 7))
         IncX();
 }
@@ -1196,6 +1511,11 @@ static void PPU_DrawDotv3(Ppu *ppu, int scanline, int cycle)
     DrawPixel(ppu->buffer, cycle, scanline, color);
 }
 
+static bool PpuSprite0Hit(Ppu *ppu, int cycle, int scanline)
+{
+    return sprites[0].y == scanline - 6 && cycle <= sprites[0].x && ppu->mask.sprites_rendering;
+}
+
 //bool is_sprite_0_hit(Ppu *ppu) {
 //    uint8_t y = self.oam_data[0];
 //    let x = self.oam_data[3] as usize;
@@ -1233,9 +1553,57 @@ static void PpuCycleUpdate(Ppu *ppu, int cycle, int scanline)
 
 }
 
+static void PpuRenderLines(Ppu *ppu, int cycle, int scanline)
+{
+    switch (scanline)
+    {
+        case 241:
+            break;
+    }
+}
+
 static void PpuPreRenderLine(Ppu *ppu, int cycle, int scanline)
 {
+    if (scanline != 261)
+        return;
 
+    // Clear VBlank flag at scanline 261, dot 1
+    if (cycle == 1)
+    {
+        ppu->status.vblank = 0;
+        ppu->status.sprite_overflow = 0;
+        ppu->status.sprite_hit = 0;
+    }    
+
+    if (cycle > 279 && cycle < 305)
+    {
+        // reset scroll
+        if (ppu->rendering)
+        {
+            //ppu->v.raw = (ppu->v.raw & ~0x7BE0) | (ppu->t.raw & 0x7BE0);
+            //ppu->v.raw = (ppu->v.raw & ~0x041F) | (ppu->t.raw & 0x041F);
+            ppu->v.scrolling.coarse_y = ppu->t.scrolling.coarse_y;
+            ppu->v.scrolling.fine_y = ppu->t.scrolling.fine_y;
+            ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
+        }
+    }
+}
+
+static void PpuPostRenderLine(Ppu *ppu, int cycle, int scanline)
+{
+    if (scanline == 241 && cycle == 1)
+    {
+        //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
+        //assert(ppu->v.raw != 0);
+        //ppu->v.raw = ppu->v.raw & 0x3FFF;
+        // VBlank starts at scanline 241
+        ppu->status.vblank = 1;
+        // If NMI is enabled
+        if (ppu->ctrl.vblank_nmi)
+        {
+            nmi_triggered = true;
+        }
+    }
 }
 
 
@@ -1260,9 +1628,22 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         //if (scanline <= 240)
         //{
             //if (scanline && scanline < 240 && ppu_cycle_counter == 256)
-            //    PPU_DrawScanline2(ppu, scanline);
+            //    PPU_DrawScanline(ppu, scanline);
             if (ppu_cycle_counter && (scanline < 240) && ppu_cycle_counter < 257)
                 PPU_DrawDotv2(ppu, scanline, ppu_cycle_counter);
+
+            //if (scanline < 240 && ppu_cycle_counter == 256)
+            //    DrawSpritePlaceholder(ppu, scanline, ppu_cycle_counter);
+            //if (ppu_cycle_counter && scanline < 240 && ppu_cycle_counter < 257)
+            //    PPU_DrawSprite(ppu, ppu_cycle_counter, scanline);
+            //Color color = {
+            //    .r = 255,
+            //    .g = 0,
+            //    .b = 0,
+            //    .a = 255
+            //};
+            //DrawSprite(ppu->buffer, 100, 100, 8,  color);
+
             //if ((scanline < 240 || scanline == 261) && ppu->prev_rendering && (ppu_cycle_counter < 257) && !(ppu_cycle_counter & 7))
             //{
             //    IncX();
@@ -1272,88 +1653,6 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
 
             //if (scanline < 240 && ppu_cycle_counter < 256)
             //    PPU_DrawDotv3(ppu, scanline, ppu_cycle_counter);
-            // Render stuff in here
-            // Nametables
-            // Conceptually, the PPU does this 33 times for each scanline:
-            //Fetch a nametable entry from $2000-$2FFF.
-            /*
-            if (scanline < 240 && ppu_cycle_counter > 0 && ppu_cycle_counter < 257)
-            {
-                uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
-                uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
-                uint8_t *attribute_table = &nametable[0x3C0];
-                uint16_t attrib_addr = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-                uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
-                // Correct
-                uint16_t attrib_data = attribute_table[attrib_addr];
-
-                //size_t tile_offset = (bank + tile * 16);
-                //const uint8_t *tile_data = &g_chr_rom[tile_offset];
-//
-                //uint8_t upper = tile_data[scanline / 32];
-                //uint8_t lower = tile_data[(scanline % 32) + 8];
-
-                //uint8_t value = ((upper & 1) << 1) | (lower & 1);
-
-                uint16_t tile_index = nametables[GetNameTableIndex(ppu->v.raw)][tile_addr & 0x03FF];
-                uint16_t tile_offset = tile_index * 16 + ((ppu->v.raw >> 12) & 0x07);
-                uint8_t lower = g_chr_rom[bank + tile_offset];
-                uint8_t upper = g_chr_rom[bank + tile_offset + 8];
-                //int bit_shift = 7 - (ppu->v.raw & 0x07);
-                int value = ((upper & 1) << 1) | (lower & 1); //((upper >> bit_shift) & 1) << 1 | ((lower >> bit_shift) & 1);
-
-                SetPixel3(ppu->buffer, ppu_cycle_counter, scanline,  color);
-
-                //uint8_t rgb[] = {244, 244, 135};
-                //uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
-                //uint16_t tile = vram[ppu->v.raw & 0x1FFF];
-                //uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
-                //uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-                ////uint8_t *attribute_table = &nametable[0x3C0]
-                //uint16_t attrib_data = vram[attrib_addr & 0x1FFF];
-                //uint16_t tile_index = vram[tile_addr & 0x1FFF];
-                //uint16_t tile_offset = tile_index * 16 + ((ppu->v.raw >> 12) & 0x07);
-                ////int shift = ((ppu->v.pattern_table. >> 4) & 4) | (v & 2);  // Determines which palette to use
-                //int palette_index = 0;// (attrib_data >> shift) & 0x03;
-                //int bit_shift = 7 - (ppu->v.raw & 0x07);  // Fine X shift
-                //uint16_t pattern_table = (ppu->ctrl.bg_pat_table_addr) ? 0x1000 : 0x0000; // Pattern table select
-                //uint8_t upper = g_chr_rom[pattern_table + tile_offset];
-                //uint8_t lower = g_chr_rom[pattern_table + tile_offset + 8];
-                //uint8_t value = ((upper >> bit_shift) & 1) << 1 | ((lower >> bit_shift) & 1);
-                //uint8_t *color = get_color(palette_index, value);
-//
-                //SetPixel(ppu->buffer, ppu_cycle_counter, scanline, color);
-            //    uint8_t *nametable = nametables[GetNameTableIndex(ppu->v.raw)];
-            //    uint8_t *attribute_table = &nametable[0x3C0];
-//
-            //    //uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
-            //    //uint16_t attib_addr = 0x23C0 | (ppu->v.fetching.name_table_sel << 10) |
-            //    //                      ((ppu->v.fetching.coarse_y >> 2) << 3) | (ppu->v.fetching.coarse_x >> 2);
-            //    uint16_t v = ppu->v.raw;
-            //    uint16_t tile_addr      = 0x2000 | (ppu->v.raw & 0x0FFF);
-            //    uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-            //    uint16_t attrib_addr2 = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-            //    uint16_t attrib_data = attribute_table[attrib_addr2 & 0x03FF];
-//
-            //    uint16_t tile_index = nametable[tile_addr & 0x03FF];
-            //    int shift = ((v >> 4) & 4) | (v & 2);  // Determines which palette to use
-            //    int palette_index = (attrib_data >> shift) & 0x03;
-//
-            //    uint16_t tile_offset = tile_index * 16 + ((v >> 12) & 0x07);
-            //    const uint8_t *tile_data = &g_chr_rom[tile_offset];
-            //    uint16_t pattern_table = (ppu->ctrl.bg_pat_table_addr) ? 0x1000 : 0x0000; // Pattern table select
-            //    uint8_t upper = g_chr_rom[pattern_table + tile_offset];
-            //    uint8_t lower = g_chr_rom[pattern_table + tile_offset + 8];
-//
-            //    // 5. Extract pixel color
-            //    int bit_shift = 7 - (v & 0x07);  // Fine X shift
-            //    uint8_t value = ((upper >> bit_shift) & 1) << 1 | ((lower >> bit_shift) & 1);
-//
-            //    uint8_t *color = get_color(palette_index, value);
-            //    //ppu->buffer[scanline * 256 + ppu_cycle_counter] = 0;
-            //    SetPixel(ppu->buffer, ppu_cycle_counter, scanline, color);
-            }
-*/
 
             //Fetch the corresponding attribute table entry from $23C0-$2FFF and increment the current VRAM address within the same row.
             //Fetch the low-order byte of an 8x1 pixel sliver of pattern table from $0000-$0FF7 or $1000-$1FF7.
@@ -1404,6 +1703,23 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             //}
         //}
 
+        //if (scanline && scanline < 240)
+        //    PrepareSpriteData(scanline, ppu_cycle_counter);
+        //if (scanline == 30 && ppu_cycle_counter != 255 /*&& ppu_cycle_counter == 96*/)
+        ////if (scanline == sprites[0].y /*&& ppu_cycle_counter == 100*/)
+        //{
+        //    if (ppu->rendering && !ppu->status.sprite_hit && (ppu_cycle_counter > 7 || !(ppu->mask.raw & 0x3)))
+        //    {
+        //        ppu->status.sprite_hit = 1; // !ppu->status.sprite_hit;
+        //    }
+        //}
+        if (PpuSprite0Hit(ppu, ppu_cycle_counter, scanline))
+        {
+            if (ppu->rendering && !ppu->status.sprite_hit && (ppu_cycle_counter > 7 || !(ppu->mask.raw & 0x3)))
+            {
+                ppu->status.sprite_hit = 1;
+            }
+        }
         if (ppu->rendering && ppu_cycle_counter == 256 && (scanline < 240 || scanline == 261))
             IncY();
         if (ppu->rendering && ppu_cycle_counter == 257 && (scanline < 240 || scanline == 261))
@@ -1414,7 +1730,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         }
         if (scanline == 241 && ppu_cycle_counter == 1)
         {
-            printf("PPU v addr: 0x%04X\n", ppu->v.raw);
+            //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
             //assert(ppu->v.raw != 0);
             //ppu->v.raw = ppu->v.raw & 0x3FFF;
             // VBlank starts at scanline 241
@@ -1426,16 +1742,14 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             }
         }
         // Clear VBlank flag at scanline 261, dot 1
-        // This might be a hack, should prob set it when the register is read?
         if (scanline == 261 && ppu_cycle_counter == 1)
         {
             ppu->status.vblank = 0;
-            //ppu_status->sprite_hit = 0;
             ppu->status.sprite_overflow = 0;
-            ppu->status.sprite_hit = 0; //!ppu->status.sprite_hit;
+            ppu->status.sprite_hit = 0;
 
         }
-        if (scanline == 261 && (ppu_cycle_counter >= 280 || ppu_cycle_counter < 305))
+        if (scanline == 261 && (ppu_cycle_counter >= 280 && ppu_cycle_counter < 305))
         {
             // reset scroll
             //ppu->v.raw = (ppu->v.raw & ~0x7BE0) | (ppu->t.raw & 0x7BE0);
@@ -1451,17 +1765,12 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         if (ppu->rendering && (ppu_cycle_counter == 328 || ppu_cycle_counter == 336) && (scanline < 240 || scanline == 261))
         {
             ppu->prev_rendering = true;
-            IncX();
-        }
-        if (scanline == 261 && ppu_cycle_counter == 340)
-        {
-            //ppu_status->vblank = 0;
-            // Hack for smb
-            ppu->status.sprite_hit = !ppu->status.sprite_hit;
+            //IncX();
         }
         ppu->scanline = scanline;
     }
-    ppu->rendering = ppu->mask.bg_rendering && ppu->mask.sprites_rendering;
+    //ppu->rendering = ppu->mask.bg_rendering == 1 || ppu->mask.sprites_rendering == 1;
+    ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
     PPU_IsFrameDone(ppu);
 }
 

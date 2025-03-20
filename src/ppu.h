@@ -37,6 +37,14 @@ typedef enum
     PPU_SPRITE_FETCH
 } PpuState;
 
+typedef enum
+{
+    PPU_RENDER_BEGIN = 1,
+    PPU_RENDER_END = 239,
+    PPU_POST_RENDER = 241,
+    PPU_PRE_RENDER = 261
+} PpuStages;
+
 typedef union
 {
     uint8_t raw;
@@ -114,7 +122,7 @@ typedef union
 
     struct {
         // Fine Y offset, the row number within a tile
-        uint16_t y_offset : 3;// Bits 0-2
+        uint16_t fine_y : 3;// Bits 0-2
         // Bit plane (0: less significant bit; 1: more significant bit)
         uint16_t bit_plane_msb : 1; // Bit 3
         // Tile number from name table
@@ -183,13 +191,15 @@ typedef struct
         //uint16_t t;
         PpuAddrReg t;
         // Fine-x position of the current scroll, used during rendering alongside v.
-        uint8_t x : 3;
+        uint8_t x;
         // write toggle
         bool w;
     };
 
     NameTableMirror nt_mirror_mode;
     int scanline;
+    int pattern_shift_low;
+    int pattern_shift_high;
     bool rendering;
     bool prev_rendering;
     bool frame_finished;

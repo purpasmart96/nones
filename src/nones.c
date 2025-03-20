@@ -15,15 +15,13 @@
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_scancode.h>
 
-#include "mem.h"
 #include "loader.h"
 #include "cpu.h"
 #include "apu.h"
 #include "ppu.h"
 #include "joypad.h"
-#include "nones.h"
-
 #include "arena.h"
+#include "nones.h"
 
 //uint8_t *g_prg_rom = NULL; 
 //uint8_t *g_chr_rom = NULL;
@@ -130,6 +128,12 @@ static void ArenaTest(void)
 
 void NonesRun(Nones *nones, const char *path)
 {
+    NES2_Header hdr;
+    if (LoaderLoadRom(path, &hdr) != 0)
+    {
+        exit(EXIT_FAILURE);
+    }
+
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         SDL_Log("SDL Init Error: %s", SDL_GetError());
@@ -164,12 +168,8 @@ void NonesRun(Nones *nones, const char *path)
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
 
     // Allocate pixel buffer
-    uint32_t *pixels = malloc(SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
+    uint32_t *pixels = calloc(1, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
 
-    CPU_Init(&nones->cpu);
-
-    NES2_Header hdr;
-    LoaderLoadRom(path, &hdr);
     CPU_Init(&nones->cpu);
     PPU_Init(&nones->ppu, hdr.name_table_layout, pixels);
 
@@ -195,73 +195,83 @@ void NonesRun(Nones *nones, const char *path)
                 case SDL_EVENT_QUIT:
                     quit = true;
                     break;
-                case SDL_EVENT_KEY_UP:
-                {
-                    switch (event.key.key) {
-                        case SDLK_SPACE:
-                            joypad_set_button_pressed_status(JOYPAD_BUTTON_A, false);
-                            break;
-                        case SDLK_W:
-                        case SDLK_UP:
-                            joypad_set_button_pressed_status(JOYPAD_BUTTON_UP, false);
-                            break;
-                        case SDLK_S:
-                        case SDLK_DOWN:
-                             joypad_set_button_pressed_status(JOYPAD_BUTTON_DOWN, false);
-                            break;
-                        case SDLK_A:
-                        case SDLK_LEFT:
-                            joypad_set_button_pressed_status(JOYPAD_BUTTON_LEFT, false);
-                            break;                
-                        case SDLK_D:
-                        case SDLK_RIGHT:
-                            joypad_set_button_pressed_status(JOYPAD_BUTTON_RIGHT, false);
-                            break;
-                        case SDLK_RETURN:
-                            joypad_set_button_pressed_status(JOYPAD_BUTTON_START, false);
-                            break;  
-                    }
-                    break;
-                }
+                //case SDL_EVENT_KEY_UP:
+                //{
+                //    switch (event.key.key) {
+                //        case SDLK_SPACE:
+                //            JoyPadSetButton(JOYPAD_BUTTON_A, false);
+                //            break;
+                //        case SDLK_W:
+                //        case SDLK_UP:
+                //            JoyPadSetButton(JOYPAD_BUTTON_UP, false);
+                //            break;
+                //        case SDLK_S:
+                //        case SDLK_DOWN:
+                //             JoyPadSetButton(JOYPAD_BUTTON_DOWN, false);
+                //            break;
+                //        case SDLK_A:
+                //        case SDLK_LEFT:
+                //            JoyPadSetButton(JOYPAD_BUTTON_LEFT, false);
+                //            break;                
+                //        case SDLK_D:
+                //        case SDLK_RIGHT:
+                //            JoyPadSetButton(JOYPAD_BUTTON_RIGHT, false);
+                //            break;
+                //        case SDLK_RETURN:
+                //            JoyPadSetButton(JOYPAD_BUTTON_START, false);
+                //            break;  
+                //    }
+                //    break;
+                //}
             }
         }
 
         const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        if (kb_state[SDL_SCANCODE_SPACE])
-        {
-            joypad_set_button_pressed_status(JOYPAD_BUTTON_A, true);
-            printf("A Pressed!\n");
-        }
-        else if (kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W])
-        {
-            joypad_set_button_pressed_status(JOYPAD_BUTTON_UP, true);
-            printf("Up Pressed!\n");
-        }
-        else if (kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S])
-        {
-            joypad_set_button_pressed_status(JOYPAD_BUTTON_DOWN, true);
-            printf("Down Pressed!\n");
-        }
-        else if (kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A])
-        {
-            joypad_set_button_pressed_status(JOYPAD_BUTTON_LEFT, true);
-            printf("Left Pressed!\n");
-        }
-        else if (kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D])
-        {
-            printf("Right Pressed!\n");
-            //WriteJoyPadReg(JOYPAD_BUTTON_START);
-            joypad_set_button_pressed_status(JOYPAD_BUTTON_RIGHT, true);
-            //joypad_set_button_pressed_status(JOYPAD_BUTTON_START, true);
-        }
-        else if (kb_state[SDL_SCANCODE_RETURN])
-        {
-            printf("Enter/Start Pressed!\n");
-            //WriteJoyPadReg(JOYPAD_BUTTON_START);
-            joypad_set_button_pressed_status(JOYPAD_BUTTON_START, true);
-            //joypad_set_button_pressed_status(JOYPAD_BUTTON_START, true);
-        }
+        JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
+        JoyPadSetButton(JOYPAD_BUTTON_B, kb_state[SDL_SCANCODE_LSHIFT]);
+        JoyPadSetButton(JOYPAD_BUTTON_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W]);
+        JoyPadSetButton(JOYPAD_BUTTON_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S]);
+        JoyPadSetButton(JOYPAD_BUTTON_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A]);
+        JoyPadSetButton(JOYPAD_BUTTON_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D]);
+        JoyPadSetButton(JOYPAD_BUTTON_START, kb_state[SDL_SCANCODE_RETURN]);
+        //JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
+        //JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
+
+        //if (kb_state[SDL_SCANCODE_SPACE])
+        //{
+        //    JoyPadSetButton(JOYPAD_BUTTON_A, true);
+        //    printf("A Pressed!\n");
+        //}
+        //else if (kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W])
+        //{
+        //    JoyPadSetButton(JOYPAD_BUTTON_UP, true);
+        //    printf("Up Pressed!\n");
+        //}
+        //else if (kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S])
+        //{
+        //    JoyPadSetButton(JOYPAD_BUTTON_DOWN, true);
+        //    printf("Down Pressed!\n");
+        //}
+        //else if (kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A])
+        //{
+        //    JoyPadSetButton(JOYPAD_BUTTON_LEFT, true);
+        //    printf("Left Pressed!\n");
+        //}
+        //else if (kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D])
+        //{
+        //    printf("Right Pressed!\n");
+        //    //WriteJoyPadReg(JOYPAD_BUTTON_START);
+        //    JoyPadSetButton(JOYPAD_BUTTON_RIGHT, true);
+        //    //JoyPadSetButton(JOYPAD_BUTTON_START, true);
+        //}
+        //else if (kb_state[SDL_SCANCODE_RETURN])
+        //{
+        //    printf("Enter/Start Pressed!\n");
+        //    //WriteJoyPadReg(JOYPAD_BUTTON_START);
+        //    JoyPadSetButton(JOYPAD_BUTTON_START, true);
+        //    //JoyPadSetButton(JOYPAD_BUTTON_START, true);
+        //}
 
         nones->ppu.frame_finished = false;
         do {

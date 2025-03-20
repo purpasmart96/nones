@@ -3,7 +3,11 @@
 #include <stdbool.h>
 
 #include "apu.h"
-#include "mem.h"
+#include "cpu.h"
+#include "ppu.h"
+#include "loader.h"
+#include "arena.h"
+#include "bus.h"
 
 uint8_t g_apu_regs[APU_IO_REGS_SIZE] = { 0 };
 

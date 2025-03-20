@@ -9,55 +9,15 @@
 #include "ppu.h"
 #include "utils.h"
 
-#include "mem.h"
 #include "cpu.h"
 #include "ppu.h"
 #include "joypad.h"
-//#include "mapper.h"
+#include "loader.h"
+#include "arena.h"
+#include "bus.h"
 
 #define SYS_RAM_SIZE 0x2000
 static uint8_t memory[SYS_RAM_SIZE];
-//static uint8_t *memory = NULL;
-
-uint16_t AddressDecode(const uint16_t addr)
-{
-    // Extract A15, A14, and A13
-    uint8_t region = (addr >> 13) & 0x7;
-
-    switch (region)
-    {
-        case 0x0:  // $0000 - $1FFF
-            return addr & 0x7FF;  // Internal RAM (mirrored)
-
-        case 0x1:  // $2000 - $3FFF
-            return addr & 7;  // PPU Registers (mirrored every 8)
-
-        case 0x2:  // $4000 - $5FFF
-            if (addr < 0x4018)
-            {
-                DEBUG_LOG("Trying to read APU/IO reg at 0x%04X\n", addr);
-                break;
-                //return apu_io_read(addr);  // APU & I/O
-            }
-            else
-            {
-                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
-                break;  // $4018-$5FFF might be mapper-controlled
-            }
-
-
-        case 0x3:  // $6000 - $7FFF
-            return addr - 0x6000;  // Battery-backed SRAM (if present)
-
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-            return addr - 0x8000;
-    }
-
-    return 0;  // Default case (open bus behavior)
-}
 
 uint32_t CpuRead(const uint16_t addr, const int size)
 {
@@ -79,7 +39,6 @@ uint32_t CpuRead(const uint16_t addr, const int size)
             {
                 ret = ReadPPURegister(addr);
             }
-            //memcpy(&ret, &g_ppu_regs[addr & 7], size);
             return ret;
         }
 
@@ -91,6 +50,11 @@ uint32_t CpuRead(const uint16_t addr, const int size)
                     DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
                     //return g_joypad_reg;
                     return ReadJoyPadReg();
+                }
+                if (addr == 0x4017)
+                {
+                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    return 0;
                 }
                 //printf("Trying to read APU/IO reg at 0x%04X\n", addr);
                 //break;
@@ -134,6 +98,11 @@ uint8_t CpuRead8(const uint16_t addr)
 uint16_t CpuRead16(const uint16_t addr)
 {
     return (uint16_t)CpuRead(addr, 2);
+}
+
+static uint16_t ReadVector(uint16_t addr)
+{
+    return (uint16_t)CpuRead8(addr + 1) << 8 | CpuRead8(addr);
 }
 
 /*
@@ -192,9 +161,7 @@ void CpuWrite8(const uint16_t addr, const uint8_t data)
 
         case 0x1:  // $2000 - $3FFF
             // PPU Registers (mirrored every 8)
-            //g_ppu_regs[(addr & 7)] = data;
             WritePPURegister(addr, data);
-            //WritePPURegister(addr, data);
             break;
 
         case 0x2:  // $4000 - $5FFF
@@ -294,13 +261,13 @@ uint8_t *CpuGetPtr(const uint16_t addr)
     return NULL;  // Default case (open bus behavior)   
 }
 
-void StackPush(Cpu *state, uint8_t data)
+static inline void StackPush(Cpu *state, uint8_t data)
 {
     memory[STACK_START + state->sp--] = data;
 }
 
 // Retrieve the value on the top of the stack and then pop it
-uint8_t StackPull(Cpu *state)
+static inline uint8_t StackPull(Cpu *state)
 {
     return memory[STACK_START + (++state->sp)];
 }
@@ -313,7 +280,7 @@ static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
 }
 
 // PC += 2 
-static uint16_t GetAbsoluteAddr(Cpu *state)
+static inline uint16_t GetAbsoluteAddr(Cpu *state)
 {
     uint8_t addr_low = CpuRead8(++state->pc);
     uint8_t addr_high = CpuRead8(++state->pc);
@@ -323,20 +290,7 @@ static uint16_t GetAbsoluteAddr(Cpu *state)
 }
 
 // PC += 2 
-static uint16_t GetAbsoluteXAddr(Cpu *state)
-{
-    uint16_t base_addr = CpuRead16(state->pc + 1);
-    uint16_t final_addr = base_addr + state->x;
-
-    // Extra cycle if pages are different
-    if (!InsidePage(base_addr, final_addr))
-        state->cycles++;
-
-    state->pc += 2;
-    return final_addr;
-}
-
-static uint16_t GetAbsoluteXAddr2(Cpu *state, bool add_cycle)
+static inline uint16_t GetAbsoluteXAddr(Cpu *state, bool add_cycle)
 {
     uint16_t base_addr = CpuRead16(state->pc + 1);
     uint16_t final_addr = base_addr + state->x;
@@ -349,7 +303,7 @@ static uint16_t GetAbsoluteXAddr2(Cpu *state, bool add_cycle)
     return final_addr;
 }
 
-static uint16_t GetAbsoluteYAddr(Cpu *state, bool add_cycle)
+static inline uint16_t GetAbsoluteYAddr(Cpu *state, bool add_cycle)
 {
     uint16_t base_addr = CpuRead16(state->pc + 1);
     uint16_t final_addr = base_addr + state->y;
@@ -363,13 +317,13 @@ static uint16_t GetAbsoluteYAddr(Cpu *state, bool add_cycle)
 }
 
 // PC += 1
-static uint8_t GetZPAddr(Cpu *state)
+static inline uint8_t GetZPAddr(Cpu *state)
 {
     return CpuRead8(++state->pc);
 }
 
 // PC += 1
-static uint16_t GetZPIndexedAddr(Cpu *state, uint8_t reg)
+static inline uint16_t GetZPIndexedAddr(Cpu *state, uint8_t reg)
 {
     uint8_t zp_addr = CpuRead8(++state->pc);
 
@@ -378,7 +332,7 @@ static uint16_t GetZPIndexedAddr(Cpu *state, uint8_t reg)
 }
 
 // PC += 2
-static uint16_t GetIndirectAddr(Cpu *state)
+static inline uint16_t GetIndirectAddr(Cpu *state)
 {
     uint8_t ptr_low = CpuRead8(++state->pc);
     uint8_t ptr_high = CpuRead8(++state->pc);
@@ -399,11 +353,12 @@ static uint16_t GetIndirectAddr(Cpu *state)
 }
 
 // PC += 1
-static uint16_t GetPostIndexedIndirectAddr(Cpu *state, bool page_cycle)
+static inline uint16_t GetPostIndexedIndirectAddr(Cpu *state, bool page_cycle)
 {
     uint8_t zp_addr = GetZPAddr(state);
     uint8_t addr_low = CpuRead8(zp_addr);
-    uint8_t addr_high = CpuRead8((zp_addr + 1) & PAGE_MASK); // Fetch high (with zero-page wraparound)
+    // Fetch high (with zero-page wraparound)
+    uint8_t addr_high = CpuRead8((zp_addr + 1) & PAGE_MASK);
 
     uint16_t base_addr = (uint16_t)addr_high << 8 | addr_low;
     uint16_t final_addr = base_addr + state->y;
@@ -416,7 +371,7 @@ static uint16_t GetPostIndexedIndirectAddr(Cpu *state, bool page_cycle)
 }
 
 // PC += 1
-static uint16_t GetPreIndexedIndirectAddr(Cpu *state, uint8_t reg)
+static inline uint16_t GetPreIndexedIndirectAddr(Cpu *state, uint8_t reg)
 {
     uint8_t zp_addr = GetZPAddr(state);
     uint8_t effective_ptr = (zp_addr + reg) & PAGE_MASK; // Wrap in zero-page
@@ -425,7 +380,7 @@ static uint16_t GetPreIndexedIndirectAddr(Cpu *state, uint8_t reg)
     return (uint16_t)addr_high << 8 | addr_low;
 }
 
-static void CompareRegAndSetFlags(Cpu *state, uint8_t reg, uint8_t operand)
+static inline void CompareRegAndSetFlags(Cpu *state, uint8_t reg, uint8_t operand)
 {
     uint8_t result = reg - operand;
     // Negative flag (bit 7)
@@ -436,7 +391,7 @@ static void CompareRegAndSetFlags(Cpu *state, uint8_t reg, uint8_t operand)
     state->status.c = (reg >= operand) ? 1 : 0;
 }
 
-static void RotateOneLeft(Cpu *state, uint8_t *operand)
+static inline void RotateOneLeft(Cpu *state, uint8_t *operand)
 {
     uint8_t old_carry = state->status.c;
     // Store bit 7 in carry before rotating
@@ -448,7 +403,7 @@ static void RotateOneLeft(Cpu *state, uint8_t *operand)
     state->status.z = (*operand == 0) ? 1 : 0;   // Zero flag (is result zero?)
 }
 
-static void RotateOneRight(Cpu *state, uint8_t *operand)
+static inline void RotateOneRight(Cpu *state, uint8_t *operand)
 {
     uint8_t old_carry = state->status.c;
     // Store bit 0 in carry before rotating
@@ -460,7 +415,7 @@ static void RotateOneRight(Cpu *state, uint8_t *operand)
     state->status.z = (*operand == 0) ? 1 : 0;   // Zero flag (is result zero?)
 }
 
-static void ShiftOneRight(Cpu *state, uint8_t *operand)
+static inline void ShiftOneRight(Cpu *state, uint8_t *operand)
 {
     // Store bit 0 in carry before shifting
     state->status.c = *operand & 1;
@@ -471,7 +426,7 @@ static void ShiftOneRight(Cpu *state, uint8_t *operand)
     state->status.z = (*operand == 0) ? 1 : 0;   // Zero flag (is A zero?)
 }
 
-static void ShiftOneLeft(Cpu *state, uint8_t *operand)
+static inline void ShiftOneLeft(Cpu *state, uint8_t *operand)
 {
     // Store bit 7 in carry before shifting
     state->status.c = (*operand >> 7) & 1;
@@ -483,7 +438,7 @@ static void ShiftOneLeft(Cpu *state, uint8_t *operand)
 }
 
 // ADC only uses the A register (Accumulator)
-static void AddWithCarry(Cpu *state, uint8_t operand)
+static inline void AddWithCarry(Cpu *state, uint8_t operand)
 {
     uint16_t sum = state->a + operand + state->status.c;
 
@@ -501,7 +456,7 @@ static void AddWithCarry(Cpu *state, uint8_t operand)
     DEBUG_LOG("Operand %x\n", operand);
 }
 
-static void BitwiseAnd(Cpu *state, uint8_t operand)
+static inline void BitwiseAnd(Cpu *state, uint8_t operand)
 {
     state->a &= operand;
 
@@ -509,7 +464,7 @@ static void BitwiseAnd(Cpu *state, uint8_t operand)
     state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
 }
 
-uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     switch (addr_mode)
     {
@@ -526,13 +481,10 @@ uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
             return CpuRead8(GetZPIndexedAddr(state, state->y));
         case Absolute:
             return CpuRead8(GetAbsoluteAddr(state));
-            //return memory[GetAbsoluteAddr(state)];
         case AbsoluteX:
-            return CpuRead8(GetAbsoluteXAddr2(state, page_cycle));
-            //return memory[GetAbsoluteAddr(state) + state->x];
+            return CpuRead8(GetAbsoluteXAddr(state, page_cycle));
         case AbsoluteY:
             return CpuRead8(GetAbsoluteYAddr(state, page_cycle));
-            //return memory[GetAbsoluteAddr(state) + state->y];
         case PreIndexedIndirect:
             return CpuRead8(GetPreIndexedIndirectAddr(state, state->x));
         case PostIndexedIndirect:
@@ -546,7 +498,7 @@ uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Used by STA/STY/STX instrs
-static void SetOperandToMem(Cpu *state, AddressingMode addr_mode, uint8_t operand)
+static inline void SetOperandToMem(Cpu *state, AddressingMode addr_mode, uint8_t operand)
 {
     switch (addr_mode)
     {
@@ -565,16 +517,13 @@ static void SetOperandToMem(Cpu *state, AddressingMode addr_mode, uint8_t operan
             CpuWrite8(GetZPIndexedAddr(state, state->y), operand);
             break;
         case Absolute:
-            //memory[GetAbsoluteAddr(state)] = operand;
             CpuWrite8(GetAbsoluteAddr(state), operand);
             break;
         case AbsoluteX:
             CpuWrite8(GetAbsoluteAddr(state) + state->x, operand);
-            //memory[GetAbsoluteAddr(state) + state->x] = operand;
             break;
         case AbsoluteY:
             CpuWrite8(GetAbsoluteAddr(state) + state->y, operand);
-            //memory[GetAbsoluteAddr(state) + state->y] = operand;
             break;
         case PreIndexedIndirect:
             CpuWrite8(GetPreIndexedIndirectAddr(state, state->x), operand);
@@ -591,22 +540,7 @@ static void SetOperandToMem(Cpu *state, AddressingMode addr_mode, uint8_t operan
     }
 }
 
-uint16_t GetJMPAddr(Cpu *state, AddressingMode addr_mode)
-{
-    switch (addr_mode)
-    {
-        case Absolute:
-            return GetAbsoluteAddr(state);
-        case Indirect:
-            return GetIndirectAddr(state);
-        default:
-            return -1;
-    }
-
-    return -1;
-}
-
-uint8_t *GetOperandPtrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline uint8_t *GetOperandPtrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     switch (addr_mode)
     {
@@ -624,11 +558,9 @@ uint8_t *GetOperandPtrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cy
         case Absolute:
             return CpuGetPtr(GetAbsoluteAddr(state));
         case AbsoluteX:
-            return CpuGetPtr(GetAbsoluteXAddr2(state, page_cycle));
-            //return &memory[GetAbsoluteAddr(state) + state->x];
+            return CpuGetPtr(GetAbsoluteXAddr(state, page_cycle));
         case AbsoluteY:
             return CpuGetPtr(GetAbsoluteYAddr(state, page_cycle));
-            //return &memory[GetAbsoluteAddr(state) + state->y];
         case PreIndexedIndirect:
             return CpuGetPtr(GetPreIndexedIndirectAddr(state, state->x));
         case PostIndexedIndirect:
@@ -636,34 +568,33 @@ uint8_t *GetOperandPtrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cy
         case Implied:
         case Indirect:
             return NULL;
-    
     }
 
     return NULL;
 }
 
-static void ADC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void ADC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     AddWithCarry(state, operand);
     state->pc++;
 }
 
-static void AND_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void AND_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     BitwiseAnd(state, operand);
     state->pc++;
 }
 
-static void ASL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void ASL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
     ShiftOneLeft(state, operand);
     state->pc++;
 }
 
-static void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -683,7 +614,7 @@ static void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -703,7 +634,7 @@ static void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -723,7 +654,7 @@ static void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BIT_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BIT_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->status.n = GET_NEG_BIT(operand);
@@ -732,7 +663,7 @@ static void BIT_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -752,7 +683,7 @@ static void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -772,7 +703,7 @@ static void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -792,7 +723,7 @@ static void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -810,18 +741,12 @@ static void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 
     state->status.i = true;
     // Load IRQ/BRK vector ($FFFE-$FFFF) into PC
-    //uint16_t ret = (uint16_t)MemRead8(0xFFFF) << 8 | MemRead8( 0xFFFE);
-    uint16_t brk_non_mirror_addr = CpuRead16(0xFFFE);
-    ////uint16_t ret = 0;
-    uint16_t ret = (uint16_t)CpuRead8(brk_non_mirror_addr + 1) << 8 | CpuRead8(brk_non_mirror_addr);
-    DEBUG_LOG("New PC at 0x%04X\n", ret);
-    //state->pc = MemGetNonMirroredAddr(ret);
-    state->pc = ret;
+    state->pc = ReadVector(0xFFFE);
 
     DEBUG_LOG("Jumping to IRQ vector at 0x%X\n", state->pc);
 }
 
-static void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -841,7 +766,7 @@ static void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(addr_mode);
     UNUSED(page_cycle);
@@ -860,7 +785,7 @@ static void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void CLC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void CLC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -870,7 +795,7 @@ static void CLC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void CLD_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void CLD_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -880,7 +805,7 @@ static void CLD_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void CLI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void CLI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -890,7 +815,7 @@ static void CLI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void CLV_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void CLV_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -900,28 +825,28 @@ static void CLV_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void CMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void CMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     CompareRegAndSetFlags(state, state->a, operand);
     state->pc++;
 }
 
-static void CPX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void CPX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     CompareRegAndSetFlags(state, state->x, operand);
     state->pc++;
 }
 
-static void CPY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void CPY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     CompareRegAndSetFlags(state, state->y, operand);
     state->pc++;
 }
 
-static void DEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void DEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
 
@@ -933,7 +858,7 @@ static void DEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void DEX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void DEX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -946,7 +871,7 @@ static void DEX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void DEY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void DEY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -959,7 +884,7 @@ static void DEY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void EOR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void EOR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->a ^= operand;
@@ -968,7 +893,7 @@ static void EOR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void INC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void INC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
 
@@ -980,7 +905,7 @@ static void INC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void INX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void INX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -993,7 +918,7 @@ static void INX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void INY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void INY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1006,21 +931,21 @@ static void INY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void JMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void JMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(page_cycle);
 
-    uint16_t new_pc;
-    if (addr_mode == Absolute)
-        new_pc = GetAbsoluteAddr(state);
-    else
-        new_pc = GetIndirectAddr(state);
+    //uint16_t new_pc;
+    //if (addr_mode == Absolute)
+    //    new_pc = GetAbsoluteAddr(state);
+    //else
+    //    new_pc = GetIndirectAddr(state);
+    //state->pc = new_pc;
 
-    //state->pc = MemGetNonMirroredAddr(new_pc);
-    state->pc = new_pc;
+    state->pc = addr_mode == Absolute ? GetAbsoluteAddr(state) : GetIndirectAddr(state);
 }
 
-static void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1032,12 +957,11 @@ static void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     StackPush(state, (state->pc >> 8) & 0xFF);
     StackPush(state, state->pc & 0xFF);
 
-    //uint16_t new_pc = MemGetNonMirroredAddr((uint16_t)pc_high << 8 | pc_low);
     uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
     state->pc = new_pc;
 }
 
-static void LDA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void LDA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->a = operand;
@@ -1048,7 +972,7 @@ static void LDA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void LDX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void LDX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->x = operand;
@@ -1059,7 +983,7 @@ static void LDX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void LDY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void LDY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->y = operand;
@@ -1071,14 +995,14 @@ static void LDY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void LSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void LSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
     ShiftOneRight(state, operand);
     state->pc++;
 }
 
-static void NOP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void NOP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1087,7 +1011,7 @@ static void NOP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void ORA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void ORA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->a |= operand;
@@ -1096,7 +1020,7 @@ static void ORA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void PHA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void PHA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1106,7 +1030,7 @@ static void PHA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void PHP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void PHP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1119,7 +1043,7 @@ static void PHP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void PLA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void PLA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1131,7 +1055,7 @@ static void PLA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void PLP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void PLP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1150,7 +1074,7 @@ static void PLP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void ROL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void ROL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
     RotateOneLeft(state, operand);
@@ -1164,7 +1088,7 @@ static void ROR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1184,11 +1108,10 @@ static void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     uint8_t pc_high = StackPull(state);
 
     uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
-    //state->pc = MemGetNonMirroredAddr(new_pc);
     state->pc = new_pc;
 }
 
-static void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1198,12 +1121,12 @@ static void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     uint8_t pc_high = StackPull(state);
 
     uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
-    //state->pc = MemGetNonMirroredAddr(new_pc);
+
     state->pc = new_pc;
     state->pc++;
 }
 
-static void SBC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void SBC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     uint16_t temp = state->a - operand - (1 - state->status.c);
@@ -1220,7 +1143,7 @@ static void SBC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void SEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void SEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1230,7 +1153,7 @@ static void SEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void SED_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void SED_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1240,7 +1163,7 @@ static void SED_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void SEI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void SEI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1251,7 +1174,7 @@ static void SEI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void STA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void STA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(page_cycle);
 
@@ -1259,7 +1182,7 @@ static void STA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void STX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void STX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(page_cycle);
 
@@ -1267,7 +1190,7 @@ static void STX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
     state->pc++;
 }
 
-static void STY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void STY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(page_cycle);
 
@@ -1276,7 +1199,7 @@ static void STY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Transfer Accumulator to Index X
-static void TAX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void TAX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1290,7 +1213,7 @@ static void TAX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Transfer Accumulator to Index Y
-static void TAY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void TAY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1304,7 +1227,7 @@ static void TAY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Transfer Stack Pointer to Index X
-static void TSX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void TSX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1318,7 +1241,7 @@ static void TSX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Transfer Stack Pointer to Accumulator
-static void TSA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void TSA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1332,7 +1255,7 @@ static void TSA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Transfer Index X to Accumulator
-static void TXA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void TXA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1346,7 +1269,7 @@ static void TXA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Transfer Index X to Stack Register
-static void TXS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void TXS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1358,7 +1281,7 @@ static void TXS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 // Transfer Index Y to Accumulator
-static void TYA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline void TYA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
     UNUSED(addr_mode);
@@ -1372,7 +1295,7 @@ static void TYA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 }
 
 typedef struct {
-    void (*InstrFn)(Cpu *state, AddressingMode addr_mode, bool page_cross_penalty);  // Function pointer to execute opcode
+    void (*InstrFn)(Cpu *state, AddressingMode addr_mode, bool page_cross_penalty);
     const char *name;                     // Mnemonic (e.g., "AND", "ASL")
     uint8_t bytes;                         // Number of bytes the instruction takes
     uint8_t cycles;                        // Base cycle count
@@ -1551,7 +1474,7 @@ static const OpcodeHandler opcodes[256] =
 
 };
 
-void ExecuteOpcode(Cpu *state)
+static void ExecuteOpcode(Cpu *state)
 {
     const uint8_t opcode = CpuRead8(state->pc);
     const OpcodeHandler *handler = &opcodes[opcode];
@@ -1560,7 +1483,7 @@ void ExecuteOpcode(Cpu *state)
     {
         DEBUG_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, state->pc);
         handler->InstrFn(state, handler->addr_mode, handler->page_cross_penalty);
-        state->cycles += handler->cycles;  // Add base cycles
+        state->cycles += handler->cycles;
     }
     else
     {
@@ -1576,23 +1499,16 @@ void CPU_Init(Cpu *state)
     memset(state, 0, sizeof(*state));
 }
 
-static uint16_t ReadVector(uint16_t addr)
-{
-    return (uint16_t)CpuRead8(addr + 1) << 8 | CpuRead8(addr);
-}
-
 void HandleIRQ(Cpu *cpu)
 {
-    cpu->status.i = 1;  // Disable further IRQs
+    cpu->status.i = 1;
+
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);  // Push PC high byte
     StackPush(cpu, cpu->pc & 0xFF); // Push PC low byte
     StackPush(cpu, cpu->status.raw & ~0x10); // Push Processor Status (clear Break flag)
-    //cpu->pc = MemRead16(0xFFFE); // Load IRQ vector
 
-    //uint16_t irq_non_mirror_addr = MemGetNonMirroredAddr(0xFFFE);
     uint16_t ret = ReadVector(0xFFFE);
     DEBUG_LOG("New PC at 0x%04X\n", ret);
-    //cpu->pc = MemGetNonMirroredAddr(ret);
     cpu->pc = ret;
 }
 
@@ -1602,13 +1518,9 @@ void CPU_TriggerNMI(Cpu *state)
     StackPush(state, (state->pc >> 8) & 0xFF);
     // Push low next
     StackPush(state, state->pc & 0xFF);
-    StackPush(state, state->status.raw | 0x20); // Push status with bit 5 set
+    // Push status with bit 5 set
+    StackPush(state, state->status.raw | 0x20);
 
-
-    //uint16_t nmi_non_mirror_addr = MemGetNonMirroredAddr(0xFFFA);
-    //uint16_t ret = (uint16_t)MemRead8(nmi_non_mirror_addr + 1) << 8 | MemRead8(nmi_non_mirror_addr);
-    //DEBUG_LOG("New PC at 0x%04X\n", ret);
-    //state->pc = MemGetNonMirroredAddr(ret);
     state->pc = ReadVector(0xFFFA);
     state->status.i = 1; // Set interrupt disable flag
 }
@@ -1639,7 +1551,7 @@ void CPU_Update(Cpu *state)
 void CPU_Reset(Cpu *state)
 {
     // Read the reset vector from 0xFFFC (little-endian)
-    uint16_t reset_vector = CpuRead8(0xFFFC) | (CpuRead8(0xFFFD) << 8);
+    uint16_t reset_vector = ReadVector(0xFFFC); 
     
     DEBUG_LOG("New PC at 0x%04X\n", reset_vector);
 

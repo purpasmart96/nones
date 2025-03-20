@@ -6,26 +6,25 @@
 
 #include "cpu.h"
 #include "ppu.h"
-#include "mem.h"
 #include "utils.h"
 
-static uint8_t sram[0x2000];
-static MemMap mappings[10];
-static int num_mappings;
-
-static uint8_t *memory = NULL;
+//static uint8_t sram[0x2000];
+//static MemMap mappings[10];
+//static int num_mappings;
+//
+//static uint8_t *memory = NULL;
 
 void CartWrite8(uint16_t addr, uint8_t data)
 {
 
 }
 
-void CartWrite81(uint16_t addr, uint8_t data)
+uint8_t CartRead(const uint16_t addr)
 {
-
+    return 0;
 }
 
-void CartWritechunk(uint16_t addr, uint16_t size)
+void CartWriteChunk(uint16_t addr, uint16_t size)
 {
     
 }
