@@ -935,13 +935,6 @@ static inline void JMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 {
     UNUSED(page_cycle);
 
-    //uint16_t new_pc;
-    //if (addr_mode == Absolute)
-    //    new_pc = GetAbsoluteAddr(state);
-    //else
-    //    new_pc = GetIndirectAddr(state);
-    //state->pc = new_pc;
-
     state->pc = addr_mode == Absolute ? GetAbsoluteAddr(state) : GetIndirectAddr(state);
 }
 

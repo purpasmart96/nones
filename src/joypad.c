@@ -13,13 +13,8 @@ typedef struct {
     uint8_t button_status;
 } JoyPad;
 
-//typedef union 
-//{
-//    
-//}
 
 static JoyPad joy_pad;
-//uint8_t g_joypad_reg = 0; 
 
 void WriteJoyPadReg(uint8_t data)
 {
