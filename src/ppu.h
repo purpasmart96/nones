@@ -177,6 +177,18 @@ typedef union
 
 } PpuAddrReg;
 
+typedef union
+{
+    uint16_t raw;
+
+    struct
+    {
+        uint16_t low : 8;
+        uint16_t high : 8;
+    };
+
+} ShiftReg;
+
 typedef struct
 {
     uint64_t cycles;
@@ -188,7 +200,6 @@ typedef struct
         PpuAddrReg v;
         // When rendering, the coarse-x scroll for the next scanline and the starting y scroll for the screen.
         // Outside of rendering, holds the scroll or VRAM address before transferring it to v
-        //uint16_t t;
         PpuAddrReg t;
         // Fine-x position of the current scroll, used during rendering alongside v.
         uint8_t x;
@@ -198,14 +209,23 @@ typedef struct
 
     NameTableMirror nt_mirror_mode;
     int scanline;
-    int pattern_shift_low;
-    int pattern_shift_high;
+    int ext_input;
+    uint8_t attrib_data;
+    uint8_t tile_id;
+    uint8_t bg_lsb;
+    uint8_t bg_msb;
+    ShiftReg bg_shift_low;
+    ShiftReg bg_shift_high;
+    ShiftReg attrib_shift_low;
+    ShiftReg attrib_shift_high;
+    int next_palette;
+
     bool rendering;
     bool prev_rendering;
     bool frame_finished;
     uint8_t buffered_data; // Read buffer for $2007
 
-    // Pixel buffer for SDL3
+    // Pixel buffer for SDL
     uint32_t *buffer;
     // External regs for cpu
     PpuCtrl ctrl;
