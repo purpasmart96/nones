@@ -238,6 +238,8 @@ void NonesRun(Nones *nones, const char *path)
         //JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
         //JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
 
+        if (kb_state[SDL_SCANCODE_ESCAPE])
+            quit = true;
         //if (kb_state[SDL_SCANCODE_SPACE])
         //{
         //    JoyPadSetButton(JOYPAD_BUTTON_A, true);
