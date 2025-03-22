@@ -572,8 +572,8 @@ static void DrawSpritePlaceholder(Ppu *ppu, int scanline, int cycle)
 
         uint16_t palette = curr_sprite->attribs.palette;
         size_t tile_offset = bank + (curr_sprite->tile_id * 16);
-        if (curr_sprite->y < 240 && curr_sprite->x < 255)
-            PpuDrawSprite(ppu, bank, tile_offset, curr_sprite->x, curr_sprite->y, palette,
+        if (curr_sprite->y < 241 && curr_sprite->x < 255)
+            PpuDrawSprite(ppu, bank, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
                 curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
         //uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
         //uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
