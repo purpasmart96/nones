@@ -15,17 +15,14 @@
 #include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_scancode.h>
 
+#include "arena.h"
 #include "loader.h"
 #include "cpu.h"
 #include "apu.h"
 #include "ppu.h"
 #include "joypad.h"
-#include "arena.h"
+#include "bus.h"
 #include "nones.h"
-
-//uint8_t *g_prg_rom = NULL; 
-//uint8_t *g_chr_rom = NULL;
-//uint8_t *g_sram = NULL;
 
 static void DrawSprite(uint32_t *buffer, int xpos, int ypos, int h, int w)
 {
@@ -71,68 +68,22 @@ static void DrawSprite2(uint32_t *buffer, int xpos, int ypos, int h, int w, uint
     }
 }
 
-typedef struct Test {
-    uint32_t test1;
-    uint8_t test2;
-    uint16_t test3;
-    uint8_t test4[44];
-} Test;
 
-static void ArenaTest(void)
+static void NonesInit(Nones *nones, const char *path)
 {
-    Arena *arena = arena_create(0x10000);
+    nones->arena = ArenaCreate(1024 * 1024);
+    nones->bus = BusCreate(nones->arena);
 
-    int *ptr = arena_add(arena, sizeof(int) * 0x1000);
-
-    for (int i = 0; i < 0x1000; i++)
+    if (BusLoadCart(nones->arena, nones->bus, path))
     {
-        ptr[i] = i;
+        ArenaDestroy(nones->arena);
+        exit(EXIT_FAILURE);
     }
-
-    for (int i = 0; i < 0x1000; i++)
-    {
-        printf("ptr[%d] = %d\n", i, ptr[i]);
-    }
-
-    int *ptr2 = arena_add(arena, sizeof(int));
-    *ptr2 = 55;
-    printf("ptr = %p: v = %d\n", ptr2, *ptr2);
-
-    for (int i = 0; i < 0x1000; i++)
-    {
-        printf("ptr[%d] = %d\n", i, ptr[i]);
-    }
-
-    Test *test = arena_add(arena, sizeof(*test));
-    size_t aligned = alignof(sizeof(*test));
-
-    test->test1 = 5500000;
-    test->test2 = 33;
-    test->test3 = 55555;
-    test->test4[0] = 255;
-    test->test4[43] = 255;
-
-    int *ptr3 = arena_add(arena, sizeof(int));
-    *ptr3 = 77;
-    printf("ptr = %p: v = %d\n", ptr3, *ptr3);
-
-    printf("uint32 test: %u\n", test->test1);
-    printf("uint8 test: %u\n", test->test2);
-    printf("uint16 test: %u\n", test->test3);
-    printf("uint8 array begin test: %u\n", test->test4[0]);
-    printf("uint8 array end test: %u\n", test->test4[43]);
-
-    arena_destroy(arena);
-    exit(EXIT_SUCCESS);
 }
 
 void NonesRun(Nones *nones, const char *path)
 {
-    NES2_Header hdr;
-    if (LoaderLoadRom(path, &hdr) != 0)
-    {
-        exit(EXIT_FAILURE);
-    }
+    NonesInit(nones, path);
 
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
@@ -168,12 +119,12 @@ void NonesRun(Nones *nones, const char *path)
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
 
     // Allocate pixel buffer
-    uint32_t *pixels = calloc(1, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
+    uint32_t *pixels = ArenaPush(nones->arena, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
 
-    CPU_Init(&nones->cpu);
-    PPU_Init(&nones->ppu, hdr.name_table_layout, pixels);
+    CPU_Init(nones->bus->cpu);
+    PPU_Init(nones->bus->ppu, nones->bus->cart->mirroring, pixels);
 
-    CPU_Reset(&nones->cpu);
+    CPU_Reset(nones->bus->cpu);
 
     bool quit = false;
     SDL_Event event;
@@ -195,92 +146,38 @@ void NonesRun(Nones *nones, const char *path)
                 case SDL_EVENT_QUIT:
                     quit = true;
                     break;
-                //case SDL_EVENT_KEY_UP:
-                //{
-                //    switch (event.key.key) {
-                //        case SDLK_SPACE:
-                //            JoyPadSetButton(JOYPAD_BUTTON_A, false);
-                //            break;
-                //        case SDLK_W:
-                //        case SDLK_UP:
-                //            JoyPadSetButton(JOYPAD_BUTTON_UP, false);
-                //            break;
-                //        case SDLK_S:
-                //        case SDLK_DOWN:
-                //             JoyPadSetButton(JOYPAD_BUTTON_DOWN, false);
-                //            break;
-                //        case SDLK_A:
-                //        case SDLK_LEFT:
-                //            JoyPadSetButton(JOYPAD_BUTTON_LEFT, false);
-                //            break;                
-                //        case SDLK_D:
-                //        case SDLK_RIGHT:
-                //            JoyPadSetButton(JOYPAD_BUTTON_RIGHT, false);
-                //            break;
-                //        case SDLK_RETURN:
-                //            JoyPadSetButton(JOYPAD_BUTTON_START, false);
-                //            break;  
-                //    }
-                //    break;
-                //}
             }
         }
 
         const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
-        JoyPadSetButton(JOYPAD_BUTTON_B, kb_state[SDL_SCANCODE_LSHIFT]);
-        JoyPadSetButton(JOYPAD_BUTTON_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W]);
-        JoyPadSetButton(JOYPAD_BUTTON_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S]);
-        JoyPadSetButton(JOYPAD_BUTTON_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A]);
-        JoyPadSetButton(JOYPAD_BUTTON_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D]);
-        JoyPadSetButton(JOYPAD_BUTTON_START, kb_state[SDL_SCANCODE_RETURN]);
-        //JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
-        //JoyPadSetButton(JOYPAD_BUTTON_A, kb_state[SDL_SCANCODE_SPACE]);
+        JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
+        JoyPadSetButton(JOYPAD_B, kb_state[SDL_SCANCODE_LSHIFT]);
+        JoyPadSetButton(JOYPAD_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W]);
+        JoyPadSetButton(JOYPAD_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S]);
+        JoyPadSetButton(JOYPAD_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A]);
+        JoyPadSetButton(JOYPAD_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D]);
+        JoyPadSetButton(JOYPAD_START, kb_state[SDL_SCANCODE_RETURN]);
+        JoyPadSetButton(JOYPAD_SELECT, kb_state[SDL_SCANCODE_TAB]);
+        //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
+        //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
 
         if (kb_state[SDL_SCANCODE_ESCAPE])
             quit = true;
-        //if (kb_state[SDL_SCANCODE_SPACE])
-        //{
-        //    JoyPadSetButton(JOYPAD_BUTTON_A, true);
-        //    printf("A Pressed!\n");
-        //}
-        //else if (kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W])
-        //{
-        //    JoyPadSetButton(JOYPAD_BUTTON_UP, true);
-        //    printf("Up Pressed!\n");
-        //}
-        //else if (kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S])
-        //{
-        //    JoyPadSetButton(JOYPAD_BUTTON_DOWN, true);
-        //    printf("Down Pressed!\n");
-        //}
-        //else if (kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A])
-        //{
-        //    JoyPadSetButton(JOYPAD_BUTTON_LEFT, true);
-        //    printf("Left Pressed!\n");
-        //}
-        //else if (kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D])
-        //{
-        //    printf("Right Pressed!\n");
-        //    //WriteJoyPadReg(JOYPAD_BUTTON_START);
-        //    JoyPadSetButton(JOYPAD_BUTTON_RIGHT, true);
-        //    //JoyPadSetButton(JOYPAD_BUTTON_START, true);
-        //}
-        //else if (kb_state[SDL_SCANCODE_RETURN])
-        //{
-        //    printf("Enter/Start Pressed!\n");
-        //    //WriteJoyPadReg(JOYPAD_BUTTON_START);
-        //    JoyPadSetButton(JOYPAD_BUTTON_START, true);
-        //    //JoyPadSetButton(JOYPAD_BUTTON_START, true);
-        //}
 
-        nones->ppu.frame_finished = false;
+
+        nones->bus->ppu->frame_finished = false;
+        //do {
+        //    CPU_Update(&nones->cpu);
+        //    APU_Update(nones->cpu.cycles);
+        //    PPU_Update(&nones->ppu, nones->cpu.cycles);
+        //} while (!nones->ppu.frame_finished);
+        //nones->ppu.frame_finished = false;
         do {
-            CPU_Update(&nones->cpu);
-            APU_Update(nones->cpu.cycles);
-            PPU_Update(&nones->ppu, nones->cpu.cycles);
-        } while (!nones->ppu.frame_finished);
+            CPU_Update(nones->bus->cpu);
+            APU_Update(nones->bus->cpu->cycles);
+            PPU_Update(nones->bus->ppu, nones->bus->cpu->cycles);
+        } while (!nones->bus->ppu->frame_finished);
         //} while ((nones->cpu.cycles % 29780) != 0);
         //updates++;
 
@@ -308,19 +205,28 @@ void NonesRun(Nones *nones, const char *path)
         }
     }
 
+    if (nones->bus->cart->battery)
+    {
+        char save_path[128];
+        snprintf(save_path, sizeof(save_path), "%s.sav", nones->bus->cart->name);
+
+        FILE *sav = fopen(save_path, "wb");
+        if (sav != NULL)
+        {
+            fwrite(nones->bus->cart->ram, 0x2000, 1, sav);
+            fclose(sav);
+        }
+    }
+
+
     PPU_Reset();
-    CPU_Reset(&nones->cpu);
+    CPU_Reset(nones->bus->cpu);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
 
-    free(pixels);
-    free(g_prg_rom);
-    if (g_chr_rom)
-        free(g_chr_rom);
-    if (g_sram)
-        free(g_sram);
-    return;
+    ArenaDestroy(nones->arena);
+    //free(pixels);
 }
 

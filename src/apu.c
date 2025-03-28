@@ -5,6 +5,7 @@
 #include "apu.h"
 #include "cpu.h"
 #include "ppu.h"
+#include "arena.h"
 #include "loader.h"
 #include "arena.h"
 #include "bus.h"

@@ -265,6 +265,9 @@ void PPU_Write8(uint16_t addr, uint8_t data);
 uint8_t ReadPPURegister(const uint16_t addr);
 void WritePPURegister(const uint16_t addr, const uint8_t data);
 uint8_t *GetPPUMemPtr(uint16_t addr);
+
+void NametableMirroringInit(NameTableMirror mode);
+
 void OAM_Dma(const uint16_t addr);
 
 bool PPU_NmiTriggered(void);

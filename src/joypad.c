@@ -2,18 +2,6 @@
 #include <stdint.h>
 #include "joypad.h"
 
-
-typedef struct {
-//    bool strobe;
-//    Buttons prev_input;
-//    uint8_t status;
-//    Buttons input;
-    bool strobe;
-    uint8_t button_index;
-    uint8_t button_status;
-} JoyPad;
-
-
 static JoyPad joy_pad;
 
 void WriteJoyPadReg(uint8_t data)
@@ -47,7 +35,7 @@ void WriteJoyPadReg(uint8_t data)
 }
 
 
-uint8_t ReadJoyPadReg()
+uint8_t ReadJoyPadReg(void)
 {
     if (joy_pad.button_index > 7)
     {
@@ -67,9 +55,12 @@ uint8_t ReadJoyPadReg()
 // Set button pressed state
 void JoyPadSetButton(JoypadButton button, bool pressed)
 {
-    if (pressed) {
+    if (pressed)
+    {
         joy_pad.button_status |= button;
-    } else {
+    }
+    else
+    {
         joy_pad.button_status &= ~button;
     }
 }

@@ -8,12 +8,6 @@
 #include "ppu.h"
 #include "utils.h"
 
-//static uint8_t sram[0x2000];
-//static MemMap mappings[10];
-//static int num_mappings;
-//
-//static uint8_t *memory = NULL;
-
 void CartWrite8(uint16_t addr, uint8_t data)
 {
 

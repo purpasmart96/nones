@@ -8,5 +8,7 @@ callgrind.out.*
 *.d
 test.c
 /build
+.cache
 emu
 *.o
+*.sav

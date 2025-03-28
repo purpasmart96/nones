@@ -1,4 +1,3 @@
-#include <math.h>
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -7,11 +6,13 @@
 #include <sys/types.h>
 
 #include "cpu.h"
+#include "arena.h"
 #include "nones.h"
-#include "ppu.h"
+
 #include "loader.h"
 #include "arena.h"
 #include "bus.h"
+#include "ppu.h"
 #include "utils.h"
 
 static uint8_t vram[0x800];
@@ -133,28 +134,6 @@ static Color GetspriteColor(uint8_t palette_index, uint8_t pixel)
     return sys_palette2[color_index & 0x3F];
 }
 
-static uint16_t PatternTableDecodeAddress(uint16_t addr)
-{
-    // Fine Y offset, the row number within a tile
-    uint8_t y_offset = addr & 0x7;// Bits 0-2
-    // Bit plane (0: less significant bit; 1: more significant bit)
-    bool bit_plane_msb = (addr >> 3) & 1; // Bit 3
-    // Tile number from name table
-    uint16_t tile_num = (addr >> 4) & 0xFF; // Bits 4-12
-    // Half of pattern table (0: "left"; 1: "right")
-    bool pattern_table_half = (addr >> 13) & 1; // Bit 13
-    // Pattern table is at $0000-$1FFF
-    bool pattern_table_low_addr = (addr >> 14) & 1; // Bit 14 
-
-    return 0;
-
-}
-
-static void PPU_UpdateVramAddr(Ppu *ppu)
-{
-    ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
-}
-
 void PPU_WriteAddrReg(const uint8_t value)
 {
     if (!ppu_ptr->w)
@@ -179,11 +158,6 @@ static inline int GetNameTableIndex(uint16_t addr)
     return (addr >> 10) & 0x3;
 }
 
-static inline int GetAttribOffset(uint16_t addr)
-{
-    return (addr >> 6) & 0xF;
-}
-
 void WriteToNametable(uint16_t addr, uint8_t data)
 {
     addr &= 0x2FFF;  // Force address within 0x2000-0x2FFF range
@@ -199,7 +173,7 @@ uint8_t ReadNametable(uint16_t addr)
 }
 
 // Horizontal scrolling
-static void IncX()
+static void IncX(void)
 {
     if (ppu_ptr->v.scrolling.coarse_x == 31) // if coarse X == 31
     {
@@ -216,7 +190,7 @@ static void IncX()
 }
 
 // Vertical Scroll
-static void IncY()
+static void IncY(void)
 {
     //printf("PPU v addr: 0x%04X\n", ppu_ptr->v.raw);
     if (ppu_ptr->v.scrolling.fine_y < 7)        // if fine Y < 7
@@ -284,7 +258,7 @@ void PPU_WriteData(const uint8_t data)
         case 0x3:
         {
             // chr rom is actually chr ram
-            g_chr_rom[ppu_ptr->v.raw % g_chr_rom_size] = data;
+            PpuBusWriteChrRam(ppu_ptr->v.raw, data);
             break;
         }
         case 0x4:
@@ -363,7 +337,7 @@ uint8_t PPU_ReadData(/*Ppu *ppu*/)
         //data = ppu_ptr->buffered_data;  // Return stale buffer value
         //ppu_ptr->buffered_data = vram[addr];  // Load new data into buffer
         data = ppu_ptr->buffered_data;  // Return stale buffer value
-        ppu_ptr->buffered_data = g_chr_rom[addr];  // Load new data into buffer
+        ppu_ptr->buffered_data = PpuBusReadChrRom(addr);  // Load new data into buffer
     }
     else if (addr <= 0x2FFF)
     {  
@@ -448,7 +422,7 @@ void WritePPURegister(const uint16_t addr, const uint8_t data)
 void OAM_Dma(const uint16_t addr)
 {
     uint16_t base_addr = addr * 0x100;
-    uint8_t *data_ptr = CpuGetPtr(base_addr);
+    uint8_t *data_ptr = BusGetPtr(base_addr);
     memcpy(sprites, data_ptr, sizeof(Sprite) * 64);
 }
 
@@ -527,14 +501,27 @@ static void DrawSprite(uint32_t *buffer, int xpos, int ypos, int size, Color col
     }
 }
 
-static void PpuDrawSprite(Ppu *ppu, uint16_t bank, int tile_offset, int tile_x, int tile_y, int palette, bool flip_horz, bool flip_vert)
+static inline uint8_t ReverseBits(uint8_t b)
 {
-    const uint8_t *tile_data = &g_chr_rom[tile_offset];
+    uint8_t r = 0;
+    uint8_t byte_len = 2;
+
+    while (byte_len--)
+    {
+        r = (r << 1) | (b & 1);
+        b >>= 1;
+    }
+    return r;
+}
+
+static void PpuDrawSprite(Ppu *ppu, int tile_offset, int tile_x, int tile_y, int palette, bool flip_horz, bool flip_vert)
+{
+    //const uint8_t *tile_data = &PpuBusReadChrRom[tile_offset];
 
     for (int y = 0; y < 8; y++)
     {
-        uint8_t upper = tile_data[y];
-        uint8_t lower = tile_data[y + 8];
+        uint8_t upper = PpuBusReadChrRom(tile_offset + y); //tile_data[y];
+        uint8_t lower = PpuBusReadChrRom(tile_offset + y + 8); //tile_data[y + 8];
 
         for (int x = 7; x >= 0; x--)
         {
@@ -559,6 +546,67 @@ static void PpuDrawSprite(Ppu *ppu, uint16_t bank, int tile_offset, int tile_x, 
     }
 }
 
+static void PpuDrawSprite16(Ppu *ppu, int tile_index, int tile_x, int tile_y, int palette, bool flip_horz, bool flip_vert)
+{
+    int bank = (tile_index & 1) ? 0x1000 : 0x0000;
+    int tile_id = tile_index & 0xFE; 
+
+    for (int y = 0; y < 16; y++)
+    {
+        //int tile_part = (y < 8) ? 0 : 1;
+        int tile_part = (y < 8) ^ flip_vert ? 0 : 1;  // Swap tile part if flipping vertically
+        size_t tile_offset = bank + (tile_id + tile_part) * 16;
+        int row = y & 7;
+        if (flip_vert)
+            row = 7 - (y & 7); 
+
+        uint8_t upper = PpuBusReadChrRom(tile_offset + row); 
+        uint8_t lower = PpuBusReadChrRom(tile_offset + row + 8);
+
+        for (int x = 7; x >= 0; x--)
+        {
+            // Apply horizontal flip
+            int bit = flip_horz ? x : 7 - x;
+            uint8_t pixel = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+
+            if (!pixel)
+                continue;
+    
+            Color color = GetspriteColor(palette, pixel);
+
+            DrawPixel(ppu->buffer, tile_x + x, tile_y + y, color);
+        }
+    }
+}
+
+static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, int palette, bool flip_horz, bool flip_vert)
+{
+    int bank = (tile_index & 1) ? 0x1000 : 0x0000;  
+    int tile_id = tile_index & 0xFE; 
+
+    for (int y = 0; y < 16; y++)
+    {
+        int tile_part = (y < 8) ^ flip_vert ? 0 : 1;  // Swap tile part if flipping vertically
+        int row = flip_vert ? (7 - (y & 7)) : (y & 7);  
+
+        int tile_offset = bank + (tile_id + tile_part) * 16; 
+        uint8_t upper = PpuBusReadChrRom(tile_offset + row); //tile_data[y];
+        uint8_t lower = PpuBusReadChrRom(tile_offset + row + 8); //tile_data[y + 8];
+
+        for (int x = 7; x >= 0; x--)
+        {
+            int col = flip_horz ? x : 7 - x;  // Apply horizontal flip
+
+            uint16_t pixel = ((lower >> col) & 1) << 1 | ((upper >> col) & 1);
+            if (!pixel)
+                continue;
+
+            Color color = GetspriteColor(palette, pixel);
+            DrawPixel(ppu->buffer, tile_x + x, tile_y + y, color);
+        }
+    }
+}
+
 static void DrawSpritePlaceholder(Ppu *ppu, int scanline, int cycle)
 {
     if (!ppu->mask.sprites_rendering)
@@ -573,13 +621,29 @@ static void DrawSpritePlaceholder(Ppu *ppu, int scanline, int cycle)
         uint16_t palette = curr_sprite->attribs.palette;
         size_t tile_offset = bank + (curr_sprite->tile_id * 16);
         if (curr_sprite->y < 241 && curr_sprite->x < 255)
-            PpuDrawSprite(ppu, bank, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
-                curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
-        //uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
-        //uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
-        //Color color = GetColor(curr_sprite->attribs.palette, ppu->v.pattern_table.bit_plane_msb);
-        //if (scanline >= curr_sprite->y && scanline < curr_sprite->y + (ppu_ptr->ctrl.sprite_size ? 16 : 8))
-        //    DrawSprite(ppu->buffer, curr_sprite->x, curr_sprite->y, 8, color);
+        {
+            if (ppu->ctrl.sprite_size)
+            {
+                //PpuDrawSprite8x16(ppu, curr_sprite->tile_id, curr_sprite->x, curr_sprite->y + 1,
+                //    palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+                //bank = (curr_sprite->tile_id & 1) ? 0x1000: 0;
+                PpuDrawSprite16(ppu, curr_sprite->tile_id , curr_sprite->x, curr_sprite->y + 1,
+                                  palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+                //PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
+                //    curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+                //    tile_offset = bank + (curr_sprite->tile_id + 1 * 16);
+                //PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 9, palette,
+                //    curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+            }
+            else
+            {
+                PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
+                   curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+            }
+
+            //PpuDrawSprite(ppu, tile_offset + 8, curr_sprite->x, curr_sprite->y + 9, palette,
+            //        curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+        }
     }
 }
 
@@ -887,8 +951,8 @@ static void PPU_DrawScanline(Ppu *ppu, int scanline)
 
         // Get pattern table address for this tile
         size_t tile_offset = bank + (tile_index * 16) + fine_y;
-        uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
-        uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+        uint8_t upper = PpuBusReadChrRom(tile_offset);       // Bitplane 0
+        uint8_t lower = PpuBusReadChrRom(tile_offset + 8);   // Bitplane 1
 
         // Extract the correct pixel from bitplanes
         uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
@@ -935,8 +999,8 @@ static void PPU_DrawDot(Ppu *ppu, int scanline, int cycle)
 
     // Get pattern table address for this tile
     size_t tile_offset = bank + (tile_index * 16) + fine_y;
-    uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
-    uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+    uint8_t upper = PpuBusReadChrRom(tile_offset);       // Bitplane 0
+    uint8_t lower = PpuBusReadChrRom(tile_offset + 8);   // Bitplane 1
 
     // Extract the correct pixel from bitplanes
     uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
@@ -985,8 +1049,8 @@ static void PPU_DrawTile(Ppu *ppu, int scanline)
 
         // Get pattern table address for this tile
         size_t tile_offset = bank + (tile_index * 16) + fine_y;
-        uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
-        uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+        uint8_t upper = PpuBusReadChrRom(tile_offset);       // Bitplane 0
+        uint8_t lower = PpuBusReadChrRom(tile_offset + 8);   // Bitplane 1
 
         // Extract the correct pixel from bitplanes
         uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
@@ -1036,14 +1100,14 @@ static void PPU_DrawTile2(Ppu *ppu, int cycle)
         {
             // Fetch pattern table LSB
             uint16_t tile_addr = (ppu->ctrl.bg_pat_table_addr << 12) + (ppu->next_tile_index * 16) + ppu->v.scrolling.fine_y;
-            ppu->next_tile_lsb = g_chr_rom[tile_addr];
+            ppu->next_tile_lsb = PpuBusReadChrRom[tile_addr];
             break;
         }
 
         case 7:
             // Fetch pattern table MSB
             tile_addr = (ppu->ctrl.bg_pattern_table << 12) + (ppu->next_tile_index * 16) + ppu->v.scrolling.fine_y;
-            ppu->next_tile_msb = g_chr_rom[tile_addr + 8];
+            ppu->next_tile_msb = PpuBusReadChrRom[tile_addr + 8];
             break;
 
         case 0:
@@ -1110,8 +1174,8 @@ static void PPU_DrawDotv2(Ppu *ppu, int scanline, int cycle)
 
     // Get pattern table address for this tile
     size_t tile_offset = bank + (tile_index * 16) + fine_y;
-    uint8_t upper = g_chr_rom[tile_offset];       // Bitplane 0
-    uint8_t lower = g_chr_rom[tile_offset + 8];   // Bitplane 1
+    uint8_t upper = PpuBusReadChrRom(tile_offset);       // Bitplane 0
+    uint8_t lower = PpuBusReadChrRom(tile_offset + 8);   // Bitplane 1
 
     // Fetch current and next tile index
     uint16_t tile_index1 = nametable[tile_addr & 0x3FF];
@@ -1122,11 +1186,11 @@ static void PPU_DrawDotv2(Ppu *ppu, int scanline, int cycle)
     size_t tile_offset2 = bank + (tile_index2 * 16) + fine_y;
 
     // Fetch pattern bytes for both tiles
-    uint8_t upper1 = g_chr_rom[tile_offset1];
-    uint8_t lower1 = g_chr_rom[tile_offset1 + 8];
+    uint8_t upper1 = PpuBusReadChrRom(tile_offset1);
+    uint8_t lower1 = PpuBusReadChrRom(tile_offset1 + 8);
 
-    uint8_t upper2 = g_chr_rom[tile_offset2];
-    uint8_t lower2 = g_chr_rom[tile_offset2 + 8];
+    uint8_t upper2 = PpuBusReadChrRom(tile_offset2);
+    uint8_t lower2 = PpuBusReadChrRom(tile_offset2 + 8);
 
     // Merge into 16-bit shift buffers (simulate shift registers)
     uint16_t upper_shift = (upper1 << 8) | upper2;
@@ -1264,7 +1328,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
             // Get pattern table address for this tile
             size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
             // Bitplane 0
-            ppu->bg_lsb = g_chr_rom[tile_offset];
+            ppu->bg_lsb = PpuBusReadChrRom(tile_offset);
             break;
         }
         case 7:
@@ -1272,7 +1336,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
             // Get pattern table address for this tile
             size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
             // Bitplane 1
-            ppu->bg_msb = g_chr_rom[tile_offset + 8];
+            ppu->bg_msb = PpuBusReadChrRom(tile_offset + 8);
             break;
         }
     }
@@ -1306,20 +1370,6 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
 static bool PpuSprite0Hit(Ppu *ppu, int cycle, int scanline)
 {
     return sprites[0].y == scanline - 6 && cycle <= sprites[0].x && ppu->mask.sprites_rendering;
-}
-
-static void PpuCycleUpdate(Ppu *ppu, int cycle, int scanline)
-{
-
-}
-
-static void PpuRenderLines(Ppu *ppu, int cycle, int scanline)
-{
-    switch (scanline)
-    {
-        case 241:
-            break;
-    }
 }
 
 static void PpuPreRenderLine(Ppu *ppu, int cycle, int scanline)
@@ -1492,7 +1542,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         {
             //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
             //assert(ppu->v.raw != 0);
-            //ppu->v.raw = ppu->v.raw & 0x3FFF;
+            ppu->v.raw = ppu->v.raw & 0x3FFF;
             // VBlank starts at scanline 241
             ppu->status.vblank = 1;
             // If NMI is enabled

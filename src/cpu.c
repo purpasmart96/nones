@@ -12,264 +12,41 @@
 #include "cpu.h"
 #include "ppu.h"
 #include "joypad.h"
-#include "loader.h"
 #include "arena.h"
+#include "loader.h"
 #include "bus.h"
 
-#define SYS_RAM_SIZE 0x2000
-static uint8_t memory[SYS_RAM_SIZE];
-
-uint32_t CpuRead(const uint16_t addr, const int size)
-{
-    uint16_t ret = 0;
-    // Extract A15, A14, and A13
-    uint8_t region = (addr >> 13) & 0x7;
-
-    switch (region)
-    {
-        case 0x0:  // $0000 - $1FFF
-        {
-            memcpy(&ret, &memory[addr & 0x7FF], size);
-            return ret;
-        }
-
-        case 0x1:  // $2000 - $3FFF
-        {
-            if (size == 1)
-            {
-                ret = ReadPPURegister(addr);
-            }
-            return ret;
-        }
-
-        case 0x2:  // $4000 - $5FFF
-            if (addr < 0x4018)
-            {
-                if (addr == 0x4016)
-                {
-                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    //return g_joypad_reg;
-                    return ReadJoyPadReg();
-                }
-                if (addr == 0x4017)
-                {
-                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    return 0;
-                }
-                //printf("Trying to read APU/IO reg at 0x%04X\n", addr);
-                //break;
-                memcpy(&ret, &g_apu_regs[addr & 0x17], size);
-                return ret;
-                //return apu_io_read(addr);  // APU & I/O
-            }
-            else
-            {
-                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
-                break;
-            }
-
-
-        case 0x3:  // $6000 - $7FFF
-        {
-            memcpy(&ret, &g_sram[addr & 0x1FFF], size);
-            return ret;
-        }
-    
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-        {
-            //memcpy(&ret, &g_prg_rom[addr - 0xC000], size);
-            memcpy(&ret, &g_prg_rom[addr % g_prg_rom_size], size);
-            return ret;
-            //return MapperRead(addr, size);
-        }
-    }
-
-    return 0;  // open bus
-}
 
 uint8_t CpuRead8(const uint16_t addr)
 {
-    return (uint8_t)CpuRead(addr, 1);
+    return BusRead(addr);
 }
 
-uint16_t CpuRead16(const uint16_t addr)
+void CpuWrite8(const uint16_t addr, const uint8_t data)
 {
-    return (uint16_t)CpuRead(addr, 2);
+    BusWrite(addr, data);
 }
 
-static uint16_t ReadVector(uint16_t addr)
+static uint8_t *CpuGetPtr(const uint16_t addr)
+{
+    return BusGetPtr(addr);
+}
+
+static uint16_t CpuReadVector(uint16_t addr)
 {
     return (uint16_t)CpuRead8(addr + 1) << 8 | CpuRead8(addr);
 }
 
-/*
-uint8_t CpuRead8(const uint16_t addr)
-{
-    // Extract A15, A14, and A13
-    uint8_t region = (addr >> 13) & 0x7;
-
-    switch (region)
-    {
-        case 0x0:  // $0000 - $1FFF
-            return memory[addr & 0x7FF];  // Internal RAM (mirrored)
-
-        case 0x1:  // $2000 - $3FFF
-            return g_ppu_regs[(addr & 7) - 0x2000];  // PPU Registers (mirrored every 8)
-
-        case 0x2:  // $4000 - $5FFF
-            if (addr < 0x4018)
-            {
-                printf("Trying to read APU/IO reg at 0x%04X\n", addr);
-                break;
-                //return apu_io_read(addr);  // APU & I/O
-            }
-            else
-            {
-                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
-                break;  // $4018-$5FFF might be mapper-controlled
-            }
-
-
-        case 0x3:  // $6000 - $7FFF
-            return g_sram[addr - 0x6000];  // Battery-backed SRAM (if present)
-
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-            return g_prg_rom[addr - 0x8000];
-    }
-
-    return 0;  // Default case (open bus behavior)
-}
-*/
-
-void CpuWrite8(const uint16_t addr, const uint8_t data)
-{
-    // Extract A15, A14, and A13
-    uint8_t region = (addr >> 13) & 0x7;
-
-    switch (region)
-    {
-        case 0x0:  // $0000 - $1FFF
-            // Internal RAM (mirrored)
-            memory[addr & 0x7FF] = data;
-            break;
-
-        case 0x1:  // $2000 - $3FFF
-            // PPU Registers (mirrored every 8)
-            WritePPURegister(addr, data);
-            break;
-
-        case 0x2:  // $4000 - $5FFF
-            if (addr < 0x4018)
-            {
-                if (addr == 0x4014)
-                {
-                    DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
-                    OAM_Dma(data);
-                    break;
-                }
-                if (addr == 0x4016)
-                {
-                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    WriteJoyPadReg(data);
-                    //g_joypad_reg = data;
-                    //WriteJoyPadReg(Buttons button)
-                    break;
-                }
-                DEBUG_LOG("Writing to APU/IO reg at 0x%04X\n", addr);
-                g_apu_regs[addr % 0x18] = data;
-
-                break;
-                //return apu_io_read(addr);  // APU & I/O
-            }
-            else
-            {
-                printf("Trying to write unknown (Mapper reg?) value at 0x%04X\n", addr);
-                break;  // $4018-$5FFF might be mapper-controlled
-            }
-
-
-        case 0x3:  // $6000 - $7FFF
-            g_sram[addr & 0x1FFF] = data;  // Battery-backed SRAM (if present)
-            break;
-
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-            printf("Trying to write to rom at addr 0x%x!\n", addr);
-            // Hack
-            //g_prg_rom[addr % g_prg_rom_size] = data;
-            // Something like this?
-            /// MapperWrite(addr, data, 1);
-            break;
-    }
-}
-
-uint8_t *CpuGetPtr(const uint16_t addr)
-{
-    // Extract A15, A14, and A13
-    uint8_t region = (addr >> 13) & 0x7;
-
-    switch (region)
-    {
-        case 0x0:  // $0000 - $1FFF
-        {
-            return &memory[addr & 0x7FF];
-        }
-
-        case 0x1:  // $2000 - $3FFF
-        {
-            printf("NOT DONE\n");
-            return NULL; //&g_ppu_regs[(addr & 7)];
-        }
-
-        case 0x2:  // $4000 - $5FFF
-            if (addr < 0x4018)
-            {
-                return &g_apu_regs[addr % 0x18];
-                //DEBUG_LOG("Trying to read APU/IO reg at 0x%04X\n", addr);
-                //break;
-                //return apu_io_read(addr);  // APU & I/O
-            }
-            else
-            {
-                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
-                break;  // $4018-$5FFF might be mapper-controlled
-            }
-
-
-        case 0x3:  // $6000 - $7FFF
-        {
-            return &g_sram[addr & 0x1FFF];
-        }
-    
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-        {
-            return &g_prg_rom[addr - 0xC000];
-        }
-    }
-
-    return NULL;  // Default case (open bus behavior)   
-}
-
 static inline void StackPush(Cpu *state, uint8_t data)
 {
-    memory[STACK_START + state->sp--] = data;
+    uint8_t *ptr = BusGetPtr(STACK_START + state->sp--);
+    *ptr = data;
 }
 
 // Retrieve the value on the top of the stack and then pop it
 static inline uint8_t StackPull(Cpu *state)
 {
-    return memory[STACK_START + (++state->sp)];
+    return *BusGetPtr(STACK_START + (++state->sp));
 }
 
 static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
@@ -292,27 +69,25 @@ static inline uint16_t GetAbsoluteAddr(Cpu *state)
 // PC += 2 
 static inline uint16_t GetAbsoluteXAddr(Cpu *state, bool add_cycle)
 {
-    uint16_t base_addr = CpuRead16(state->pc + 1);
+    uint16_t base_addr = GetAbsoluteAddr(state);
     uint16_t final_addr = base_addr + state->x;
 
     // Apply extra cycle only if required
     if (add_cycle && !InsidePage(base_addr, final_addr))
         state->cycles++;
 
-    state->pc += 2;
     return final_addr;
 }
 
 static inline uint16_t GetAbsoluteYAddr(Cpu *state, bool add_cycle)
 {
-    uint16_t base_addr = CpuRead16(state->pc + 1);
+    uint16_t base_addr = GetAbsoluteAddr(state);
     uint16_t final_addr = base_addr + state->y;
 
     // Apply extra cycle only if required
     if (add_cycle && !InsidePage(base_addr, final_addr))
         state->cycles++;
 
-    state->pc += 2;
     return final_addr;
 }
 
@@ -339,7 +114,7 @@ static inline uint16_t GetIndirectAddr(Cpu *state)
     
     uint16_t ptr = (uint16_t)ptr_high << 8 | ptr_low;
     uint16_t new_pc;
-    // **6502 Page Boundary Bug** (If ptr is at 0xXXFF, high byte comes from 0xXX00, not 0xXXFF+1)
+    // 6502 Page Boundary Bug** (If ptr is at 0xXXFF, high byte comes from 0xXX00, not 0xXXFF+1)
     if ((ptr & 0xFF) == 0xFF)
     {
         new_pc = (uint16_t)CpuRead8(ptr) | ((uint16_t)CpuRead8(ptr & 0xFF00) << 8);
@@ -374,9 +149,11 @@ static inline uint16_t GetPostIndexedIndirectAddr(Cpu *state, bool page_cycle)
 static inline uint16_t GetPreIndexedIndirectAddr(Cpu *state, uint8_t reg)
 {
     uint8_t zp_addr = GetZPAddr(state);
-    uint8_t effective_ptr = (zp_addr + reg) & PAGE_MASK; // Wrap in zero-page
+    // Wrap in zero-page
+    uint8_t effective_ptr = (zp_addr + reg) & PAGE_MASK;
     uint8_t addr_low = CpuRead8(effective_ptr);
-    uint8_t addr_high = CpuRead8((effective_ptr + 1) & PAGE_MASK); // Wrap in zero-page
+    // Wrap in zero-page
+    uint8_t addr_high = CpuRead8((effective_ptr + 1) & PAGE_MASK);
     return (uint16_t)addr_high << 8 | addr_low;
 }
 
@@ -698,7 +475,7 @@ static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        DEBUG_LOG("BNE PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -741,7 +518,7 @@ static inline void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     state->status.i = true;
     // Load IRQ/BRK vector ($FFFE-$FFFF) into PC
-    state->pc = ReadVector(0xFFFE);
+    state->pc = CpuReadVector(0xFFFE);
 
     DEBUG_LOG("Jumping to IRQ vector at 0x%X\n", state->pc);
 }
@@ -1233,20 +1010,6 @@ static inline void TSX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     state->pc++;
 }
 
-// Transfer Stack Pointer to Accumulator
-static inline void TSA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
-{
-    // Unused
-    UNUSED(addr_mode);
-    UNUSED(page_cycle);
-
-    state->a = state->sp;
-    state->status.n = GET_NEG_BIT(state->a);  // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0; // Zero flag (is x zero?)
-
-    state->pc++;
-}
-
 // Transfer Index X to Accumulator
 static inline void TXA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
@@ -1482,8 +1245,8 @@ static void ExecuteOpcode(Cpu *state)
     {
         printf("Unhandled opcode: 0x%02X at PC: 0x%04X\n\n", opcode, state->pc);
         printf("Cycles done: %lu\n", state->cycles);
-        state->pc++;
-        //exit(EXIT_FAILURE);
+        //state->pc++;
+        exit(EXIT_FAILURE);
     }
 }
 
@@ -1500,8 +1263,8 @@ void HandleIRQ(Cpu *cpu)
     StackPush(cpu, cpu->pc & 0xFF); // Push PC low byte
     StackPush(cpu, cpu->status.raw & ~0x10); // Push Processor Status (clear Break flag)
 
-    uint16_t ret = ReadVector(0xFFFE);
-    DEBUG_LOG("New PC at 0x%04X\n", ret);
+    uint16_t ret = CpuReadVector(0xFFFE);
+    CPU_LOG("New PC at 0x%04X\n", ret);
     cpu->pc = ret;
 }
 
@@ -1514,7 +1277,7 @@ void CPU_TriggerNMI(Cpu *state)
     // Push status with bit 5 set
     StackPush(state, state->status.raw | 0x20);
 
-    state->pc = ReadVector(0xFFFA);
+    state->pc = CpuReadVector(0xFFFA);
     state->status.i = 1; // Set interrupt disable flag
 }
 
@@ -1544,9 +1307,9 @@ void CPU_Update(Cpu *state)
 void CPU_Reset(Cpu *state)
 {
     // Read the reset vector from 0xFFFC (little-endian)
-    uint16_t reset_vector = ReadVector(0xFFFC); 
+    uint16_t reset_vector = CpuReadVector(0xFFFC); 
     
-    DEBUG_LOG("New PC at 0x%04X\n", reset_vector);
+    CPU_LOG("New PC at 0x%04X\n", reset_vector);
 
     // Set PC to the reset vector address
     state->pc = reset_vector;

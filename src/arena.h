@@ -3,13 +3,13 @@
 
 typedef struct
 {
-    void **heap;
+    uint8_t *heap;
     size_t size;
     size_t capacity;
 } Arena;
 
-Arena *arena_create(size_t bytes);
-void *arena_add(Arena *arena, size_t bytes);
-void arena_destroy(Arena *arena);
+Arena *ArenaCreate(size_t bytes);
+void *ArenaPush(Arena *arena, size_t bytes);
+void ArenaDestroy(Arena *arena);
 
 #endif

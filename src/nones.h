@@ -7,6 +7,7 @@
 #include "cpu.h"
 #include "ppu.h"
 #include "apu.h"
+#include "arena.h"
 #include "loader.h"
 #include "arena.h"
 #include "bus.h"
@@ -22,11 +23,11 @@
 
 typedef struct {
     Arena *arena;
-    Cpu cpu;
-    //Apu *apu;
-    Ppu ppu;
-    Cart cart;
-    Bus bus;
+    //Cpu cpu;
+    ////Apu *apu;
+    //Ppu ppu;
+    //Cart cart;
+    Bus *bus;
 } Nones;
 
 void NonesRun(Nones *nones, const char *path);

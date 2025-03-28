@@ -68,11 +68,10 @@ typedef struct
     state->status.n = GET_NEG_BIT(var); \
     state->status.z = (var == 0) ? 1 : 0;
 
-uint8_t CpuRead8(const uint16_t addr);
-uint16_t CpuRead16(const uint16_t addr);
-void CpuWrite8(const uint16_t addr, const uint8_t data);
-void CpuWrite16(const uint16_t addr, const uint16_t data);
-uint8_t *CpuGetPtr(const uint16_t addr);
+//uint8_t CpuRead8(const uint16_t addr);
+//uint16_t CpuRead16(const uint16_t addr);
+//void CpuWrite8(const uint16_t addr, const uint8_t data);
+//void CpuWrite16(const uint16_t addr, const uint16_t data);
 
 void CPU_Init(Cpu *state);
 void CPU_Update(Cpu *state);

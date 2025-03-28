@@ -6,8 +6,10 @@
 
 #include "cpu.h"
 #include "ppu.h"
+#include "arena.h"
 #include "loader.h"
 #include "mapper.h"
+#include "utils.h"
 
 typedef enum {
     NROM_INVALID,
@@ -15,42 +17,210 @@ typedef enum {
     NROM_256
 } NromType;
 
-static int mapper_type;
-//static uint32_t prg_rom_size;
-
-static uint8_t NromRead8(PrgRom *prg_rom, uint16_t addr)
+static uint8_t NromRead(PrgRom *prg_rom, uint16_t addr)
 {
-    return prg_rom->data[addr & (prg_rom->size - 1)];
+    return prg_rom->data[addr % prg_rom->size];
 }
 
-
-void Mmc1Read(uint16_t addr, uint8_t data)
+static uint8_t Mmc1Read(Cart *cart, const uint16_t addr)
 {
+    Mmc1 *mmc1 = &cart->mmc1;
 
-}
-
-/*
-uint32_t MapperRead(const uint16_t addr, const int size)
-{
-    uint32_t ret;
-    //return NromRead8(addr);
-    memcpy(&ret, &g_prg_rom[addr % g_prg_rom_size], size);
-    return ret;
-}
-*/
-
-uint8_t MapperRead(Cart *cart, const uint16_t addr)
-{
-    switch (cart->mapper)
+    switch ((addr >> 13) & 0x3)
     {
         case 0:
-            return NromRead8(&cart->prg_rom, addr);
-//       case 1:
-//
-//           break;
+        case 1:
+        {
+            uint16_t offset = addr - 0x8000;
+            uint32_t bank_addr_end = (mmc1->prg_bank.mmc1a.select * 0x4000);
+            uint32_t final_addr = bank_addr_end + offset;
+            //printf("Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+        case 2:
+        case 3:
+        {
+            uint16_t offset = 0x10000 - addr;
+            return cart->prg_rom.data[cart->prg_rom.size - offset];
+        }
+        default:
+            break;
+    
+    }
+
+    return 0;
+}
+
+static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
+{
+    uint16_t bank_size = cart->mmc1.control.chr_rom_bank_mode ? 0x1000 : 0x2000;
+    switch ((addr >> 12) & 0x3)
+    {
+        case 0:
+        {
+            //uint16_t offset = addr - bank_size;
+            uint32_t bank = cart->mmc1.control.chr_rom_bank_mode ? cart->mmc1.chr_bank0 : cart->mmc1.chr_bank0;
+            // Special case: If CHR is RAM and only 8 KB, the bank number is ANDed with 1
+            if (cart->chr_rom.is_ram && cart->chr_rom.size == 0x2000)
+                bank &= 1;
+            //uint32_t bank_addr_end = (bank * bank_size) + bank_size;
+            //uint32_t final_addr = bank_addr_end + offset;
+
+            uint32_t final_addr = addr + (bank * 0x1000);
+            //uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
+            //uint32_t final_addr = addr + (bank * bank_size);
+            return cart->chr_rom.data[final_addr];
+        }
+
+        case 1:
+        {
+            uint32_t bank = cart->mmc1.control.chr_rom_bank_mode ? cart->mmc1.chr_bank1 : cart->mmc1.chr_bank0;
+
+            // Special case: If CHR is RAM and only 8 KB, the bank number is ANDed with 1
+            if (cart->chr_rom.is_ram && cart->chr_rom.size == 0x2000)
+                bank &= 1;
+
+            //uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
+            uint32_t final_addr = addr + (bank * 0x1000);
+            //uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
+            //uint32_t final_addr = (addr + ((bank * 0x1000) & (bank_size)));
+
+            return cart->chr_rom.data[final_addr];
+            //uint16_t offset = 0x2000 - addr;
+
+        }
+    }
+
+    return 0;
+}
+
+static uint8_t Mmc1ReadChrRom1(Cart *cart, uint16_t addr)
+{
+    uint16_t bank_size = cart->mmc1.control.chr_rom_bank_mode ? 0x1000 : 0x2000;
+    
+    // Select CHR bank (5-bit value, max 32 banks)
+    uint32_t bank;
+    if (cart->mmc1.control.chr_rom_bank_mode)  
+    {
+        // 4 KB mode: separate banks for $0000-$0FFF and $1000-$1FFF
+        if (addr < 0x1000)
+            bank = cart->mmc1.chr_bank0;
+        else
+            bank = cart->mmc1.chr_bank1;
+    }
+    else
+    {
+        // 8 KB mode: only chr_bank0 is used, but low bit is ignored
+        bank = (cart->mmc1.chr_bank0 & 0x1E);
+    }
+
+    // If CHR is RAM and only 8 KB, the bank number is ANDed with 1
+    if (cart->chr_rom.is_ram)
+        bank &= 1;
+
+    // Compute CHR-ROM address
+    uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
+
+    return cart->chr_rom.data[final_addr];
+}
+
+static void MapperUpdatePPUMirroring(int nt_mirror_mode)
+{
+    switch (nt_mirror_mode) {
+        case 0:
+            NametableMirroringInit(4);
+            break;
+        case 1:
+            NametableMirroringInit(3);
+            break;
+        case 2:
+            NametableMirroringInit(NAMETABLE_VERTICAL);
+            break;
+        case 3:
+            NametableMirroringInit(NAMETABLE_HORIZONTAL);
+            break;
+    }
+}
+
+static void Mmc1Write(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    Mmc1 *mmc1 = &cart->mmc1;
+
+    if ((data >> 7) & 1)
+    {
+        printf("Mmc1 reset request from addr: 0x%04X\n", addr);
+
+        // Mmc1 reset
+        mmc1->shift.raw = 0x10;
+        mmc1->shift_count = 0;
+        // Set last bank at $C000 and switch 16 KB bank at $8000
+        mmc1->control.prg_rom_bank_mode = 0x3;
+        return;
+    }
+
+    mmc1->shift.raw >>= 1;
+    mmc1->shift.bit4 = data & 1;
+    mmc1->shift_count++;
+
+    if (mmc1->shift_count == 5)
+    {
+        const uint8_t reg = mmc1->shift.raw;
+        switch ((addr >> 13) & 0x3)
+        {
+            case 0:
+                mmc1->control.raw = reg;
+                MapperUpdatePPUMirroring(mmc1->control.name_table_setup);
+                //printf("Set nametable mode to: %d\n", mmc1->control.name_table_setup);
+                //printf("Set prg rom bank mode to: %d\n", mmc1->control.prg_rom_bank_mode);
+                printf("Set chr bank mode to %d\n", mmc1->control.chr_rom_bank_mode);
+                break;
+            case 1:
+                mmc1->chr_bank0 = reg;
+                printf("Set chr rom bank index to %d\n", reg);
+                printf("Set chr rom bank index to %d\n", mmc1->chr_bank0);
+                break;
+            case 2:
+                mmc1->chr_bank1 = reg;
+                printf("Set chr rom bank index to %d\n", reg);
+                printf("Set chr rom bank index to %d\n", mmc1->chr_bank1);
+                break;
+            case 3:
+                mmc1->prg_bank.raw = reg;
+                //printf("Set prg rom bank index to %d\n", mmc1->prg_bank.mmc1a.select);
+                break;
+            default:
+                break;
+        
+        }
+        mmc1->shift.raw = 0x10;
+        mmc1->shift_count = 0;
+    }
+}
+
+uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr)
+{
+    switch (cart->mapper_type)
+    {
+        case 0:
+            return NromRead(&cart->prg_rom, addr);
+        case 1:
+            return Mmc1Read(cart, addr);
         default:
             printf("Mapper %d is not implemented! (Read at addr 0x%04X)\n",
-                    cart->mapper, addr);
+                    cart->mapper_type, addr);
+    }
+
+    return 0;
+}
+
+uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr)
+{
+    switch (cart->mapper_type)
+    {
+        case 0:
+            return cart->chr_rom.data[addr & (cart->chr_rom.size - 1)];
+        case 1:
+            return Mmc1ReadChrRom1(cart, addr);
     }
 
     return 0;
@@ -58,88 +228,20 @@ uint8_t MapperRead(Cart *cart, const uint16_t addr)
 
 void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
 {
-    switch (cart->mapper)
+    switch (cart->mapper_type)
     {
-        case 0:
-            break;
         case 1:
+            Mmc1Write(cart, addr, data);
+            break;
+        default:
+            printf("Uknown mapper %d!\n", cart->mapper_type);
             break;
     }
 }
 
-/*
-#define DUMP_BANKS
-static int LoadRom(const char *path, uint8_t *rom)
-{
-    FILE *fp = fopen(path, "rb");
-    if (!fp)
-        return -1;
-
-    NES2_Header *nes2 = malloc(sizeof(*nes2));
-    fread(nes2, 1, 16, fp);
-
-#ifdef DUMP_BANKS
-    char filenames[16] = {'\0'};
-#endif
-    uint16_t base_addr = 0x8000;
-    uint32_t rom_size = nes2->prg_rom_size_lsb * 0x4000;
-    for (int i = 0; i < nes2->prg_rom_size_lsb; i++)
-    {
-#ifdef DUMP_BANKS
-        sprintf(filenames, "bank%d.bin", i);
-        FILE *bank = fopen(filenames, "wb");
-#endif
-        uint16_t bank_addr = 16 + (i * 0x4000);
-        //if (i != 7)
-        //{
-            fseek(fp, bank_addr, SEEK_SET);
-            fread(&rom[bank_addr - 16], 1, 0x4000, fp);
-#ifdef DUMP_BANKS
-            fwrite(&rom[bank_addr - 16], 1, 0x4000, bank);
-#endif
-            if (i != nes2->prg_rom_size_lsb)
-            {
-                memcpy(CPUGetPtr(0x8000), &rom[bank_addr - 16], 0x4000);
-                memcpy(CPUGetPtr(0xC000), &rom[bank_addr - 16], 0x4000);
-            }
-            //else
-            //    memcpy(CPUGetPtr(0xC000), &rom[bank_addr - 16], 0x4000);
-            //if (i == 7)
-            //{
-            //    memcpy(&memory[0xC000], &rom[bank_addr - 16], 0x4000);
-            //}
-            //else
-            //{
-            //    memcpy(&memory[base_addr += 0x4000], &rom[bank_addr - 16], 0x4000);
-            //}
-#ifdef DUMP_BANKS
-            fclose(bank);
-#endif
-    }
-    return 0;
-}
-*/
-
-void MapperMapMem(uint8_t *rom, int mapper, int prg_rom_size)
-{
-    switch (mapper) {
-        case 0:
-        {
-            if (prg_rom_size == NROM_128)
-            {
-                uint16_t base_addr = 0x8000;
-
-                //memcpy(CPUGetPtr(0x8000), &rom[0], 0x4000);
-                //memcpy(CPUGetPtr(0xC000), &rom[0], 0x4000);
-                /*
-                if (i == 0)
-                memcpy(&memory[0x8000], &rom[bank_addr - 16], 0x4000);
-            else
-                memcpy(&memory[0xC000], &rom[bank_addr - 16], 0x4000);
-            */
-            }
-            break;
-        }
-    }   
-}
+// TODO
+//static const Mapper mappers[] = {
+//    {NULL, NULL },
+//    {Mmc1Read, NULL }
+//};
 

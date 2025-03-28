@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -5,90 +6,64 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "arena.h"
 #include "cpu.h"
+#include "joypad.h"
 #include "ppu.h"
 #include "loader.h"
 #include "mapper.h"
 #include "arena.h"
 #include "bus.h"
+#include "utils.h"
 
-//static Bus bus;
-static Bus ppu_bus;
+static Bus *bus_ptr = NULL;
 
-uint8_t BusRead(Bus *bus, const uint16_t addr)
+Bus *BusCreate(Arena *arena)
+{
+    Bus *bus = ArenaPush(arena, sizeof(Bus));
+    bus->cpu = ArenaPush(arena, sizeof(Cpu));
+    bus->ppu = ArenaPush(arena, sizeof(Ppu));
+    bus->cart = ArenaPush(arena, sizeof(Cart));
+    bus->sys_ram = ArenaPush(arena, CPU_RAM_SIZE);
+
+    bus_ptr = bus;
+    return bus;
+}
+
+int BusLoadCart(Arena *arena, Bus *bus, const char *path)
+{
+    return LoaderLoadCart(arena, bus->cart, path);
+}
+
+uint8_t BusRead(const uint16_t addr)
 {
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
 
     switch (region)
     {
-        case 0x0:  // $0000 - $1FFF
-            return bus->sys_ram[addr & 0x7FF];
+        // $0000 - $1FFF
+        case 0x0:
+            return bus_ptr->sys_ram[addr & 0x7FF];
 
-        case 0x1:  // $2000 - $3FFF
-            return ReadPPURegister(addr & 7);
-
-        case 0x2:  // $4000 - $5FFF
-            if (addr < 0x4018)
-            {
-                return g_apu_regs[(addr - APU_IO_REGS_START_ADDR) & 0x17];
-                //return apu_io_read(addr);  // APU & I/O
-            }
-            else
-            {
-                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
-                break;
-            }
-
-
-        case 0x3:  // $6000 - $7FFF
-        {
-            return bus->cart->sram[addr & 0x1FFF];
-        }
-    
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-        {
-            return MapperRead(bus->cart, addr);
-        }
-    }
-
-    return 0;  // open bus
-}
-
-void BusInit(Bus *bus, Cart *cart)
-{
-    //Bus *bus = malloc(sizeof(*bus));
-    memset(bus, 0, sizeof(*bus));
-    bus->sys_ram = malloc(0x800);
-    bus->cart = cart;
-}
-
-uint8_t BusRead2(Bus *bus, const uint16_t addr)
-{
-    uint16_t ret = 0;
-    // Extract A15, A14, and A13
-    uint8_t region = (addr >> 13) & 0x7;
-
-    switch (region)
-    {
-        case 0x0:  // $0000 - $1FFF
-            return bus->sys_ram[addr & 0x7FF];
-
-        case 0x1:  // $2000 - $3FFF
+        // $2000 - $3FFF
+        case 0x1:
             return ReadPPURegister(addr);
 
-        case 0x2:  // $4000 - $5FFF
+        // $4000 - $5FFF
+        case 0x2:
             if (addr < 0x4018)
             {
                 if (addr == 0x4016)
                 {
-                    return 0; //ReadJoyPadReg();
+                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    return ReadJoyPadReg();
                 }
-                //printf("Trying to read APU/IO reg at 0x%04X\n", addr);
-                //break;
+                if (addr == 0x4017)
+                {
+                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    return 0;
+                }
                 return g_apu_regs[addr & 0x17];
                 //return apu_io_read(addr);  // APU & I/O
             }
@@ -98,30 +73,135 @@ uint8_t BusRead2(Bus *bus, const uint16_t addr)
                 break;
             }
 
-            case 0x3:  // $6000 - $7FFF
-                return bus->cart->sram[addr & 0x1FFF];
-        
-            case 0x4:  // $8000 - $9FFF
-            case 0x5:  // $A000 - $BFFF
-            case 0x6:  // $C000 - $DFFF
-            case 0x7:  // $E000 - $FFFF
-            {
-                //return bus->cart->prg_rom.data[addr % g_prg_rom_size];
-                return MapperRead(bus->cart, addr);
-            }
+        case 0x3:  // $6000 - $7FFF
+            return bus_ptr->cart->ram[addr & 0x1FFF];
+    
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+            return MapperReadPrgRom(bus_ptr->cart, addr);
     }
 
-    return 0;  // open bus
+    // open bus
+    return 0;
 }
 
-/*
-static uint8_t BusRead1(Bus *bus, BusType bus_type, const uint16_t addr)
+void BusWrite(const uint16_t addr, const uint8_t data)
 {
-    switch (bus_type) {
-        case CPU_BUS:
-            return BusReadCpu(bus, addr);
-        case PPU_BUS:
-            return BusReadCpu(bus, addr);
+    // Extract A15, A14, and A13
+    uint8_t region = (addr >> 13) & 0x7;
+
+    switch (region)
+    {
+        // $0000 - $1FFF
+        case 0x0:
+            // Internal RAM (mirrored)
+            bus_ptr->sys_ram[addr & 0x7FF] = data;
+            break;
+
+        // $2000 - $3FFF
+        case 0x1:
+            WritePPURegister(addr, data);
+            break;
+
+        // $4000 - $5FFF
+        case 0x2:
+            if (addr < 0x4018)
+            {
+                if (addr == 0x4014)
+                {
+                    DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
+                    OAM_Dma(data);
+                    break;
+                }
+                if (addr == 0x4016)
+                {
+                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    WriteJoyPadReg(data);
+                    break;
+                }
+                DEBUG_LOG("Writing to APU/IO reg at 0x%04X\n", addr);
+                g_apu_regs[addr % 0x18] = data;
+                break;
+                //return apu_io_read(addr);  // APU & I/O
+            }
+            else
+            {
+                printf("Trying to write unknown (Mapper reg?) value at 0x%04X\n", addr);
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+        // SRAM / WRAM
+        // $6000 - $7FFF
+        case 0x3:
+            bus_ptr->cart->ram[addr & 0x1FFF] = data;
+            break;
+
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+            MapperWrite(bus_ptr->cart, addr, data);
+            break;
     }
 }
-*/
+
+uint8_t *BusGetPtr(const uint16_t addr)
+{
+    // Extract A15, A14, and A13
+    uint8_t region = (addr >> 13) & 0x7;
+
+    switch (region)
+    {
+        case 0x0:  // $0000 - $1FFF
+        {
+            return &bus_ptr->sys_ram[addr & 0x7FF];
+        }
+
+        case 0x2:  // $4000 - $5FFF
+            if (addr < 0x4018)
+            {
+                return &g_apu_regs[addr % 0x18];
+                //DEBUG_LOG("Trying to read APU/IO reg at 0x%04X\n", addr);
+                //break;
+                //return apu_io_read(addr);  // APU & I/O
+            }
+            else
+            {
+                printf("Trying to read unknown (Mapper reg?) value at 0x%04X\n", addr);
+                break;  // $4018-$5FFF might be mapper-controlled
+            }
+
+
+        case 0x3:  // $6000 - $7FFF
+        {
+            return &bus_ptr->cart->ram[addr & 0x1FFF];
+        }
+    
+        case 0x4:  // $8000 - $9FFF
+        case 0x5:  // $A000 - $BFFF
+        case 0x6:  // $C000 - $DFFF
+        case 0x7:  // $E000 - $FFFF
+        {
+            PrgRom *prg_rom = &bus_ptr->cart->prg_rom;
+            return &prg_rom->data[addr & (prg_rom->size - 1)];
+        }
+    }
+
+    return NULL; 
+}
+
+
+// TODO: The Ppu struct should have a ptr to the chr rom / chr ram
+// The PPU only exposes the io regs on the main bus, it has its own bus
+uint8_t PpuBusReadChrRom(const uint16_t addr)
+{
+    return MapperReadChrRom(bus_ptr->cart, addr);
+}
+
+void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data)
+{
+    ChrRom *chr_rom = &bus_ptr->cart->chr_rom;
+    chr_rom->data[addr & (chr_rom->size - 1)] = data;
+}

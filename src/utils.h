@@ -8,6 +8,13 @@ do { fprintf(stdout, fmt, __VA_ARGS__); } while (0)
 #define DEBUG_LOG(fmt, ...) ((void)0)
 #endif
 
+#ifndef DISABLE_CPU_DEBUG
+#define CPU_LOG(fmt, ...) \
+do { fprintf(stdout, fmt, __VA_ARGS__); } while (0)
+#else
+#define CPU_LOG(fmt, ...) ((void)0)
+#endif
+
 #define UNUSED(var) ((void)(var))
 
 #define ARRAY_SIZE(s) (sizeof(s) / sizeof((s)[0]))
