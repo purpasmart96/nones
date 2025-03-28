@@ -8,6 +8,7 @@
 #include "ppu.h"
 #include "arena.h"
 #include "loader.h"
+#include "bus.h"
 #include "mapper.h"
 #include "utils.h"
 
@@ -19,7 +20,7 @@ typedef enum {
 
 static uint8_t NromRead(PrgRom *prg_rom, uint16_t addr)
 {
-    return prg_rom->data[addr % prg_rom->size];
+    return prg_rom->data[addr & (prg_rom->size - 1)];
 }
 
 static uint8_t Mmc1Read(Cart *cart, const uint16_t addr)
@@ -51,54 +52,11 @@ static uint8_t Mmc1Read(Cart *cart, const uint16_t addr)
     return 0;
 }
 
-static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
-{
-    uint16_t bank_size = cart->mmc1.control.chr_rom_bank_mode ? 0x1000 : 0x2000;
-    switch ((addr >> 12) & 0x3)
-    {
-        case 0:
-        {
-            //uint16_t offset = addr - bank_size;
-            uint32_t bank = cart->mmc1.control.chr_rom_bank_mode ? cart->mmc1.chr_bank0 : cart->mmc1.chr_bank0;
-            // Special case: If CHR is RAM and only 8 KB, the bank number is ANDed with 1
-            if (cart->chr_rom.is_ram && cart->chr_rom.size == 0x2000)
-                bank &= 1;
-            //uint32_t bank_addr_end = (bank * bank_size) + bank_size;
-            //uint32_t final_addr = bank_addr_end + offset;
-
-            uint32_t final_addr = addr + (bank * 0x1000);
-            //uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
-            //uint32_t final_addr = addr + (bank * bank_size);
-            return cart->chr_rom.data[final_addr];
-        }
-
-        case 1:
-        {
-            uint32_t bank = cart->mmc1.control.chr_rom_bank_mode ? cart->mmc1.chr_bank1 : cart->mmc1.chr_bank0;
-
-            // Special case: If CHR is RAM and only 8 KB, the bank number is ANDed with 1
-            if (cart->chr_rom.is_ram && cart->chr_rom.size == 0x2000)
-                bank &= 1;
-
-            //uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
-            uint32_t final_addr = addr + (bank * 0x1000);
-            //uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
-            //uint32_t final_addr = (addr + ((bank * 0x1000) & (bank_size)));
-
-            return cart->chr_rom.data[final_addr];
-            //uint16_t offset = 0x2000 - addr;
-
-        }
-    }
-
-    return 0;
-}
-
-static uint8_t Mmc1ReadChrRom1(Cart *cart, uint16_t addr)
+static uint8_t Mmc1ReadChrRom(Cart *cart, uint16_t addr)
 {
     uint16_t bank_size = cart->mmc1.control.chr_rom_bank_mode ? 0x1000 : 0x2000;
     
-    // Select CHR bank (5-bit value, max 32 banks)
+    // Select chr bank (5-bit value, max 32 banks)
     uint32_t bank;
     if (cart->mmc1.control.chr_rom_bank_mode)  
     {
@@ -110,12 +68,12 @@ static uint8_t Mmc1ReadChrRom1(Cart *cart, uint16_t addr)
     }
     else
     {
-        // 8 KB mode: only chr_bank0 is used, but low bit is ignored
+        // 8 KB mode: only chr_bank0 is used, but low bit is ignored?
         bank = (cart->mmc1.chr_bank0 & 0x1E);
     }
 
     // If CHR is RAM and only 8 KB, the bank number is ANDed with 1
-    if (cart->chr_rom.is_ram)
+    if (cart->chr_rom.is_ram && cart->chr_rom.size == CART_RAM_SIZE)
         bank &= 1;
 
     // Compute CHR-ROM address
@@ -176,13 +134,11 @@ static void Mmc1Write(Cart *cart, const uint16_t addr, const uint8_t data)
                 break;
             case 1:
                 mmc1->chr_bank0 = reg;
-                printf("Set chr rom bank index to %d\n", reg);
-                printf("Set chr rom bank index to %d\n", mmc1->chr_bank0);
+                printf("Set chr rom bank0 index to %d\n", mmc1->chr_bank0);
                 break;
             case 2:
                 mmc1->chr_bank1 = reg;
-                printf("Set chr rom bank index to %d\n", reg);
-                printf("Set chr rom bank index to %d\n", mmc1->chr_bank1);
+                printf("Set chr rom bank1 index to %d\n", mmc1->chr_bank1);
                 break;
             case 3:
                 mmc1->prg_bank.raw = reg;
@@ -220,7 +176,7 @@ uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr)
         case 0:
             return cart->chr_rom.data[addr & (cart->chr_rom.size - 1)];
         case 1:
-            return Mmc1ReadChrRom1(cart, addr);
+            return Mmc1ReadChrRom(cart, addr);
     }
 
     return 0;

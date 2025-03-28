@@ -98,11 +98,11 @@ typedef union
 
 typedef union
 {
-    uint8_t raw : 4;
+    uint8_t raw : 5;
     struct
     {
         // Select 16 KB PRG-ROM bank (low bit ignored in 32 KB mode)
-        uint8_t select : 3;
+        uint8_t select : 4;
         // PRG-RAM chip enable (0: enabled; 1: disabled; ignored on MMC1A)
         uint8_t ram_enable : 1;
     } mmc1b;
@@ -110,7 +110,7 @@ typedef union
     struct
     {
         // Select 16 KB PRG-ROM bank (low bit ignored in 32 KB mode)
-        uint8_t select : 3;
+        uint8_t select : 4;
         // Bit 3 bypasses fixed bank logic in 16K mode (0: fixed bank affects A17-A14;
         // 1: fixed bank affects A16-A14 and bit 3 directly controls A17)
         uint8_t bypass_16k_logic : 1;
