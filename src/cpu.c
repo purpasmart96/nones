@@ -1278,7 +1278,7 @@ void CPU_TriggerNMI(Cpu *state)
     StackPush(state, state->status.raw | 0x20);
 
     state->pc = CpuReadVector(0xFFFA);
-    state->status.i = 1; // Set interrupt disable flag
+    state->status.i = 1;
 }
 
 static bool irq_pending;
