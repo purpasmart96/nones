@@ -133,6 +133,11 @@ typedef struct
 
 typedef struct
 {
+    uint8_t bank;
+} UxRom;
+
+typedef struct
+{
     uint8_t (*ReadFn)(void *mapper, const uint16_t addr);
     void (*WriteFn)(void *mapper, const uint16_t addr, const uint8_t data);
 } Mapper;
@@ -144,6 +149,7 @@ typedef struct {
     uint8_t *ram;
     //Mapper mapper;
     Mmc1 mmc1;
+    UxRom ux_rom;
     int mapper_type;
     int mirroring;
     const char *name;

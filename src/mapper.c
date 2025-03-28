@@ -23,17 +23,15 @@ static uint8_t NromRead(PrgRom *prg_rom, uint16_t addr)
     return prg_rom->data[addr & (prg_rom->size - 1)];
 }
 
-static uint8_t Mmc1Read(Cart *cart, const uint16_t addr)
+static uint8_t Read16kBank(Cart *cart, int bank, const uint16_t addr)
 {
-    Mmc1 *mmc1 = &cart->mmc1;
-
     switch ((addr >> 13) & 0x3)
     {
         case 0:
         case 1:
         {
             uint16_t offset = addr - 0x8000;
-            uint32_t bank_addr_end = (mmc1->prg_bank.mmc1a.select * 0x4000);
+            uint32_t bank_addr_end = (bank * 0x4000);
             uint32_t final_addr = bank_addr_end + offset;
             //printf("Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
@@ -44,12 +42,24 @@ static uint8_t Mmc1Read(Cart *cart, const uint16_t addr)
             uint16_t offset = 0x10000 - addr;
             return cart->prg_rom.data[cart->prg_rom.size - offset];
         }
-        default:
-            break;
-    
+
     }
 
     return 0;
+}
+
+static uint8_t Mmc1Read(Cart *cart, const uint16_t addr)
+{
+    Mmc1 *mmc1 = &cart->mmc1;
+
+    return Read16kBank(cart, mmc1->prg_bank.mmc1a.select, addr);
+}
+
+static uint8_t UxRomRead(Cart *cart, const uint16_t addr)
+{
+    UxRom *ux_rom = &cart->ux_rom;
+
+    return Read16kBank(cart, ux_rom->bank & 0x7, addr);
 }
 
 static uint8_t Mmc1ReadChrRom(Cart *cart, uint16_t addr)
@@ -153,6 +163,15 @@ static void Mmc1Write(Cart *cart, const uint16_t addr, const uint8_t data)
     }
 }
 
+static void UxRomWrite(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    UxRom *ux_rom = &cart->ux_rom;
+
+    ux_rom->bank = data;
+
+    printf("Set prg rom bank index to %d\n", data & 0x7);
+}
+
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr)
 {
     switch (cart->mapper_type)
@@ -161,6 +180,8 @@ uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr)
             return NromRead(&cart->prg_rom, addr);
         case 1:
             return Mmc1Read(cart, addr);
+        case 2:
+            return UxRomRead(cart, addr);
         default:
             printf("Mapper %d is not implemented! (Read at addr 0x%04X)\n",
                     cart->mapper_type, addr);
@@ -177,6 +198,8 @@ uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr)
             return cart->chr_rom.data[addr & (cart->chr_rom.size - 1)];
         case 1:
             return Mmc1ReadChrRom(cart, addr);
+        case 2:
+            return cart->chr_rom.data[addr & (cart->chr_rom.size - 1)];
     }
 
     return 0;
@@ -188,6 +211,9 @@ void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
     {
         case 1:
             Mmc1Write(cart, addr, data);
+            break;
+        case 2:
+            UxRomWrite(cart, addr, data);
             break;
         default:
             printf("Uknown mapper %d!\n", cart->mapper_type);
