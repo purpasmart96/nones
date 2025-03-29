@@ -62,7 +62,7 @@ static inline uint16_t GetAbsoluteAddr(Cpu *state)
     uint8_t addr_low = CpuRead8(++state->pc);
     uint8_t addr_high = CpuRead8(++state->pc);
     uint16_t ret = (uint16_t)addr_high << 8 | addr_low;
-    DEBUG_LOG("Absolute addr 0x%04X\n", ret);
+    CPU_LOG("Absolute addr 0x%04X\n", ret);
     return ret;
 }
 
@@ -230,7 +230,7 @@ static inline void AddWithCarry(Cpu *state, uint8_t operand)
     
     state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
     state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
-    DEBUG_LOG("Operand %x\n", operand);
+    CPU_LOG("Operand %x\n", operand);
 }
 
 static inline void BitwiseAnd(Cpu *state, uint8_t operand)
@@ -386,7 +386,7 @@ static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -406,7 +406,7 @@ static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -426,7 +426,7 @@ static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -455,7 +455,7 @@ static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -475,7 +475,7 @@ static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("BNE PC Offset %d\n", offset);
+        CPU_LOG("BNE PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -495,7 +495,7 @@ static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -520,7 +520,7 @@ static inline void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Load IRQ/BRK vector ($FFFE-$FFFF) into PC
     state->pc = CpuReadVector(0xFFFE);
 
-    DEBUG_LOG("Jumping to IRQ vector at 0x%X\n", state->pc);
+    CPU_LOG("Jumping to IRQ vector at 0x%X\n", state->pc);
 }
 
 static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -538,7 +538,7 @@ static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -557,7 +557,7 @@ static inline void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        DEBUG_LOG("PC Offset %d\n", offset);
+        CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
 }
@@ -1237,7 +1237,7 @@ static void ExecuteOpcode(Cpu *state)
 
     if (handler->InstrFn)
     {
-        DEBUG_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, state->pc);
+        CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, state->pc);
         handler->InstrFn(state, handler->addr_mode, handler->page_cross_penalty);
         state->cycles += handler->cycles;
     }

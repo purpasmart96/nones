@@ -8,7 +8,7 @@ do { fprintf(stdout, fmt, __VA_ARGS__); } while (0)
 #define DEBUG_LOG(fmt, ...) ((void)0)
 #endif
 
-#ifndef DISABLE_CPU_DEBUG
+#ifndef DISABLE_CPU_LOG
 #define CPU_LOG(fmt, ...) \
 do { fprintf(stdout, fmt, __VA_ARGS__); } while (0)
 #else
