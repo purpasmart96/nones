@@ -63,7 +63,7 @@ typedef struct
 #define GET_OVERFLOW_BIT(operand) ((operand >> 6) & 1)
 #define UPDATE_FLAGS_NZ(var) \
     state->status.n = GET_NEG_BIT(var); \
-    state->status.z = (var == 0) ? 1 : 0;
+    state->status.z = !var
 
 void CPU_Init(Cpu *state);
 void CPU_Update(Cpu *state);

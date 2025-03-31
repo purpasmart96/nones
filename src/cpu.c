@@ -17,19 +17,14 @@
 #include "bus.h"
 
 
-uint8_t CpuRead8(const uint16_t addr)
+static uint8_t CpuRead8(const uint16_t addr)
 {
     return BusRead(addr);
 }
 
-void CpuWrite8(const uint16_t addr, const uint8_t data)
+static void CpuWrite8(const uint16_t addr, const uint8_t data)
 {
     BusWrite(addr, data);
-}
-
-static uint8_t *CpuGetPtr(const uint16_t addr)
-{
-    return BusGetPtr(addr);
 }
 
 static uint16_t CpuReadVector(uint16_t addr)
@@ -61,9 +56,7 @@ static inline uint16_t GetAbsoluteAddr(Cpu *state)
 {
     uint8_t addr_low = CpuRead8(++state->pc);
     uint8_t addr_high = CpuRead8(++state->pc);
-    uint16_t ret = (uint16_t)addr_high << 8 | addr_low;
-    CPU_LOG("Absolute addr 0x%04X\n", ret);
-    return ret;
+    return (uint16_t)addr_high << 8 | addr_low;
 }
 
 // PC += 2 
@@ -176,8 +169,21 @@ static inline void RotateOneLeft(Cpu *state, uint8_t *operand)
     // Shift all bits left one position and insert old carry into bit 0
     *operand = (*operand << 1) | old_carry;
     // Update status flags
-    state->status.n = GET_NEG_BIT(*operand);     // Negative flag (bit 7)
-    state->status.z = (*operand == 0) ? 1 : 0;   // Zero flag (is result zero?)
+    UPDATE_FLAGS_NZ(*operand);
+}
+
+static inline void RotateOneLeftFromMem(Cpu *state, const uint16_t operand_addr)
+{
+    uint8_t operand = CpuRead8(operand_addr);
+    uint8_t old_carry = state->status.c;
+    // Store bit 7 in carry before rotating
+    state->status.c = (operand >> 7) & 1;
+    // Shift all bits left one position and insert old carry into bit 0
+    operand = (operand << 1) | old_carry;
+    // Write to the bus
+    CpuWrite8(operand_addr, operand);
+    // Update status flags
+    UPDATE_FLAGS_NZ(operand);
 }
 
 static inline void RotateOneRight(Cpu *state, uint8_t *operand)
@@ -188,8 +194,21 @@ static inline void RotateOneRight(Cpu *state, uint8_t *operand)
     // Shift all bits right one position and insert old carry into bit 7
     *operand = (*operand >> 1) | (old_carry << 7);
     // Update status flags
-    state->status.n = GET_NEG_BIT(*operand);     // Negative flag (bit 7)
-    state->status.z = (*operand == 0) ? 1 : 0;   // Zero flag (is result zero?)
+    UPDATE_FLAGS_NZ(*operand);
+}
+
+static inline void RotateOneRightFromMem(Cpu *state, const uint16_t operand_addr)
+{
+    uint8_t operand = CpuRead8(operand_addr);
+    uint8_t old_carry = state->status.c;
+    // Store bit 0 in carry before rotating
+    state->status.c = operand & 1;
+    // Shift all bits right one position and insert old carry into bit 7
+    operand = (operand >> 1) | (old_carry << 7);
+    // Write to the bus
+    CpuWrite8(operand_addr, operand);
+    // Update status flags
+    UPDATE_FLAGS_NZ(operand);
 }
 
 static inline void ShiftOneRight(Cpu *state, uint8_t *operand)
@@ -200,7 +219,23 @@ static inline void ShiftOneRight(Cpu *state, uint8_t *operand)
     *operand >>= 1;
     // Update status flags
     state->status.n = 0;    // Clear N flag 
-    state->status.z = (*operand == 0) ? 1 : 0;   // Zero flag (is A zero?)
+    // Zero flag (is A zero?)
+    state->status.z = (*operand == 0) ? 1 : 0;
+}
+
+static inline void ShiftOneRightFromMem(Cpu *state, const uint16_t operand_addr)
+{
+    uint8_t operand = CpuRead8(operand_addr);
+    // Store bit 0 in carry before shifting
+    state->status.c = operand & 1;
+    // Shift all bits left by one position
+    operand >>= 1;
+    // Write to the bus
+    CpuWrite8(operand_addr, operand);
+    // Update status flags
+    state->status.n = 0;    // Clear N flag 
+    // Zero flag (is operand zero?)
+    state->status.z = (operand == 0) ? 1 : 0;
 }
 
 static inline void ShiftOneLeft(Cpu *state, uint8_t *operand)
@@ -210,8 +245,20 @@ static inline void ShiftOneLeft(Cpu *state, uint8_t *operand)
     // Shift all bits left by one position
     *operand <<= 1;
     // Update status flags
-    state->status.n = GET_NEG_BIT(*operand);     // Negative flag (bit 7)
-    state->status.z = (*operand == 0) ? 1 : 0;   // Zero flag (is A zero?)
+    UPDATE_FLAGS_NZ(*operand);
+}
+
+static inline void ShiftOneLeftFromMem(Cpu *state, const uint16_t operand_addr)
+{
+    uint8_t operand = CpuRead8(operand_addr);
+    // Store bit 7 in carry before shifting
+    state->status.c = (operand >> 7) & 1;
+    // Shift all bits left by one position
+    operand <<= 1;
+    // Write to the bus
+    CpuWrite8(operand_addr, operand);
+    // Update status flags
+    UPDATE_FLAGS_NZ(operand);
 }
 
 // ADC only uses the A register (Accumulator)
@@ -228,17 +275,10 @@ static inline void AddWithCarry(Cpu *state, uint8_t operand)
     // Store result
     state->a = (uint8_t)sum;
     
-    state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->a);
+
     CPU_LOG("Operand %x\n", operand);
-}
-
-static inline void BitwiseAnd(Cpu *state, uint8_t operand)
-{
-    state->a &= operand;
-
-    state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
 }
 
 static inline uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -317,37 +357,36 @@ static inline void SetOperandToMem(Cpu *state, AddressingMode addr_mode, uint8_t
     }
 }
 
-static inline uint8_t *GetOperandPtrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
+static inline uint16_t GetOperandAddrFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     switch (addr_mode)
     {
-        case Accumulator:
-            return &state->a;
         case Relative:
         case Immediate:
-            return CpuGetPtr(++state->pc);
+            return ++state->pc;
         case ZeroPage:
-            return CpuGetPtr(GetZPAddr(state));
+            return GetZPAddr(state);
         case ZeroPageX:
-            return CpuGetPtr(GetZPIndexedAddr(state, state->x));
+            return GetZPIndexedAddr(state, state->x);
         case ZeroPageY:
-            return CpuGetPtr(GetZPIndexedAddr(state, state->y));
+            return GetZPIndexedAddr(state, state->y);
         case Absolute:
-            return CpuGetPtr(GetAbsoluteAddr(state));
+            return GetAbsoluteAddr(state);
         case AbsoluteX:
-            return CpuGetPtr(GetAbsoluteXAddr(state, page_cycle));
+            return GetAbsoluteXAddr(state, page_cycle);
         case AbsoluteY:
-            return CpuGetPtr(GetAbsoluteYAddr(state, page_cycle));
+            return GetAbsoluteYAddr(state, page_cycle);
         case PreIndexedIndirect:
-            return CpuGetPtr(GetPreIndexedIndirectAddr(state, state->x));
+            return GetPreIndexedIndirectAddr(state, state->x);
         case PostIndexedIndirect:
-            return CpuGetPtr(GetPostIndexedIndirectAddr(state, page_cycle));
+            return GetPostIndexedIndirectAddr(state, page_cycle);
         case Implied:
         case Indirect:
-            return NULL;
+        case Accumulator:
+            return 0;
     }
 
-    return NULL;
+    return 0;
 }
 
 static inline void ADC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -360,14 +399,25 @@ static inline void ADC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 static inline void AND_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
-    BitwiseAnd(state, operand);
+
+    state->a &= operand;
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
 }
 
 static inline void ASL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
-    ShiftOneLeft(state, operand);
+    if (addr_mode == Accumulator)
+    {
+        ShiftOneLeft(state, &state->a);
+    }
+    else
+    {
+        ShiftOneLeftFromMem(state, GetOperandAddrFromMem(state, addr_mode, page_cycle));
+    }
+
     state->pc++;
 }
 
@@ -386,7 +436,7 @@ static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        CPU_LOG("PC Offset %d\n", offset);
+        CPU_LOG("BCC pc offset: %d\n", offset);
     }
     state->pc++;
 }
@@ -406,7 +456,7 @@ static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        CPU_LOG("PC Offset %d\n", offset);
+        CPU_LOG("BCS pc offset: %d\n", offset);
     }
     state->pc++;
 }
@@ -426,7 +476,7 @@ static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        CPU_LOG("PC Offset %d\n", offset);
+        CPU_LOG("BEQ pc offset: %d\n", offset);
     }
     state->pc++;
 }
@@ -455,7 +505,7 @@ static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        CPU_LOG("PC Offset %d\n", offset);
+        CPU_LOG("BMI pc offset: %d\n", offset);
     }
     state->pc++;
 }
@@ -475,7 +525,7 @@ static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        CPU_LOG("BNE PC Offset %d\n", offset);
+        CPU_LOG("BNE pc offset: %d\n", offset);
     }
     state->pc++;
 }
@@ -495,7 +545,7 @@ static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        CPU_LOG("PC Offset %d\n", offset);
+        CPU_LOG("BPL pc offset: %d\n", offset);
     }
     state->pc++;
 }
@@ -538,7 +588,7 @@ static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
         state->pc += offset;
         state->cycles++;
-        CPU_LOG("PC Offset %d\n", offset);
+        CPU_LOG("BVC pc offset: %d\n", offset);
     }
     state->pc++;
 }
@@ -625,12 +675,12 @@ static inline void CPY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
 static inline void DEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
+    const uint16_t operand_addr = GetOperandAddrFromMem(state, addr_mode, page_cycle);
+    const uint8_t operand = CpuRead8(operand_addr) - 1;
 
-    *operand -= 1;
-
-    state->status.n = GET_NEG_BIT(*operand);  // Negative flag (bit 7)
-    state->status.z = (*operand == 0) ? 1 : 0;    // Zero flag (is value zero?)
+    CpuWrite8(operand_addr, operand);
+    // Update status flags
+    UPDATE_FLAGS_NZ(operand);
 
     state->pc++;
 }
@@ -642,8 +692,8 @@ static inline void DEX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->x--;
-    state->status.n = GET_NEG_BIT(state->x);  // Negative flag (bit 7)
-    state->status.z = (state->x == 0) ? 1 : 0;    // Zero flag (is X zero?)
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
 }
@@ -655,9 +705,9 @@ static inline void DEY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->y--;
-    state->status.n = GET_NEG_BIT(state->y);  // Negative flag (bit 7)
-    state->status.z = (state->y == 0) ? 1 : 0;    // Zero flag (is X zero?)
 
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->y);
     state->pc++;
 }
 
@@ -665,19 +715,27 @@ static inline void EOR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->a ^= operand;
-    state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
 }
 
 static inline void INC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
+    if (addr_mode == Accumulator)
+    {
+        state->a += 1;
 
-    *operand += 1;
-
-    state->status.n = GET_NEG_BIT(*operand);  // Negative flag (bit 7)
-    state->status.z = (*operand == 0) ? 1 : 0;    // Zero flag (is value zero?)
+        UPDATE_FLAGS_NZ(state->a);
+    }
+    else
+    {
+        const uint16_t operand_addr = GetOperandAddrFromMem(state, addr_mode, page_cycle);
+        const uint8_t operand = CpuRead8(operand_addr) + 1;
+        CpuWrite8(operand_addr, operand);
+        UPDATE_FLAGS_NZ(operand);
+    }
 
     state->pc++;
 }
@@ -689,8 +747,9 @@ static inline void INX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->x++;
-    state->status.n = GET_NEG_BIT(state->x);  // Negative flag (bit 7)
-    state->status.z = (state->x == 0) ? 1 : 0;    // Zero flag (is value zero?)
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
 }
@@ -702,8 +761,9 @@ static inline void INY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->y++;
-    state->status.n = GET_NEG_BIT(state->y);  // Negative flag (bit 7)
-    state->status.z = (state->y == 0) ? 1 : 0;    // Zero flag (is value zero?)
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->y);
 
     state->pc++;
 }
@@ -733,42 +793,41 @@ static inline void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
 static inline void LDA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
-    state->a = operand;
+    state->a = GetOperandFromMem(state, addr_mode, page_cycle);
 
     // Update status flags
-    state->status.n = GET_NEG_BIT(state->a);  // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0; // Zero flag (is A zero?)
+    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
 }
 
 static inline void LDX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
-    state->x = operand;
+    state->x = GetOperandFromMem(state, addr_mode, page_cycle);
 
     // Update status flags
-    state->status.n = GET_NEG_BIT(state->x);  // Negative flag (bit 7)
-    state->status.z = (state->x == 0) ? 1 : 0; // Zero flag (is A zero?)
+    UPDATE_FLAGS_NZ(state->x);
     state->pc++;
 }
 
 static inline void LDY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
-    state->y = operand;
+    state->y = GetOperandFromMem(state, addr_mode, page_cycle);
 
     // Update status flags
-    UPDATE_FLAGS_NZ(state->y)
-    state->status.n = GET_NEG_BIT(state->y);  // Negative flag (bit 7)
-    state->status.z = (state->y == 0) ? 1 : 0; // Zero flag (is A zero?)
+    UPDATE_FLAGS_NZ(state->y);
     state->pc++;
 }
 
 static inline void LSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
-    ShiftOneRight(state, operand);
+    if (addr_mode == Accumulator)
+    {
+        ShiftOneRight(state, &state->a);
+    }
+    else
+    {
+        ShiftOneRightFromMem(state, GetOperandAddrFromMem(state, addr_mode, page_cycle));
+    }
     state->pc++;
 }
 
@@ -785,8 +844,9 @@ static inline void ORA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     state->a |= operand;
-    state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
 }
 
@@ -846,15 +906,27 @@ static inline void PLP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
 static inline void ROL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
-    RotateOneLeft(state, operand);
+    if (addr_mode == Accumulator)
+    {
+        RotateOneLeft(state, &state->a);
+    }
+    else
+    {
+        RotateOneLeftFromMem(state, GetOperandAddrFromMem(state, addr_mode, page_cycle));
+    }
     state->pc++;
 }
 
 static void ROR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    uint8_t *operand = GetOperandPtrFromMem(state, addr_mode, page_cycle);
-    RotateOneRight(state, operand);
+    if (addr_mode == Accumulator)
+    {
+        RotateOneRight(state, &state->a);
+    }
+    else
+    {
+        RotateOneRightFromMem(state, GetOperandAddrFromMem(state, addr_mode, page_cycle));
+    }
     state->pc++;
 }
 
@@ -976,8 +1048,8 @@ static inline void TAX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->x = state->a;
-    state->status.n = GET_NEG_BIT(state->x);  // Negative flag (bit 7)
-    state->status.z = (state->x == 0) ? 1 : 0; // Zero flag (is x zero?)
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
 }
@@ -990,8 +1062,8 @@ static inline void TAY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->y = state->a;
-    state->status.n = GET_NEG_BIT(state->y);  // Negative flag (bit 7)
-    state->status.z = (state->y == 0) ? 1 : 0; // Zero flag (is x zero?)
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->y);
 
     state->pc++;
 }
@@ -1004,8 +1076,8 @@ static inline void TSX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->x = state->sp;
-    state->status.n = GET_NEG_BIT(state->x);  // Negative flag (bit 7)
-    state->status.z = (state->x == 0) ? 1 : 0; // Zero flag (is x zero?)
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
 }
@@ -1018,8 +1090,8 @@ static inline void TXA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->a = state->x;
-    state->status.n = GET_NEG_BIT(state->a);  // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0; // Zero flag (is x zero?)
+    // Update status flags
+    UPDATE_FLAGS_NZ(state->a);
 
     state->pc++;
 }
@@ -1044,18 +1116,21 @@ static inline void TYA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->a = state->y;
-    state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
 
+    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
 }
 
 typedef struct {
     void (*InstrFn)(Cpu *state, AddressingMode addr_mode, bool page_cross_penalty);
-    const char *name;                     // Mnemonic (e.g., "AND", "ASL")
-    uint8_t bytes;                         // Number of bytes the instruction takes
-    uint8_t cycles;                        // Base cycle count
-    bool page_cross_penalty;               // Extra cycle if page boundary is crossed
+    // Mnemonic (e.g., "AND", "ASL")
+    const char *name;
+    // Number of bytes the instruction takes
+    uint8_t bytes;
+    // Base cycle count
+    uint8_t cycles;
+    // Extra cycle(s) if page boundary is crossed
+    bool page_cross_penalty;
     AddressingMode addr_mode;
 } OpcodeHandler;
 
