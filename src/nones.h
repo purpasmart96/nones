@@ -23,10 +23,6 @@
 
 typedef struct {
     Arena *arena;
-    //Cpu cpu;
-    ////Apu *apu;
-    //Ppu ppu;
-    //Cart cart;
     Bus *bus;
 } Nones;
 

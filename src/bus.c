@@ -56,12 +56,12 @@ uint8_t BusRead(const uint16_t addr)
             {
                 if (addr == 0x4016)
                 {
-                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
                     return ReadJoyPadReg();
                 }
                 if (addr == 0x4017)
                 {
-                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
                     return 0;
                 }
                 return g_apu_regs[addr & 0x17];
@@ -115,10 +115,15 @@ void BusWrite(const uint16_t addr, const uint8_t data)
                     OAM_Dma(data);
                     break;
                 }
-                if (addr == 0x4016)
+                else if (addr == 0x4016)
                 {
-                    DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
                     WriteJoyPadReg(data);
+                    break;
+                }
+                else if (addr == 0x4017)
+                {
+                    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
                     break;
                 }
                 DEBUG_LOG("Writing to APU/IO reg at 0x%04X\n", addr);
@@ -147,6 +152,7 @@ void BusWrite(const uint16_t addr, const uint8_t data)
     }
 }
 
+// TODO: Remove
 uint8_t *BusGetPtr(const uint16_t addr)
 {
     // Extract A15, A14, and A13
@@ -163,7 +169,7 @@ uint8_t *BusGetPtr(const uint16_t addr)
             if (addr < 0x4018)
             {
                 return &g_apu_regs[addr % 0x18];
-                //DEBUG_LOG("Trying to read APU/IO reg at 0x%04X\n", addr);
+                //printf("Trying to read APU/IO reg at 0x%04X\n", addr);
                 //break;
                 //return apu_io_read(addr);  // APU & I/O
             }
@@ -184,6 +190,7 @@ uint8_t *BusGetPtr(const uint16_t addr)
         case 0x6:  // $C000 - $DFFF
         case 0x7:  // $E000 - $FFFF
         {
+            // Temp
             PrgRom *prg_rom = &bus_ptr->cart->prg_rom;
             return &prg_rom->data[addr & (prg_rom->size - 1)];
         }

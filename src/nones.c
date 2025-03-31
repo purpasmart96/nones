@@ -24,51 +24,6 @@
 #include "bus.h"
 #include "nones.h"
 
-static void DrawSprite(uint32_t *buffer, int xpos, int ypos, int h, int w)
-{
-    //buffer[y * SCREEN_WIDTH + x] = 0;
-    //buffer[y * SCREEN_WIDTH + x + 1] = 0;
-    //buffer[y * SCREEN_WIDTH + x + 2] = 0;
-    //buffer[y * SCREEN_WIDTH + x + 3] = 0;
-
-    for (int x = xpos; x < xpos + w; x++)
-    {
-        for (int y = ypos; y < ypos + h; y++)
-        {
-            buffer[y * SCREEN_WIDTH + x] = 0;
-        }
-    }
-    // Fill buffer with dummy NES image (red and blue checkerboard pattern)
-    //for (int y = 0; y < SCREEN_HEIGHT; y++) {
-    //    for (int x = 0; x < SCREEN_WIDTH; x++) {
-    //        uint8_t r = 255;// (x % 2 == y % 2) ? 255 : 0;
-    //        uint8_t g = 123;
-    //        uint8_t b = 255; //(x % 2 != y % 2) ? 255 : 0;
-    //        uint8_t a = 255;
-    //        buffer[y * SCREEN_WIDTH + x] = (a << 24) | (b << 16) | (g << 8) | r;
-    //    }
-    //}
-}
-
-
-static void DrawSprite2(uint32_t *buffer, int xpos, int ypos, int h, int w, uint8_t *rgb)
-{
-    //buffer[y * SCREEN_WIDTH + x] = 0;
-    //buffer[y * SCREEN_WIDTH + x + 1] = 0;
-    //buffer[y * SCREEN_WIDTH + x + 2] = 0;
-    //buffer[y * SCREEN_WIDTH + x + 3] = 0;
-
-    for (int x = xpos; x < xpos + w; x++)
-    {
-        for (int y = ypos; y < ypos + h; y++)
-        {
-            uint8_t a = 255;
-            buffer[y * SCREEN_WIDTH + x] = (a << 24) | (rgb[2] << 16) | (rgb[1] << 8) | rgb[0];
-        }
-    }
-}
-
-
 static void NonesInit(Nones *nones, const char *path)
 {
     nones->arena = ArenaCreate(1024 * 1024);
@@ -167,12 +122,7 @@ void NonesRun(Nones *nones, const char *path)
 
 
         nones->bus->ppu->frame_finished = false;
-        //do {
-        //    CPU_Update(&nones->cpu);
-        //    APU_Update(nones->cpu.cycles);
-        //    PPU_Update(&nones->ppu, nones->cpu.cycles);
-        //} while (!nones->ppu.frame_finished);
-        //nones->ppu.frame_finished = false;
+
         do {
             CPU_Update(nones->bus->cpu);
             APU_Update(nones->bus->cpu->cycles);
@@ -184,8 +134,6 @@ void NonesRun(Nones *nones, const char *path)
         SDL_LockTexture(texture, NULL, &raw_pixels, &raw_pitch);
         memcpy(raw_pixels, pixels, raw_pitch * SCREEN_HEIGHT);
         SDL_UnlockTexture(texture);
-
-        //SDL_UpdateTexture(texture, NULL, pixels, SCREEN_WIDTH * 4);
 
         SDL_RenderClear(renderer);
         SDL_RenderTexture(renderer, texture, NULL, NULL);
@@ -213,11 +161,10 @@ void NonesRun(Nones *nones, const char *path)
         FILE *sav = fopen(save_path, "wb");
         if (sav != NULL)
         {
-            fwrite(nones->bus->cart->ram, 0x2000, 1, sav);
+            fwrite(nones->bus->cart->ram, CART_RAM_SIZE, 1, sav);
             fclose(sav);
         }
     }
-
 
     PPU_Reset();
     CPU_Reset(nones->bus->cpu);
@@ -227,6 +174,5 @@ void NonesRun(Nones *nones, const char *path)
     SDL_Quit();
 
     ArenaDestroy(nones->arena);
-    //free(pixels);
 }
 

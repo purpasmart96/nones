@@ -134,7 +134,7 @@ int LoaderLoadCart(Arena *arena, Cart *cart, const char *path)
     char filenames[16] = {'\0'};
 #endif
 
-    fseek(fp, 16, SEEK_END);
+    fseek(fp, HEADER_SIZE, SEEK_END);
     uint32_t rom_size = ftell(fp);
     uint8_t *rom = malloc(rom_size);
 
@@ -166,7 +166,7 @@ int LoaderLoadCart(Arena *arena, Cart *cart, const char *path)
     else
     {
         // chr rom size is 0, assume it's chr ram with a size of 8kib
-        printf("Adding chr ram\n");
+        printf("Using chr ram\n");
         cart->chr_rom.data = ArenaPush(arena, CHR_RAM_SIZE);
         cart->chr_rom.size = CHR_RAM_SIZE;
         cart->chr_rom.is_ram = true;  
