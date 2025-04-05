@@ -5,6 +5,7 @@
 #include <string.h>
 #include <sys/types.h>
 
+#include "nones.h"
 #include "apu.h"
 #include "ppu.h"
 #include "arena.h"
