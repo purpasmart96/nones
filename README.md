@@ -7,6 +7,8 @@ A simple NES emulator written in C.
 
 Currently only a few games run. Only NROM and few MMC1 based games are currently supported.
 
+Audio support is early and currently only supports square/pulse channels.
+
 ### Building and running
 
 Requires a C11 compiler and SDL3
