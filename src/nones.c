@@ -1,4 +1,3 @@
-
 #include <stddef.h>
 #include <stdio.h>
 #include <string.h>
@@ -8,11 +7,11 @@
 #include <stdalign.h>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_audio.h>
 #include <SDL3/SDL_render.h>
 #include <SDL3/SDL_stdinc.h>
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_oldnames.h>
 #include <SDL3/SDL_scancode.h>
 
 #include "arena.h"
@@ -24,9 +23,47 @@
 #include "bus.h"
 #include "nones.h"
 
+#define HIGH_RATE_SAMPLES 29780
+#define LOW_RATE_SAMPLES 735
+
+static SDL_AudioStream *stream = NULL;
+
+static void downsample_to_44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer)
+{
+    const double step = (double)HIGH_RATE_SAMPLES / LOW_RATE_SAMPLES;
+
+    double pos = 0.0;
+    for (int i = 0; i < LOW_RATE_SAMPLES; i++)
+    {
+        int index = (int)pos;
+        double frac = pos - index;
+
+        // Simple linear interpolation
+        float a = high_rate_buffer[index];
+        float b = (index + 1 < HIGH_RATE_SAMPLES) ? high_rate_buffer[index + 1] : a;
+
+        float sample = (float)((1.0 - frac) * a + frac * b);
+        // convert to s16
+        output_44khz_buffer[i] = (int16_t)(sample * 32767);
+
+        pos += step;
+    }
+}
+
+void NonesPutSoundData(Apu *apu)
+{
+    const int minimum_audio = (44100 * sizeof(int16_t)); // * 2) / 2; // Stereo samples
+    if (SDL_GetAudioStreamQueued(stream) < minimum_audio) {
+
+        downsample_to_44khz(apu->buffer, apu->outbuffer);
+
+        SDL_PutAudioStreamData(stream, apu->outbuffer, sizeof(apu->outbuffer));
+    }
+}
+
 static void NonesInit(Nones *nones, const char *path)
 {
-    nones->arena = ArenaCreate(1024 * 1024);
+    nones->arena = ArenaCreate(1024 * 1024 * 2);
     nones->bus = BusCreate(nones->arena);
 
     if (BusLoadCart(nones->arena, nones->bus, path))
@@ -40,7 +77,7 @@ void NonesRun(Nones *nones, const char *path)
 {
     NonesInit(nones, path);
 
-    if (!SDL_Init(SDL_INIT_VIDEO))
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
     {
         SDL_Log("SDL Init Error: %s", SDL_GetError());
         exit(EXIT_FAILURE);
@@ -63,6 +100,25 @@ void NonesRun(Nones *nones, const char *path)
         exit(EXIT_FAILURE);
     }
 
+    //SDL_AudioDeviceID dev_id = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
+    //SDL_AudioStream *stream = SDL_CreateAudioStream(NULL, NULL);
+    SDL_AudioSpec spec;
+    spec.channels = 1;
+    spec.format = SDL_AUDIO_S16;
+    spec.freq = 44100;
+
+    stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
+    if (!stream)
+    {
+        SDL_Log("Couldn't create audio stream: %s", SDL_GetError());
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        exit(EXIT_FAILURE);
+    }
+
+    SDL_ResumeAudioStreamDevice(stream);
+
     //SDL_SetRenderLogicalPresentation(renderer, SCREEN_WIDTH, SCREEN_WIDTH,  SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
     SDL_SetRenderScale(renderer,2, 2);
 
@@ -77,9 +133,12 @@ void NonesRun(Nones *nones, const char *path)
     uint32_t *pixels = ArenaPush(nones->arena, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
 
     CPU_Init(nones->bus->cpu);
+    APU_Init(nones->bus->apu);
     PPU_Init(nones->bus->ppu, nones->bus->cart->mirroring, pixels);
 
     CPU_Reset(nones->bus->cpu);
+    APU_Update(nones->bus->apu, nones->bus->cpu->cycles);
+    PPU_Update(nones->bus->ppu, nones->bus->cpu->cycles);
 
     bool quit = false;
     SDL_Event event;
@@ -125,12 +184,13 @@ void NonesRun(Nones *nones, const char *path)
 
         do {
             CPU_Update(nones->bus->cpu);
-            APU_Update(nones->bus->cpu->cycles);
+            APU_Update(nones->bus->apu, nones->bus->cpu->cycles);
             PPU_Update(nones->bus->ppu, nones->bus->cpu->cycles);
         } while (!nones->bus->ppu->frame_finished);
         //} while ((nones->cpu.cycles % 29780) != 0);
         //updates++;
 
+        //NonesPutSoundData(nones->bus->apu);
         SDL_LockTexture(texture, NULL, &raw_pixels, &raw_pitch);
         memcpy(raw_pixels, pixels, raw_pitch * SCREEN_HEIGHT);
         SDL_UnlockTexture(texture);
@@ -170,6 +230,7 @@ void NonesRun(Nones *nones, const char *path)
     CPU_Reset(nones->bus->cpu);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
+    SDL_DestroyAudioStream(stream);
     SDL_DestroyWindow(window);
     SDL_Quit();
 

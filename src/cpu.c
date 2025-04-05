@@ -9,6 +9,7 @@
 #include "ppu.h"
 #include "utils.h"
 
+#include "apu.h"
 #include "cpu.h"
 #include "ppu.h"
 #include "joypad.h"
@@ -1376,7 +1377,6 @@ void CPU_Update(Cpu *state)
     {
         HandleIRQ(state);
     }
-
 }
 
 void CPU_Reset(Cpu *state)

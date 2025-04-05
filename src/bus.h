@@ -16,12 +16,10 @@
 #define CART_RAM_SIZE 0x2000
 #define CHR_RAM_SIZE 0x2000
 
-extern uint8_t g_apu_regs[APU_IO_REGS_SIZE];
-
 typedef struct
 {
     Cpu *cpu;
-    void *apu;
+    Apu *apu;
     Ppu *ppu;
 
     Cart *cart;

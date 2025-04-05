@@ -5,14 +5,13 @@
 #include <string.h>
 #include <sys/types.h>
 
-#include "cpu.h"
-#include "arena.h"
-#include "nones.h"
-
-#include "loader.h"
-#include "arena.h"
-#include "bus.h"
+#include "apu.h"
 #include "ppu.h"
+#include "arena.h"
+#include "cpu.h"
+#include "ppu.h"
+#include "loader.h"
+#include "bus.h"
 #include "utils.h"
 
 static uint8_t vram[0x800];

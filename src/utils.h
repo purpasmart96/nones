@@ -25,4 +25,7 @@ do { fprintf(stdout, fmt, __VA_ARGS__); } while (0)
 #define GET_HIGH_BE(v) ((v & 0xFF))
 #define GET_LOW_BE(v) (((v >> 8) & 0xFF))
 
+#define MIN(a,b) (((a) < (b)) ? (a) : (b))
+#define MAX(a,b) (((a) > (b)) ? (a) : (b))
+
 #endif

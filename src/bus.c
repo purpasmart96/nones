@@ -8,6 +8,7 @@
 
 #include "arena.h"
 #include "cpu.h"
+#include "apu.h"
 #include "joypad.h"
 #include "ppu.h"
 #include "loader.h"
@@ -22,6 +23,7 @@ Bus *BusCreate(Arena *arena)
 {
     Bus *bus = ArenaPush(arena, sizeof(Bus));
     bus->cpu = ArenaPush(arena, sizeof(Cpu));
+    bus->apu = ArenaPush(arena, sizeof(Apu));
     bus->ppu = ArenaPush(arena, sizeof(Ppu));
     bus->cart = ArenaPush(arena, sizeof(Cart));
     bus->sys_ram = ArenaPush(arena, CPU_RAM_SIZE);
@@ -64,8 +66,7 @@ uint8_t BusRead(const uint16_t addr)
                     //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
                     return 0;
                 }
-                return g_apu_regs[addr & 0x17];
-                //return apu_io_read(addr);  // APU & I/O
+                return ReadAPURegister(bus_ptr->apu, addr);
             }
             else
             {
@@ -121,15 +122,13 @@ void BusWrite(const uint16_t addr, const uint8_t data)
                     WriteJoyPadReg(data);
                     break;
                 }
-                else if (addr == 0x4017)
-                {
-                    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    break;
-                }
-                DEBUG_LOG("Writing to APU/IO reg at 0x%04X\n", addr);
-                g_apu_regs[addr % 0x18] = data;
+                //else if (addr == 0x4017)
+                //{
+                //    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
+                //    break;
+                //}
+                WriteAPURegister(bus_ptr->apu, addr, data);
                 break;
-                //return apu_io_read(addr);  // APU & I/O
             }
             else
             {
@@ -168,10 +167,9 @@ uint8_t *BusGetPtr(const uint16_t addr)
         case 0x2:  // $4000 - $5FFF
             if (addr < 0x4018)
             {
-                return &g_apu_regs[addr % 0x18];
-                //printf("Trying to read APU/IO reg at 0x%04X\n", addr);
-                //break;
-                //return apu_io_read(addr);  // APU & I/O
+                //return &g_apu_regs[addr % 0x18];
+                printf("Trying to read APU/IO reg at 0x%04X\n", addr);
+                break;
             }
             else
             {

@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "cpu.h"
+#include "apu.h"
 #include "ppu.h"
 #include "arena.h"
 #include "loader.h"

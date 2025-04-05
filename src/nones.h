@@ -27,5 +27,6 @@ typedef struct {
 } Nones;
 
 void NonesRun(Nones *nones, const char *path);
+void NonesPutSoundData(Apu *apu);
 
 #endif
