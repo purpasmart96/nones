@@ -491,14 +491,14 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
 
             if (apu->status.channel1)
             {
-                if (apu->pulse1.sweep.enabled)
-                    apu->pulse1.timer.raw >>= apu->pulse1.sweep.shift_count;
+                //if (apu->pulse1.sweep.enabled)
+                //    apu->pulse1.timer.raw >>= apu->pulse1.sweep.shift_count;
             }
 
             if (apu->status.channel2)
             {
-                if (apu->pulse2.sweep.enabled)
-                    apu->pulse2.timer.raw >>= apu->pulse2.sweep.shift_count;
+                //if (apu->pulse2.sweep.enabled)
+                //    apu->pulse2.timer.raw >>= apu->pulse2.sweep.shift_count;
             }
             apu->cycle_counter++;
         }
