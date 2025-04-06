@@ -264,9 +264,8 @@ typedef union
 void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
 void PPU_Reset(void);
-void PPU_Write8(uint16_t addr, uint8_t data);
-uint8_t ReadPPURegister(const uint16_t addr);
-void WritePPURegister(const uint16_t addr, const uint8_t data);
+uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr);
+void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data);
 uint8_t *GetPPUMemPtr(uint16_t addr);
 
 void NametableMirroringInit(NameTableMirror mode);

@@ -50,7 +50,7 @@ uint8_t BusRead(const uint16_t addr)
 
         // $2000 - $3FFF
         case 0x1:
-            return ReadPPURegister(addr);
+            return ReadPPURegister(bus_ptr->ppu, addr);
 
         // $4000 - $5FFF
         case 0x2:
@@ -103,7 +103,7 @@ void BusWrite(const uint16_t addr, const uint8_t data)
 
         // $2000 - $3FFF
         case 0x1:
-            WritePPURegister(addr, data);
+            WritePPURegister(bus_ptr->ppu, addr, data);
             break;
 
         // $4000 - $5FFF

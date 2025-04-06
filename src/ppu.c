@@ -163,23 +163,22 @@ static Color GetspriteColor(uint8_t palette_index, uint8_t pixel)
     return sys_palette2[color_index & 0x3F];
 }
 
-void PPU_WriteAddrReg(const uint8_t value)
+void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
 {
-    if (!ppu_ptr->w)
+    if (!ppu->w)
     {
-        //ppu_ptr->t.raw = (ppu_ptr->t.raw & 0x00FF) | ((value & 0x3F) << 8);
         // Set high byte of t
-        ppu_ptr->t.writing.high = value & 0x3F;
-        ppu_ptr->t.writing.bit_z = 0;
+        ppu->t.writing.high = value & 0x3F;
+        ppu->t.writing.bit_z = 0;
     }
     else
     {
         // Set low byte of t
-        ppu_ptr->t.writing.low = value;
+        ppu->t.writing.low = value;
         // Transfer t to v
-        ppu_ptr->v.raw = ppu_ptr->t.raw;
+        ppu->v.raw = ppu->t.raw;
     }
-    ppu_ptr->w = !ppu_ptr->w;
+    ppu->w = !ppu->w;
 }
 
 static inline int GetNameTableIndex(uint16_t addr)
@@ -202,46 +201,46 @@ uint8_t ReadNametable(uint16_t addr)
 }
 
 // Horizontal scrolling
-static void IncX(void)
+static void IncX(Ppu *ppu)
 {
-    if (ppu_ptr->v.scrolling.coarse_x == 31) // if coarse X == 31
+    if (ppu->v.scrolling.coarse_x == 31) // if coarse X == 31
     {
         //printf("PPU v addr before: 0x%04X\n", ppu_ptr->v.raw);
-        ppu_ptr->v.scrolling.coarse_x = 0; // coarse X = 0
+        ppu->v.scrolling.coarse_x = 0; // coarse X = 0
         //printf("PPU v addr after coarse_x reset : 0x%04X\n", ppu_ptr->v.raw);
-        ppu_ptr->v.scrolling.name_table_sel ^= 0x1; // switch horizontal nametable
+        ppu->v.scrolling.name_table_sel ^= 0x1; // switch horizontal nametable
         //printf("PPU v addr after nt switch: 0x%04X\n", ppu_ptr->v.raw);
     }
     else
     {
-        ppu_ptr->v.scrolling.coarse_x++; // increment coarse X
+        ppu->v.scrolling.coarse_x++; // increment coarse X
     }
 }
 
 // Vertical Scroll
-static void IncY(void)
+static void IncY(Ppu *ppu)
 {
     //printf("PPU v addr: 0x%04X\n", ppu_ptr->v.raw);
-    if (ppu_ptr->v.scrolling.fine_y < 7)        // if fine Y < 7
-        ppu_ptr->v.scrolling.fine_y++;                      // increment fine Y
+    if (ppu->v.scrolling.fine_y < 7)        // if fine Y < 7
+        ppu->v.scrolling.fine_y++;                      // increment fine Y
     else
     {
-        ppu_ptr->v.scrolling.fine_y = 0;                  // fine Y = 0
-        if (ppu_ptr->v.scrolling.coarse_y == 29)
+        ppu->v.scrolling.fine_y = 0;                  // fine Y = 0
+        if (ppu->v.scrolling.coarse_y == 29)
         {
-            ppu_ptr->v.scrolling.coarse_y = 0;
-            ppu_ptr->v.scrolling.name_table_sel ^= 0x2; // Flip vertical nametable bit
+            ppu->v.scrolling.coarse_y = 0;
+            ppu->v.scrolling.name_table_sel ^= 0x2; // Flip vertical nametable bit
         }
-        else if (ppu_ptr->v.scrolling.coarse_y == 31)
+        else if (ppu->v.scrolling.coarse_y == 31)
         {
             //printf("PPU v addr before: 0x%04X\n", ppu_ptr->v.raw);
-            ppu_ptr->v.scrolling.coarse_y = 0;// coarse Y = 0, nametable not switched
+            ppu->v.scrolling.coarse_y = 0;// coarse Y = 0, nametable not switched
             //printf("PPU v addr after: 0x%04X\n", ppu_ptr->v.raw);
         }
         else
         {
             // increment coarse Y
-            ppu_ptr->v.scrolling.coarse_y++;
+            ppu->v.scrolling.coarse_y++;
         }
     }
 }
@@ -255,10 +254,10 @@ static void WriteToPaletteTable(uint16_t addr, const uint8_t data)
     palette_table[addr] = data;
 }
 
-void PPU_WriteData(const uint8_t data)
+void PPU_WriteData(Ppu *ppu, const uint8_t data)
 {
     // Extract A13, A12, A11 for region decoding
-    uint8_t ppu_region = (ppu_ptr->v.raw >> 11) & 0x7;
+    uint8_t ppu_region = (ppu->v.raw >> 11) & 0x7;
     switch (ppu_region)
     {
         case 0x0:
@@ -267,20 +266,20 @@ void PPU_WriteData(const uint8_t data)
         case 0x3:
         {
             // chr rom is actually chr ram
-            PpuBusWriteChrRam(ppu_ptr->v.raw, data);
+            PpuBusWriteChrRam(ppu->v.raw, data);
             break;
         }
         case 0x4:
         case 0x5:
-            //vram[ppu_ptr->v & 0x1FFF] = data;
-            WriteToNametable(ppu_ptr->v.raw, data);
+            //vram[ppu->v & 0x1FFF] = data;
+            WriteToNametable(ppu->v.raw, data);
             break;
         case 0x6:
-            printf("ppu v: 0x%04X\n", ppu_ptr->v.raw);
+            printf("ppu v: 0x%04X\n", ppu->v.raw);
             break;
         case 0x7:
-            WriteToPaletteTable(ppu_ptr->v.raw & 0x1F, data);
-            //palette_table[ppu_ptr->v.raw & 0x1F] = data;
+            WriteToPaletteTable(ppu->v.raw & 0x1F, data);
+            //palette_table[ppu->v.raw & 0x1F] = data;
             break;
         default:
             break;
@@ -289,50 +288,48 @@ void PPU_WriteData(const uint8_t data)
     // Outside of rendering, reads from or writes to $2007 will add either 1 or 32 to v depending on the VRAM increment bit set via $2000.
     // During rendering (on the pre-render line and the visible lines 0-239, provided either background or sprite rendering is enabled),
     // it will update v in an odd way, triggering a coarse X increment and a Y increment simultaneously (with normal wrapping behavior).
-    if (ppu_ptr->rendering && (ppu_ptr->scanline < 240 || ppu_ptr->scanline == 261))
+    if (ppu->rendering && (ppu->scanline < 240 || ppu->scanline == 261))
     {
-        IncX();
-        IncY();
+        IncX(ppu);
+        IncY(ppu);
     }
     else
     {
-        ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
+        ppu->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
     }
 }
 
-static void PPU_WriteScroll(const uint8_t value)
+static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
 {
-    if (!ppu_ptr->w)
+    if (!ppu->w)
     {
-        // First write: X scroll (fine X + coarse X)
-        //ppu_ptr->t.raw = (ppu_ptr->t.raw & 0xFFE0) | (value >> 3);
-        ppu_ptr->t.scrolling.coarse_x = value >> 3;
-        ppu_ptr->x = value & 0x7; // Fine X scroll
+        // First write: x scroll (fine X + coarse X)
+        ppu->t.scrolling.coarse_x = value >> 3;
+        ppu->x = value & 0x7; // Fine X scroll
     }
     else
     {
         // Second write: Y scroll (fine Y + coarse Y)
-        //ppu_ptr->t.raw = (ppu_ptr->t.raw & 0x8C1F) | ((value & 0x7) << 12) | ((value & 0xF8) << 2);
-        ppu_ptr->t.scrolling.coarse_y = value >> 3;
-        ppu_ptr->t.scrolling.fine_y = value & 0x7;
+        ppu->t.scrolling.coarse_y = value >> 3;
+        ppu->t.scrolling.fine_y = value & 0x7;
     }
-    ppu_ptr->w = !ppu_ptr->w;
+    ppu->w = !ppu->w;
 }
 
-uint8_t PPU_ReadStatus(/*Ppu *ppu*/)
+uint8_t PPU_ReadStatus(Ppu *ppu)
 {
-    uint8_t status_value = ppu_ptr->status.raw;
+    uint8_t status_value = ppu->status.raw;
 
-    // Clear VBlank and write toggle
-    ppu_ptr->status.vblank = 0;
-    ppu_ptr->w = 0;
+    // Clear vblank and write toggle
+    ppu->status.vblank = 0;
+    ppu->w = 0;
 
     return status_value;
 }
 
-uint8_t PPU_ReadData(/*Ppu *ppu*/)
+uint8_t PPU_ReadData(Ppu *ppu)
 {
-    uint16_t addr = ppu_ptr->v.raw & 0x3FFF;
+    uint16_t addr = ppu->v.raw & 0x3FFF;
     uint8_t data = 0;
 
     if (addr >= 0x3F00)
@@ -341,89 +338,85 @@ uint8_t PPU_ReadData(/*Ppu *ppu*/)
         data = palette_table[addr & 0x1F];  // Mirror palette range
     }
     else if (addr <= 0x1FFF)
-    {  
-        // VRAM/CHR memory (buffered)
-        //data = ppu_ptr->buffered_data;  // Return stale buffer value
-        //ppu_ptr->buffered_data = vram[addr];  // Load new data into buffer
-        data = ppu_ptr->buffered_data;  // Return stale buffer value
-        ppu_ptr->buffered_data = PpuBusReadChrRom(addr);  // Load new data into buffer
+    {
+        // Return stale buffer value
+        data = ppu->buffered_data;
+        ppu->buffered_data = PpuBusReadChrRom(addr);  // Load new data into buffer
     }
     else if (addr <= 0x2FFF)
-    {  
-        // VRAM/CHR memory (buffered)
-        data = ppu_ptr->buffered_data;  // Return stale buffer value
-        ppu_ptr->buffered_data = vram[addr & 0x7FF];
+    {
+        // Return stale buffer value
+        data = ppu->buffered_data;
+        ppu->buffered_data = vram[addr & 0x7FF];
     }
 
-    if (ppu_ptr->rendering && (ppu_ptr->scanline < 240 || ppu_ptr->scanline == 261))
+    if (ppu->rendering && (ppu->scanline < 240 || ppu->scanline == 261))
     {
-        IncX();
-        IncY();
+        IncX(ppu);
+        IncY(ppu);
     }
     else
     {
         // Auto-increment address
-        ppu_ptr->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
+        ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
     }
 
     return data;
 }
 
 
-uint8_t ReadPPURegister(const uint16_t address)
+uint8_t ReadPPURegister(Ppu *ppu, const uint16_t address)
 {
     switch (address) {
-        case PPU_STATUS:  // PPUSTATUS
-            return PPU_ReadStatus();
-        case OAM_DATA:  // OAMDATA (reads from OAM memory)
-            return sprites[ppu_ptr->oam_addr & 63].raw[ppu_ptr->oam_addr & 3];
-        case PPU_DATA:  // PPUDATA (reads from VRAM)
-            return PPU_ReadData();
-        default:
-            return 0;  // Unhandled read (usually open bus behavior)
+        case PPU_STATUS:
+            return PPU_ReadStatus(ppu);
+        case OAM_DATA:
+            return sprites[ppu->oam_addr & 63].raw[ppu->oam_addr & 3];
+        case PPU_DATA:
+            return PPU_ReadData(ppu);
     }
+    // Read from open bus;
+    return 0;
 }
 
-void WritePPURegister(const uint16_t addr, const uint8_t data)
+void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
 {
-    if ((ppu_ptr->cycles < 88974) && (addr == PPU_CTRL))
+    if ((ppu->cycles < 88974) && (addr == PPU_CTRL))
         return;
-    if ((ppu_ptr->cycles < 88974) && (addr == PPU_MASK))
+    if ((ppu->cycles < 88974) && (addr == PPU_MASK))
         return;
-    if ((ppu_ptr->cycles < 88974) && (addr == PPU_SCROLL))
+    if ((ppu->cycles < 88974) && (addr == PPU_SCROLL))
         return;
-    if ((ppu_ptr->cycles < 88974) && (addr == PPU_ADDR))
+    if ((ppu->cycles < 88974) && (addr == PPU_ADDR))
         return;
 
     switch (addr)
     {
         case PPU_CTRL:
-            ppu_ptr->ctrl.raw = data;
-            //ppu_ptr->t.raw = (ppu_ptr->t.raw & 0xF3FF) | ((data & 0x03) << 10);  // Update t (Name table bits)
-            ppu_ptr->t.scrolling.name_table_sel = data & 0x3;
+            ppu->ctrl.raw = data;
+            ppu->t.scrolling.name_table_sel = data & 0x3;
             break;
         case PPU_MASK:
-            ppu_ptr->mask.raw = data;
+            ppu->mask.raw = data;
             break;
         case OAM_ADDR:
-            ppu_ptr->oam_addr = data;
+            ppu->oam_addr = data;
             break;
-        case OAM_DATA:  // OAMDATA (writes to OAM memory)
+        case OAM_DATA:
         {
-            //const int oam_n = ppu_ptr->oam_addr & 63;
-            const int oam_m = ppu_ptr->oam_addr & 3;
-            
-            sprites[ppu_ptr->oam_addr++ & 63].raw[oam_m] = data;
+            //const int oam_n = ppu->oam_addr & 63;
+            const int oam_m = ppu->oam_addr & 3;
+            sprites[ppu->oam_addr++ & 63].raw[oam_m] = data;
             break;
         }
-        case PPU_SCROLL:  // PPUSCROLL
-            PPU_WriteScroll(data);
+        case PPU_SCROLL:
+            PPU_WriteScroll(ppu, data);
             break;
         case PPU_ADDR:
-            PPU_WriteAddrReg(data);
+            PPU_WriteAddrReg(ppu, data);
             break;
         case PPU_DATA:
-            PPU_WriteData(data);
+            PPU_WriteData(ppu, data);
             break;
     }
 }
@@ -1057,7 +1050,7 @@ static void PPU_DrawTile(Ppu *ppu, int scanline)
         Color color = GetColor(palette_select, value, x, scanline);
         DrawPixel(ppu->buffers[0], x, scanline, color);
         if (x && ppu->prev_rendering && !(x & 7))
-            IncX();
+            IncX(ppu);
     }
     //IncY();
     //IncX();
@@ -1145,7 +1138,7 @@ static void PPU_DrawDotv2(Ppu *ppu, int scanline, int cycle)
     //}
 
     if (ppu->rendering && !(cycle & 7))
-        IncX();
+        IncX(ppu);
 }
 
 static inline void PpuShiftRegsUpdate(Ppu *ppu)
@@ -1251,7 +1244,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         case 0:
         {
             if (ppu->rendering)
-                IncX();
+                IncX(ppu);
             break;
         }
         case 1:
@@ -1342,7 +1335,7 @@ static void PpuPreRenderLine(Ppu *ppu, int cycle, int scanline)
     if (scanline != 261)
         return;
 
-    // Clear VBlank flag at scanline 261, dot 1
+    // Clear vblank flag at scanline 261, dot 1
     if (cycle == 1)
     {
         ppu->status.vblank = 0;
@@ -1355,8 +1348,6 @@ static void PpuPreRenderLine(Ppu *ppu, int cycle, int scanline)
         // reset scroll
         if (ppu->rendering)
         {
-            //ppu->v.raw = (ppu->v.raw & ~0x7BE0) | (ppu->t.raw & 0x7BE0);
-            //ppu->v.raw = (ppu->v.raw & ~0x041F) | (ppu->t.raw & 0x041F);
             ppu->v.scrolling.coarse_y = ppu->t.scrolling.coarse_y;
             ppu->v.scrolling.fine_y = ppu->t.scrolling.fine_y;
             ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
@@ -1496,7 +1487,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             }
         }
         if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240 || ppu->scanline == 261))
-            IncY();
+            IncY(ppu);
         if (ppu->rendering && ppu->cycle_counter == 257 && (ppu->scanline < 240 || ppu->scanline == 261))
         {
             ppu->v.scrolling.coarse_x = ppu->t.scrolling.coarse_x;
