@@ -104,13 +104,46 @@ static Color sys_palette2[64] =
 static Ppu *ppu_ptr = NULL;
 static uint64_t prev_ppu_cycles = 0;
 
-static Color GetColor(uint8_t palette_index, uint8_t pixel)
+static bool PpuSprite0Hit(Ppu *ppu, int cycle, int scanline)
+{
+    return sprites[0].y == scanline - 9 && cycle <= (sprites[0].x + 8) && cycle >= sprites[0].x; // && sprites[0].attribs.palette;
+}
+
+static uint8_t GetSpritePixel(int x, int y, int tile_index, bool flip_horz, bool flip_vert)
+{
+    int bank = (tile_index & 1) ? 0x1000 : 0x0000;
+    int tile_id = tile_index & 0xFE; 
+    int tile_part = (y < 8) ^ flip_vert ? 0 : 1;  // Swap tile part if flipping vertically
+    size_t tile_offset = bank + (tile_id + tile_part) * 16;
+    int row = y & 7;
+    if (flip_vert)
+        row = 7 - (y & 7); 
+    uint8_t upper = PpuBusReadChrRom(tile_offset + row); 
+    uint8_t lower = PpuBusReadChrRom(tile_offset + row + 8);
+    int bit = flip_horz ? x : 7 - x;
+
+    return ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+}
+
+static Color GetColor(uint8_t palette_index, uint8_t pixel, int cycle, int scanline)
 {
     // Compute palette memory address
     uint16_t palette_addr = 0x3F00 + (palette_index * 4) + pixel;
 
     // Read the color index from PPU palette memory
     uint16_t color_index = palette_table[palette_addr & 0x1F];
+
+    //if (pixel && GetSpritePixel(cycle, scanline, sprites[0].tile_id, sprites[0].attribs.horz_flip, sprites[0].attribs.vert_flip)) // Function to fetch sprite pixel)
+    //{
+    //    // cycle 94, scanline 30
+    //    if (PpuSprite0Hit(ppu_ptr, cycle, scanline))
+    //    {
+    //        if (!ppu_ptr->status.sprite_hit && (cycle > 7 || !(ppu_ptr->mask.raw & 0x3)))
+    //        {
+    //            ppu_ptr->status.sprite_hit = 1;
+    //        }
+    //    }
+    //}
 
     if (!pixel)
     {
@@ -426,14 +459,15 @@ void NametableMirroringInit(NameTableMirror mode)
     }
 }
 
-void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t *pixels)
+void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers)
 {
     memset(ppu, 0, sizeof(*ppu));
     ppu->nt_mirror_mode = name_table_layout;
     NametableMirroringInit(ppu->nt_mirror_mode);
     ppu->rendering = false;
     ppu->prev_rendering = false;
-    ppu->buffer = pixels;
+    ppu->buffers[0] = buffers[0];
+    ppu->buffers[1] = buffers[1];
     ppu->ext_input = 0;
     ppu_ptr = ppu;
 }
@@ -499,13 +533,13 @@ static void PpuDrawSprite(Ppu *ppu, int tile_offset, int tile_x, int tile_y, int
             Color color = GetspriteColor(palette, pixel);
 
             if (flip_horz && flip_vert)
-                DrawPixel(ppu->buffer, tile_x + 7 - x, tile_y + 7 - y, color);
+                DrawPixel(ppu->buffers[0], tile_x + 7 - x, tile_y + 7 - y, color);
             else if (flip_horz)
-                DrawPixel(ppu->buffer, tile_x + 7 - x, tile_y + y, color);
+                DrawPixel(ppu->buffers[0], tile_x + 7 - x, tile_y + y, color);
             else if (flip_vert)
-                DrawPixel(ppu->buffer, tile_x + x, tile_y + 7 - y, color);
+                DrawPixel(ppu->buffers[0], tile_x + x, tile_y + 7 - y, color);
             else
-                DrawPixel(ppu->buffer, tile_x + x, tile_y + y, color);
+                DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
         }
     }
 }
@@ -538,7 +572,7 @@ static void PpuDrawSprite16(Ppu *ppu, int tile_index, int tile_x, int tile_y, in
     
             Color color = GetspriteColor(palette, pixel);
 
-            DrawPixel(ppu->buffer, tile_x + x, tile_y + y, color);
+            DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
         }
     }
 }
@@ -566,7 +600,7 @@ static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, 
                 continue;
 
             Color color = GetspriteColor(palette, pixel);
-            DrawPixel(ppu->buffer, tile_x + x, tile_y + y, color);
+            DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
         }
     }
 }
@@ -591,7 +625,8 @@ static void DrawSpritePlaceholder(Ppu *ppu, int scanline, int cycle)
                 //PpuDrawSprite8x16(ppu, curr_sprite->tile_id, curr_sprite->x, curr_sprite->y + 1,
                 //    palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
                 //bank = (curr_sprite->tile_id & 1) ? 0x1000: 0;
-                PpuDrawSprite16(ppu, curr_sprite->tile_id , curr_sprite->x, curr_sprite->y + 1,
+                if (!curr_sprite->attribs.priority)
+                    PpuDrawSprite16(ppu, curr_sprite->tile_id , curr_sprite->x, curr_sprite->y + 1,
                                   palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
                 //PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
                 //    curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
@@ -601,7 +636,8 @@ static void DrawSpritePlaceholder(Ppu *ppu, int scanline, int cycle)
             }
             else
             {
-                PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
+                if (!curr_sprite->attribs.priority)
+                    PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
                    curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
             }
 
@@ -624,8 +660,6 @@ static void PPU_IsFrameDone(Ppu *ppu)
     {
         prev_ppu_cycles = ppu->cycles;
         ppu->frame_finished = true;
-        //Render(ppu);
-        DrawSpritePlaceholder(ppu, 240, 256);
     }
 }
 
@@ -922,8 +956,8 @@ static void PPU_DrawScanline(Ppu *ppu, int scanline)
         uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
         uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
 
-        Color color = GetColor(palette_select, value);
-        DrawPixel(ppu->buffer, x, scanline, color);
+        Color color = GetColor(palette_select, value, x, scanline);
+        DrawPixel(ppu->buffers[0], x, scanline, color);
         //if (!(x & 7))
         //{
         //    if (ppu->v.scrolling.coarse_x == 31) // if coarse X == 31
@@ -969,8 +1003,8 @@ static void PPU_DrawDot(Ppu *ppu, int scanline, int cycle)
     // Extract the correct pixel from bitplanes
     uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
     uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
-    Color color = GetColor(palette_select, value);
-    DrawPixel(ppu->buffer, cycle, scanline, color);
+    Color color = GetColor(palette_select, value, cycle, scanline);
+    DrawPixel(ppu->buffers[0], cycle, scanline, color);
     //if (!(cycle & 7))
     //{
     //    if (ppu->v.scrolling.coarse_x == 31) // if coarse X == 31
@@ -1020,8 +1054,8 @@ static void PPU_DrawTile(Ppu *ppu, int scanline)
         uint8_t bit = 7 - fine_x; // NES tiles are stored MSB first
         uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
 
-        Color color = GetColor(palette_select, value);
-        DrawPixel(ppu->buffer, x, scanline, color);
+        Color color = GetColor(palette_select, value, x, scanline);
+        DrawPixel(ppu->buffers[0], x, scanline, color);
         if (x && ppu->prev_rendering && !(x & 7))
             IncX();
     }
@@ -1101,9 +1135,9 @@ static void PPU_DrawDotv2(Ppu *ppu, int scanline, int cycle)
     ////{
     //    uint8_t value = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
 
-        Color color = GetColor(palette_select, value);
+        Color color = GetColor(palette_select, value, cycle, scanline);
     
-        DrawPixel(ppu->buffer, cycle - 1, scanline, color);
+        DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
     //}
     //else {
     //    printf("Fine X: %d\n", ppu->x);
@@ -1159,6 +1193,48 @@ static inline void PpuFetchShifters(Ppu *ppu)
     //ppu->attrib_shift_high.raw = (ppu->attrib_shift_high.raw & 0xFF00) | ((ppu->attrib_data & 0b10) ? 0xFF : 0x00);
     ppu->attrib_shift_low.raw = (ppu->attrib_shift_low.raw & 0xFF00) | ((ppu->attrib_data & 0x1) ? 0xFF : 0x00);
     ppu->attrib_shift_high.raw = (ppu->attrib_shift_high.raw & 0xFF00) | ((ppu->attrib_data & 0x2) ? 0xFF : 0x00);
+}
+
+static uint8_t GetSpritePixel2(Ppu *ppu, int sprite_index, int scanline, int cycle)
+{
+    Sprite *sprite = &sprites[sprite_index]; // Get sprite 0 data
+    int sprite_x = sprite->x;
+    int sprite_y = sprite->y;
+    
+    // Check if we're on the correct scanline for this sprite
+    if (scanline < sprite_y || scanline >= sprite_y + (ppu->ctrl.sprite_size ? 16 : 8))
+        return 0; // Not on this scanline
+
+    // Get the sprite pattern table address
+    uint16_t sprite_tile_index = sprite->tile_id;
+    uint16_t bank = (ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0);
+
+    // Handle 8x16 sprite mode (if enabled)
+    if (ppu->ctrl.sprite_size)
+    {
+        bank = (sprite_tile_index & 1) ? 0x1000 : 0;
+        sprite_tile_index &= 0xFE; // Ignore the last bit for 8x16 mode
+    }
+
+    // Calculate fine Y position inside the sprite tile
+    int fine_y = (scanline - sprite_y);
+    if (sprite->attribs.vert_flip)
+        fine_y = (ppu->ctrl.sprite_size ? 15 : 7) - fine_y;
+
+    // Compute tile offset
+    uint16_t tile_addr = bank + (sprite_tile_index * 16) + fine_y;
+    uint8_t bitplane_0 = PpuBusReadChrRom(tile_addr);
+    uint8_t bitplane_1 = PpuBusReadChrRom(tile_addr + 8);
+
+    // Determine which pixel within the sprite we are drawing
+    int sprite_pixel_x = cycle - sprite_x;
+    if (sprite->attribs.horz_flip)
+        sprite_pixel_x = 7 - sprite_pixel_x;
+
+    // Get pixel color (0-3)
+    uint8_t pixel = ((bitplane_1 >> (7 - sprite_pixel_x)) & 1) << 1 | ((bitplane_0 >> (7 - sprite_pixel_x)) & 1);
+
+    return pixel; // Return 0 if transparent, or 1-3 if opaque
 }
 
 static void PpuRender(Ppu *ppu, int scanline, int cycle)
@@ -1244,15 +1320,21 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         uint8_t pixel = (pixel_high << 1) | pixel_low;
         uint8_t palette = (palette_high << 1) | palette_low;
 
-        // Draw pixel here
-        Color color = GetColor(palette, pixel);
-        DrawPixel(ppu->buffer, cycle - 1, scanline, color);
-    }
-}
+        //if (palette)
+        //{
+        //    if (PpuSprite0Hit(ppu, cycle, scanline))
+        //    {
+        //        if (!ppu->status.sprite_hit && (cycle > 7 || !(ppu->mask.raw & 0x3)))
+        //        {
+        //            ppu->status.sprite_hit = 1;
+        //        }
+        //    }
+        //}
 
-static bool PpuSprite0Hit(Ppu *ppu, int cycle, int scanline)
-{
-    return sprites[0].y == scanline - 6 && cycle <= sprites[0].x && ppu->mask.sprites_rendering;
+        // Draw pixel here
+        Color color = GetColor(palette, pixel, cycle, scanline);
+        DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
+    }
 }
 
 static void PpuPreRenderLine(Ppu *ppu, int cycle, int scanline)
@@ -1311,8 +1393,8 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
 
     while (ppu_cycles_to_run != 0)
     {
-        int ppu_cycle_counter = (ppu->cycles % 341);
-        int scanline = (ppu->cycles / 341) % 262; // 1 scanline = 341 PPU cycles
+        ppu->cycle_counter = (ppu->cycles % 341);
+        ppu->scanline = (ppu->cycles / 341) % 262; // 1 scanline = 341 PPU cycles
         ppu->cycles++;
         ppu_cycles_to_run--;
 
@@ -1322,8 +1404,8 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             //    PPU_DrawScanline(ppu, scanline);
             //if (ppu_cycle_counter && (scanline < 240) && ppu_cycle_counter < 257)
             //    PPU_DrawDotv2(ppu, scanline, ppu_cycle_counter);
-            if (ppu_cycle_counter && (scanline < 240 || scanline == 261) && (ppu_cycle_counter < 257 || (ppu_cycle_counter >= 321 && ppu_cycle_counter <= 336)))
-                PpuRender(ppu, scanline, ppu_cycle_counter);
+            if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter < 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
+                PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
 
             
             //if (scanline < 240 && ppu_cycle_counter == 256)
@@ -1406,21 +1488,21 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         //        ppu->status.sprite_hit = 1; // !ppu->status.sprite_hit;
         //    }
         //}
-        if (PpuSprite0Hit(ppu, ppu_cycle_counter, scanline))
+        if (PpuSprite0Hit(ppu, ppu->cycle_counter, ppu->scanline))
         {
-            if (ppu->rendering && !ppu->status.sprite_hit && (ppu_cycle_counter > 7 || !(ppu->mask.raw & 0x3)))
+            if (ppu->rendering && !ppu->status.sprite_hit && (ppu->cycle_counter > 7 || !(ppu->mask.raw & 0x3)))
             {
                 ppu->status.sprite_hit = 1;
             }
         }
-        if (ppu->rendering && ppu_cycle_counter == 256 && (scanline < 240 || scanline == 261))
+        if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240 || ppu->scanline == 261))
             IncY();
-        if (ppu->rendering && ppu_cycle_counter == 257 && (scanline < 240 || scanline == 261))
+        if (ppu->rendering && ppu->cycle_counter == 257 && (ppu->scanline < 240 || ppu->scanline == 261))
         {
             ppu->v.scrolling.coarse_x = ppu->t.scrolling.coarse_x;
             ppu->v.raw_bits.bit10 = ppu->t.raw_bits.bit10;
         }
-        if (scanline == 241 && ppu_cycle_counter == 1)
+        if (ppu->scanline == 241 && ppu->cycle_counter == 1)
         {
             //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
             //assert(ppu->v.raw != 0);
@@ -1434,14 +1516,14 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             }
         }
         // Clear VBlank flag at scanline 261, dot 1
-        if (scanline == 261 && ppu_cycle_counter == 1)
+        if (ppu->scanline == 261 && ppu->cycle_counter == 1)
         {
             ppu->status.vblank = 0;
             ppu->status.sprite_hit = 0;
             ppu->status.sprite_overflow = 0;
 
         }
-        if (scanline == 261 && (ppu_cycle_counter >= 280 && ppu_cycle_counter < 305))
+        if (ppu->scanline == 261 && (ppu->cycle_counter >= 280 && ppu->cycle_counter < 305))
         {
             // reset scroll
             if (ppu->rendering)
@@ -1451,8 +1533,13 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
                 ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
             }
         }
-
-        ppu->scanline = scanline;
+        if (ppu->cycle_counter == 340 && ppu->scanline == 261)
+        {
+            ppu->copy_fb = true;
+            DrawSpritePlaceholder(ppu, 240, 256);
+            // Copy the finished image in the back buffer to the front buffer
+            memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
+        }
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
     PPU_IsFrameDone(ppu);

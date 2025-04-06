@@ -209,6 +209,8 @@ typedef struct
 
     NameTableMirror nt_mirror_mode;
     int scanline;
+    uint32_t cycle_counter;
+    bool copy_fb;
     int ext_input;
     uint8_t attrib_data;
     uint8_t tile_id;
@@ -225,8 +227,10 @@ typedef struct
     bool frame_finished;
     uint8_t buffered_data; // Read buffer for $2007
 
-    // Pixel buffer for SDL
-    uint32_t *buffer;
+    // Double buffer for SDL
+    // buffer 0 is the backbuffer
+    // buffer 1 is the frontbuffer
+    uint32_t *buffers[2];
     // External regs for cpu
     PpuCtrl ctrl;
     PpuMask mask;
@@ -258,7 +262,7 @@ typedef union
     };
 } Sprite;
 
-void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t *pixels);
+void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
 void PPU_Reset(void);
 void PPU_Write8(uint16_t addr, uint8_t data);

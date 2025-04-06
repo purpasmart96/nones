@@ -100,8 +100,11 @@ void NonesRun(Nones *nones, const char *path)
         exit(EXIT_FAILURE);
     }
 
-    //SDL_AudioDeviceID dev_id = SDL_OpenAudioDevice(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, NULL);
-    //SDL_AudioStream *stream = SDL_CreateAudioStream(NULL, NULL);
+    if (!SDL_SetRenderVSync(renderer, 1))
+    {
+        SDL_Log( "Could not enable VSync! SDL error: %s\n", SDL_GetError());
+    }
+
     SDL_AudioSpec spec;
     spec.channels = 1;
     spec.format = SDL_AUDIO_S16;
@@ -129,12 +132,15 @@ void NonesRun(Nones *nones, const char *path)
 
     SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
 
-    // Allocate pixel buffer
-    uint32_t *pixels = ArenaPush(nones->arena, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
+    // Allocate pixel buffers (back and front)
+    uint32_t *buffers[2];
+    const uint32_t buffer_size = (SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
+    buffers[0] = ArenaPush(nones->arena, buffer_size);
+    buffers[1] = ArenaPush(nones->arena, buffer_size);
 
     CPU_Init(nones->bus->cpu);
     APU_Init(nones->bus->apu);
-    PPU_Init(nones->bus->ppu, nones->bus->cart->mirroring, pixels);
+    PPU_Init(nones->bus->ppu, nones->bus->cart->mirroring, buffers);
 
     CPU_Reset(nones->bus->cpu);
     APU_Update(nones->bus->apu, nones->bus->cpu->cycles);
@@ -192,7 +198,12 @@ void NonesRun(Nones *nones, const char *path)
 
         //NonesPutSoundData(nones->bus->apu);
         SDL_LockTexture(texture, NULL, &raw_pixels, &raw_pitch);
-        memcpy(raw_pixels, pixels, raw_pitch * SCREEN_HEIGHT);
+        if (nones->bus->ppu->copy_fb)
+        {
+            memcpy(raw_pixels, nones->bus->ppu->buffers[1], buffer_size);
+            nones->bus->ppu->copy_fb = false;
+        }
+
         SDL_UnlockTexture(texture);
 
         SDL_RenderClear(renderer);
