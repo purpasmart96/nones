@@ -210,7 +210,6 @@ typedef struct
     NameTableMirror nt_mirror_mode;
     int scanline;
     uint32_t cycle_counter;
-    bool copy_fb;
     int ext_input;
     uint8_t attrib_data;
     uint8_t tile_id;

@@ -198,11 +198,7 @@ void NonesRun(Nones *nones, const char *path)
 
         //NonesPutSoundData(nones->bus->apu);
         SDL_LockTexture(texture, NULL, &raw_pixels, &raw_pitch);
-        if (nones->bus->ppu->copy_fb)
-        {
-            memcpy(raw_pixels, nones->bus->ppu->buffers[1], buffer_size);
-            nones->bus->ppu->copy_fb = false;
-        }
+        memcpy(raw_pixels, nones->bus->ppu->buffers[1], buffer_size);
 
         SDL_UnlockTexture(texture);
 

@@ -1535,7 +1535,6 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         }
         if (ppu->cycle_counter == 340 && ppu->scanline == 261)
         {
-            ppu->copy_fb = true;
             DrawSpritePlaceholder(ppu, 240, 256);
             // Copy the finished image in the back buffer to the front buffer
             memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
