@@ -28,22 +28,39 @@ typedef struct {
 
 static const SequenceStep sequence_mode_0_table[] =
 {
-    {3728,  true, false, false },
-    {7456,  true, true,  false },
-    {11185, true, false, false },
-    {0, true, true,  true  }
+    {3727,  true, false, false },
+    {7455,  true, true,  false },
+    {11184, true, false, false },
+    {14913, true, true,  true  }
 };
 
 static const SequenceStep sequence_mode_1_table[] =
 {
-    { 3728,  true,  false, false },
-    { 7456,  true,  true,  false },
-    { 11185, true,  false, false },
-    { 14914, false, false, false },
-    { 0, true,  true,  false }
+    { 3727,  true,  false, false },
+    { 7455,  true,  true,  false },
+    { 11184, true,  false, false },
+    { 14913, false, false, false },
+    { 18639, true,  true,  false }
 };
 
-static const uint8_t length_counter_table_low[] =
+static const SequenceStep sequence_mode_0_table_cpu[] =
+{
+    {7457,  true, false, false },
+    {14913,  true, true,  false },
+    {22371, true, false, false },
+    {29829, true, true,  true  }
+};
+
+static const SequenceStep sequence_mode_1_table_cpu[] =
+{
+    { 7457,  true,  false, false },
+    { 14913,  true,  true,  false },
+    { 22371, true,  false, false },
+    { 29829, false, false, false },
+    { 37281, true,  true,  false }
+};
+
+static const uint8_t length_counter_table[] =
 {
     10,
     254,
@@ -61,10 +78,7 @@ static const uint8_t length_counter_table_low[] =
     12,
     26,
     14,
-};
 
-static const uint8_t length_counter_table_high[] =
-{
     12,
     16,
     24,
@@ -91,10 +105,15 @@ static const uint8_t duty_cycle_table[4][8] =
     { 1, 1, 1, 1, 1, 1, 0, 0 }
 };
 
-static float generate_duty_sample(int input, float volume)
+static const uint8_t duty_cycle_table1[4][8] = {
+    {0,1,0,0,0,0,0,0},
+    {0,1,1,0,0,0,0,0},
+    {0,1,1,1,1,0,0,0},
+    {1,0,0,1,1,1,1,1}
+};
+
+static float CreateDutySample(int input, float volume)
 {
-    //printf("sample input: %d\n", input);
-    //uint8_t bit = duty_patterns[duty][phase & 7];  // wrap to 0–7
     return (input ? 1.0f : -1.0f) * volume;
 }
 
@@ -110,7 +129,7 @@ static void ApuWritePulse1Duty(Apu *apu, const uint8_t data)
     //printf("Set pulse 1 counter halt/envelope loop: %d\n", apu->pulse1.reg.counter_halt);
 
     apu->pulse1.freq = roundf(FCPU / (16 * (apu->pulse1.timer_period.raw + 1)));
-    apu->pulse1.envelope.start = true;
+
     //printf("Pulse 1 freq: %d\n",  (uint16_t)(FCPU / (16 * (apu->pulse1.timer.raw + 1))));
     //printf("Pulse 1 freq: %d\n", apu->pulse1.freq);
 }
@@ -124,29 +143,29 @@ static void ApuWritePulse2Duty(Apu *apu, const uint8_t data)
     //printf("Set pulse 2 constant volume/envelope: %d\n", apu->pulse2.reg.constant_volume);
     //printf("Set pulse 2 counter halt/envelope loop: %d\n", apu->pulse2.reg.counter_halt);
     apu->pulse2.freq = roundf(FCPU / (16 * (apu->pulse2.timer_period.raw + 1)));
-    apu->pulse1.envelope.start = true;
 }
 
 static void ApuWritePulse1LengthCounter(Apu *apu, const uint8_t data)
 {
     apu->pulse1.length_counter_load = data;
+    apu->pulse1.envelope.start = true;
 
-    if (apu->pulse1.length_counter_load < 0x10)
-        apu->pulse1.length_counter = length_counter_table_low[apu->pulse1.length_counter_load];
-    else
-        apu->pulse1.length_counter = length_counter_table_high[apu->pulse1.length_counter_load % 0x10];
+    if (!apu->pulse1.reg.counter_halt)
+    {
+        apu->pulse1.length_counter = length_counter_table[apu->pulse1.length_counter_load];
+    }
 
 }
 
 static void ApuWritePulse2LengthCounter(Apu *apu, const uint8_t data)
 {
     apu->pulse2.length_counter_load = data;
+    apu->pulse2.envelope.start = true;
 
-    if (apu->pulse2.length_counter_load < 0x10)
-        apu->pulse2.length_counter = length_counter_table_low[apu->pulse2.length_counter_load];
-    else
-        apu->pulse2.length_counter = length_counter_table_high[apu->pulse2.length_counter_load % 0x10];
-
+    if (!apu->pulse2.reg.counter_halt)
+    {
+        apu->pulse2.length_counter = length_counter_table[apu->pulse2.length_counter_load];
+    }
 }
 
 // Writing a zero to any of the channel enable bits (NT21) will silence that channel and halt its length counter.
@@ -171,27 +190,78 @@ static void ApuWriteStatus(Apu *apu, const uint8_t data)
     if (!apu->status.triangle)
     {
         apu->triangle.length_counter = 0;
-        //apu->triangle.linear_counter.control_halt = 1;
     }
 
     apu->status.dmc_interrupt = 0;
 }
 
+static void UpdateTargetPeriod1(Apu *apu)
+{
+    int delta = apu->pulse1.timer_period.raw >> apu->pulse1.sweep_reg.shift_count;
+    int target = apu->pulse1.timer_period.raw;
+    if (apu->pulse1.sweep_reg.negate)
+    {
+        target -= (delta + 1); 
+    }
+    else
+    {
+        target += delta;
+    }
+
+    if (target > 0x7FF || apu->pulse1.timer_period.raw < 8)
+    {
+        apu->pulse1.muting = true;
+    }
+    else
+    {
+        apu->pulse1.muting = false;
+    }
+
+    apu->pulse1.target_period = MAX(0, target);
+}
+
+static void UpdateTargetPeriod2(Apu *apu)
+{
+    int delta = apu->pulse2.timer_period.raw >> apu->pulse2.sweep_reg.shift_count;
+    int target = apu->pulse2.timer_period.raw;
+
+    if (apu->pulse2.sweep_reg.negate)
+    {
+        target -= delta;
+    }
+    else
+    {
+        target += delta;
+    }
+
+    if (target > 0x7FF || apu->pulse2.timer_period.raw < 8)
+    {
+        apu->pulse2.muting = true;
+    }
+    else {
+        apu->pulse2.muting = false;
+    }
+
+    apu->pulse2.target_period = MAX(0, target);
+}
+
 static void ApuWritePulse1Sweep(Apu *apu, const uint8_t data)
 {
-    apu->pulse1.sweep.raw = data;
+    apu->pulse1.sweep_reg.raw = data;
     apu->pulse1.reload = 1;
+    UpdateTargetPeriod1(apu);
 
-    //printf("Set pulse 1 sweep enabled: %d\n", apu->pulse1.sweep.enabled);
-    //printf("Set pulse 1 sweep shift count: %d\n", apu->pulse1.sweep.shift_count);
-    //printf("Set pulse 1 sweep devider period: %d\n", apu->pulse1.sweep.devider_period);
-    //printf("Set pulse 1 sweep negate: %d\n", apu->pulse1.sweep.negate);
+    //printf("Set pulse 1 sweep enabled: %d\n", apu->pulse1.sweep_reg.enabled);
+    //printf("Set pulse 1 sweep shift count: %d\n", apu->pulse1.sweep_reg.shift_count);
+    //printf("Set pulse 1 sweep devider period: %d\n", apu->pulse1.sweep_reg.devider_period);
+    //printf("Set pulse 1 sweep negate: %d\n", apu->pulse1.sweep_reg.negate);
 }
 
 static void ApuWritePulse2Sweep(Apu *apu, const uint8_t data)
 {
-    apu->pulse2.sweep.raw = data;
+    apu->pulse2.sweep_reg.raw = data;
     apu->pulse2.reload = 1;
+    UpdateTargetPeriod2(apu);
 
     //printf("Set pulse 2 sweep enabled: %d\n", apu->pulse2.sweep.enabled);
     //printf("Set pulse 2 sweep shift count: %d\n", apu->pulse2.sweep.shift_count);
@@ -211,10 +281,17 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             break;
         case APU_PULSE_1_TIMER_LOW:
             apu->pulse1.timer_period.low = data;
+            //if (apu->pulse1.sweep_reg.enabled)
+            //{
+            //    printf("Pulse 1 timer period: %d\n", apu->pulse1.target_period);
+            //    printf("Pulse 1 timer raw: %d\n", apu->pulse1.timer.raw);
+            //}
+            UpdateTargetPeriod1(apu);
             break;
         case APU_PULSE_1_TIMER_HIGH:
             apu->pulse1.timer_period.high = data & 0x7;
             ApuWritePulse1LengthCounter(apu, data >> 3);
+            UpdateTargetPeriod1(apu);
             break;
         case APU_PULSE_2_DUTY:
             ApuWritePulse2Duty(apu, data);
@@ -224,10 +301,12 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             break;
         case APU_PULSE_2_TIMER_LOW:
             apu->pulse2.timer_period.low = data;
+            UpdateTargetPeriod2(apu);
             break;
         case APU_PULSE_2_TIMER_HIGH:
             apu->pulse2.timer_period.high = data & 0x7;
             ApuWritePulse2LengthCounter(apu, data >> 3);
+            UpdateTargetPeriod2(apu);
             break;
         case APU_TRIANGLE_LINEAR_COUNTER:
             apu->triangle.linear_counter.raw = data;
@@ -239,6 +318,14 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             apu->triangle.timer_period.high = data & 0x7;
             apu->triangle.linear_counter_load = data >> 3;
             break;
+        case APU_NOISE_TIMER_LOW:
+            //apu->noise.timer_period.low = data;
+            break;
+        case APU_NOISE_TIMER_HIGH:
+            //apu->noise.timer_period.high = data & 0x7;
+            //apu->noise.length_counter_load = data >> 3;
+            apu->noise.envelope.start = true;
+            break;
         case APU_STATUS:
             ApuWriteStatus(apu, data);
             break;
@@ -246,7 +333,7 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             apu->frame_counter.control.raw = data;
             break;
         default:
-            printf("Writing to unfinished Apu reg at addr: 0x%04X\n", addr);
+            DEBUG_LOG("Writing to unfinished Apu reg at addr: 0x%04X\n", addr);
             break;
     }
 }
@@ -268,9 +355,45 @@ uint8_t ReadAPURegister(Apu *apu, const uint16_t addr)
     }
 }
 
+
+static void ApuFrameMode0SetSeqStep1(Apu *apu)
+{
+    switch (apu->cycle_counter) {
+        case 0:
+            apu->sequence_step = 0;
+        case 3728 + 1:
+            apu->sequence_step = 1;
+        case 7456 + 1:
+            apu->sequence_step = 2;
+            break;
+        case 11185 + 1:
+            apu->sequence_step = 3;
+            break;
+    }
+}
+
 static void ApuFrameMode0SetSeqStep(Apu *apu)
 {
     switch (apu->cycle_counter) {
+        case 0:
+            apu->sequence_step = 0;
+        case 7457 + 1:
+            apu->sequence_step = 1;
+        case 14913 + 1:
+            apu->sequence_step = 2;
+            break;
+        case 22371 + 1:
+            apu->sequence_step = 3;
+            break;
+    }
+}
+
+static void ApuFrameMode1SetSeqStep1(Apu *apu)
+{
+    switch (apu->cycle_counter) {
+        case 0:
+            apu->sequence_step = 0;
+            break;
         case 3728 + 1:
             apu->sequence_step = 1;
             break;
@@ -280,7 +403,7 @@ static void ApuFrameMode0SetSeqStep(Apu *apu)
         case 11185 + 1:
             apu->sequence_step = 3;
             break;
-        case 1:
+        case 14914 + 1:
             apu->sequence_step = 4;
             break;
     }
@@ -289,20 +412,20 @@ static void ApuFrameMode0SetSeqStep(Apu *apu)
 static void ApuFrameMode1SetSeqStep(Apu *apu)
 {
     switch (apu->cycle_counter) {
-        case 3728 + 1:
+        case 0:
+            apu->sequence_step = 0;
+            break;
+        case 7457 + 1:
             apu->sequence_step = 1;
             break;
-        case 7456 + 1:
+        case 14913 + 1:
             apu->sequence_step = 2;
             break;
-        case 11185:
+        case 22371 + 1:
             apu->sequence_step = 3;
             break;
-        case 14914 + 1:
+        case 29829 + 1:
             apu->sequence_step = 4;
-            break;
-        case 1:
-            apu->sequence_step = 5;
             break;
     }
 }
@@ -323,8 +446,47 @@ static void ApuClockLengthCounters(Apu *apu)
     //printf("Pulse 2 length counter: %d\n", apu->pulse2.length_counter);
     //if (apu->triangle.length_counter && !apu->triangle.reg.counter_halt)
     //{
-    //    apu->pulse2.length_counter--;
+    //    apu->triangle.length_counter--;
     //}
+}
+
+static void ApuClockSweeps(Apu *apu)
+{
+    UpdateTargetPeriod1(apu);
+    if (!apu->pulse1.sweep_counter && apu->pulse1.sweep_reg.enabled && apu->pulse1.sweep_reg.shift_count && !apu->pulse1.muting)
+    {
+        apu->pulse1.timer_period.raw = apu->pulse1.target_period;
+    }
+    if (!apu->pulse1.sweep_counter || apu->pulse1.reload)
+    {
+        apu->pulse1.sweep_counter = apu->pulse1.sweep_reg.devider_period;
+        apu->pulse1.reload = false;
+    }
+    else
+    {
+        apu->pulse1.sweep_counter--;
+    }
+
+    //if (apu->pulse1.sweep_reg.enabled)
+    //{
+    //    printf("After Pulse 1 timer period: %d\n", apu->pulse1.target_period);
+    //    printf("After Pulse 1 timer raw: %d\n", apu->pulse1.timer.raw);
+    //}
+
+    UpdateTargetPeriod2(apu);
+    if (!apu->pulse2.sweep_counter && apu->pulse2.sweep_reg.enabled && apu->pulse2.sweep_reg.shift_count && !apu->pulse2.muting)
+    {
+        apu->pulse2.timer_period.raw = apu->pulse2.target_period;
+    }
+    if (!apu->pulse2.sweep_counter || apu->pulse2.reload)
+    {
+        apu->pulse2.sweep_counter = apu->pulse2.sweep_reg.devider_period;
+        apu->pulse2.reload = false;
+    }
+    else
+    {
+        apu->pulse2.sweep_counter--;
+    }
 }
 
 static void ApuClockTimers(Apu *apu)
@@ -337,7 +499,7 @@ static void ApuClockTimers(Apu *apu)
         apu->pulse1.duty_step = (apu->pulse1.duty_step + 1) % 8;
     }
 
-    if (apu->pulse1.length_counter == 0)
+    if (apu->pulse1.length_counter == 0 || apu->pulse1.muting)
     {
         apu->pulse1.output = 0;
     }
@@ -354,7 +516,7 @@ static void ApuClockTimers(Apu *apu)
         apu->pulse2.duty_step = (apu->pulse2.duty_step + 1) % 8;
     }
 
-    if (apu->pulse2.length_counter == 0)
+    if (apu->pulse2.length_counter == 0 || apu->pulse2.muting)
     {
         apu->pulse2.output = 0;
     }
@@ -368,11 +530,11 @@ static void ApuClockTimers(Apu *apu)
     else
         apu->triangle.timer = apu->triangle.timer_period;
 
-    float sample_l = generate_duty_sample(apu->pulse1.output, apu->pulse1.volume / 15.f);
-    float sample_r = generate_duty_sample(apu->pulse2.output, apu->pulse2.volume / 15.f);
+    float sample_l = CreateDutySample(apu->pulse1.output, apu->pulse1.volume / 15.f);
+    float sample_r = CreateDutySample(apu->pulse2.output, apu->pulse2.volume / 15.f);
 
-    float sample_sum = (sample_l + sample_r) * 0.2f;
-    apu->pulse_mix = sample_sum; //95.88 / ((8128.0 / (sample_l + sample_r)) + 100.0);
+    float sample_sum = ((sample_l + sample_r) * 0.5f) * 0.25;
+    apu->pulse_mix = sample_sum; //(95.88 / ((8128.0 / (sample_l + sample_r)) + 100.0)) * 5.75;
 }
 
 static void ApuClockEnvelopes(Apu *apu)
@@ -394,8 +556,11 @@ static void ApuClockEnvelopes(Apu *apu)
     {
         apu->pulse1.envelope.start = false;
         apu->pulse1.envelope.decay_counter = 15;
+        apu->pulse1.envelope.counter = apu->pulse1.reg.volume_env;
     }
 
+    //printf("Pulse 1 envelope decay: %d\n", apu->pulse1.envelope.decay_counter);
+    //printf("Pulse 1 envelope counter: %d\n", apu->pulse1.envelope.counter);
     if (!apu->pulse2.envelope.start)
     {
         if (apu->pulse2.envelope.counter > 0)
@@ -413,6 +578,7 @@ static void ApuClockEnvelopes(Apu *apu)
     {
         apu->pulse2.envelope.start = false;
         apu->pulse2.envelope.decay_counter = 15;
+        apu->pulse2.envelope.counter = apu->pulse2.reg.volume_env;
     }
 
     DEBUG_LOG("Pulse 1 envelope counter: %d\n", apu->pulse1.envelope.counter);
@@ -436,6 +602,8 @@ void APU_Init(Apu *apu)
     memset(apu, 0, sizeof(*apu));
 }
 
+static bool irq_triggered = false;
+
 void APU_Update(Apu *apu, uint64_t cpu_cycles)
 {
     // Get the delta of cpu cycles since the last cpu instruction
@@ -447,61 +615,49 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
 
     while (apu_cycles_to_run != 0)
     {
+        SequenceStep step;
+
         if ((cpu_cycles - apu_cycles_to_run) & 1)
         {
-            SequenceStep step;
             if (apu->frame_counter.control.sequencer_mode == 0)
             {
-                apu->cycle_counter = apu->cycle_counter % 14914;
-                ApuFrameMode0SetSeqStep(apu);
+                apu->cycle_counter = apu->cycle_counter % 14914; // 29829;
+                ApuFrameMode0SetSeqStep1(apu);
                 step = sequence_mode_0_table[apu->sequence_step];
-                if (apu->sequence_step == 4 && apu->cycle_counter == 1)
-                {
-                    //downsample_to_44khz(apu->buffer, apu->outbuffer);
-                    //NonesPutSoundData(apu);
-                }
             }
             else
             {
-                apu->cycle_counter = apu->cycle_counter % 18640;
-                ApuFrameMode1SetSeqStep(apu);
+                apu->cycle_counter = apu->cycle_counter % 18640; //37281;
+                ApuFrameMode1SetSeqStep1(apu);
                 step = sequence_mode_1_table[apu->sequence_step];
-                if (apu->sequence_step == 5 && apu->cycle_counter == 1)
-                {
-                    //downsample_to_44khz(apu->buffer, apu->outbuffer);
-                    //NonesPutSoundData(apu);
-                    //printf("curr sample: %d\n", current_sample);
-                    //current_sample = 0;
-                }
             }
-
-            if (apu->cycle_counter == step.cycles)
+    
+            if (apu->cycle_counter == step.cycles - 1)
             {
                 if (step.quarter_frame_clock)
                 {
-                    ApuClockLengthCounters(apu);
                     ApuClockEnvelopes(apu);
                 }
-
+    
+                if (step.half_frame_clock)
+                {
+ 
+                    ApuClockSweeps(apu);
+                    ApuClockLengthCounters(apu);
+                }
+    
                 if (step.frame_interrupt && !apu->frame_counter.control.interrupt_inhibit)
+                {
+                    irq_triggered = true;
                     apu->frame_counter.interrupt = true;
+                }
             }
-
             ApuClockTimers(apu);
-
-            if (apu->status.channel1)
-            {
-                //if (apu->pulse1.sweep.enabled)
-                //    apu->pulse1.timer.raw >>= apu->pulse1.sweep.shift_count;
-            }
-
-            if (apu->status.channel2)
-            {
-                //if (apu->pulse2.sweep.enabled)
-                //    apu->pulse2.timer.raw >>= apu->pulse2.sweep.shift_count;
-            }
             apu->cycle_counter++;
         }
+
+        //UpdateTargetPeriod1(apu);
+        //UpdateTargetPeriod2(apu);
 
         if (apu->current_sample >= 29780)
         {
@@ -519,13 +675,11 @@ void APU_Reset(void)
 
 }
 
-static bool irq_triggered = false;
-
 bool APU_IrqTriggered(void)
 {
     if (irq_triggered)
     {
-        irq_triggered = false; // Clear the flag after reading
+        irq_triggered = false;
         return true;
     }
     return false;

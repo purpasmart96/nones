@@ -55,7 +55,7 @@ typedef union
         // Enabled flag 
         uint8_t enabled : 1;
     };
-} ApuPulseSweep;
+} ApuPulseSweepReg;
 
 typedef union
 {
@@ -141,7 +141,7 @@ typedef union
         uint8_t : 1;
         uint8_t loop: 1;
     };
-} ApuNoiseControl0;
+} ApuNoiseControl;
 
 typedef union
 {
@@ -174,7 +174,7 @@ typedef struct
 
     struct {
         ApuPulseReg reg;
-        ApuPulseSweep sweep;
+        ApuPulseSweepReg sweep_reg;
         // External
         ApuTimer timer_period;
         // Internal timer
@@ -182,6 +182,9 @@ typedef struct
         ApuEnvelope envelope;
         uint16_t freq;
         bool reload;
+        uint16_t sweep_counter;
+        uint16_t target_period;
+        bool muting;
         uint16_t volume;
         uint16_t output;
         int duty_step;
@@ -191,12 +194,15 @@ typedef struct
 
     struct {
         ApuPulseReg reg;
-        ApuPulseSweep sweep;
+        ApuPulseSweepReg sweep_reg;
         ApuTimer timer_period;
         ApuTimer timer;
         ApuEnvelope envelope;
         uint16_t freq;
         bool reload;
+        uint16_t sweep_counter;
+        uint16_t target_period;
+        bool muting;
         uint16_t volume;
         uint16_t output;
         int duty_step;
@@ -211,10 +217,17 @@ typedef struct
         uint16_t length_counter;
         uint8_t linear_counter_load : 5;
     } triangle;
-    //struct {
-    //    ApuNoiseControl
-    //    ApuNoiseControl control;
-    //} noise;
+
+    struct {
+        ApuNoiseControl control;
+        ApuEnvelope envelope;
+        ApuTimer timer_period;
+        ApuTimer timer;
+        bool muting;
+        uint16_t volume;
+        uint16_t length_counter;
+        uint8_t length_counter_load : 5;
+    } noise;
     struct {
         ApuDmcControl control;
         uint8_t load_counter : 7;
@@ -258,6 +271,9 @@ typedef enum
 #define APU_TRIANGLE_TIMER_LOW 0x400A
 #define APU_TRIANGLE_TIMER_HIGH 0x400B
 
+#define APU_NOISE_TIMER_LOW 0x400C
+#define APU_NOISE_TIMER_HIGH 0x400F
+
 #define APU_STATUS 0x4015
 #define APU_FRAME_COUNTER 0x4017
 
@@ -268,5 +284,6 @@ void APU_Init(Apu *apu);
 //void APU_Update(Apu *apu, uint32_t cycles_delta);
 void APU_Update(Apu *apu, uint64_t cpu_cycles);
 void APU_Reset(void);
+bool APU_IrqTriggered(void);
 
 #endif

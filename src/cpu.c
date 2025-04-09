@@ -1357,9 +1357,6 @@ void CPU_TriggerNMI(Cpu *state)
     state->status.i = 1;
 }
 
-static bool irq_pending;
-static bool nmi_pending;
-
 //void CPU_Update(Cpu *state, bool irq_pending, bool nmi_pending)
 void CPU_Update(Cpu *state)
 {
@@ -1373,7 +1370,7 @@ void CPU_Update(Cpu *state)
     }
 
     // Check for interrupts AFTER executing an instruction
-    if (irq_pending && !state->status.i)
+    if (APU_IrqTriggered() && !state->status.i)
     {
         HandleIRQ(state);
     }
