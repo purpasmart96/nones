@@ -72,7 +72,7 @@ typedef union
     uint8_t raw;
     struct
     {
-        uint8_t reload : 7;
+        uint8_t reload_value : 7;
         uint8_t control_halt : 1;
     };
 } ApuTriangleLinearCounter;
@@ -105,12 +105,10 @@ typedef union
     };
 } ApuFrameCounterControl;
 
-//The NES APU frame counter (or frame sequencer) generates low-frequency clocks for the channels and an optional 60 Hz interrupt.
+// The NES APU frame counter (or frame sequencer) generates low-frequency clocks for the channels and an optional 60 Hz interrupt.
 // The name "frame counter" might be slightly misleading because the clocks have nothing to do with the video signal.
-//
-//The frame counter contains the following: divider, looping clock sequencer, frame interrupt flag.
-//
-//The sequencer is clocked on every other CPU cycle, so 2 CPU cycles = 1 APU cycle.
+// The frame counter contains the following: divider, looping clock sequencer, frame interrupt flag.
+// The sequencer is clocked on every other CPU cycle, so 2 CPU cycles = 1 APU cycle.
 // The sequencer keeps track of how many APU cycles have elapsed in total, and each step of the sequence will
 // occur once that total has reached the indicated amount (with an additional delay of one CPU cycle for the quarter and half frame signals).
 // Once the last step has executed, the count resets to 0 on the next APU cycle. 
@@ -119,6 +117,7 @@ typedef struct
     ApuFrameCounterControl control;
     uint16_t counter;
     bool interrupt;
+    bool clock_all;
 } ApuFrameCounter;
 
 // When the timer clocks the shift register, the following actions occur in order:
@@ -211,11 +210,15 @@ typedef struct
     } pulse2;
 
     struct {
-        ApuTriangleLinearCounter linear_counter;
+        ApuTriangleLinearCounter reg;
         ApuTimer timer_period;
         ApuTimer timer;
+        uint16_t seq_pos;
+        bool reload;
+        uint16_t output;
         uint16_t length_counter;
-        uint8_t linear_counter_load : 5;
+        uint16_t linear_counter;
+        uint8_t length_counter_load : 5;
     } triangle;
 
     struct {
@@ -225,9 +228,11 @@ typedef struct
         ApuTimer timer;
         bool muting;
         uint16_t volume;
+        uint16_t output;
         uint16_t length_counter;
         uint8_t length_counter_load : 5;
     } noise;
+
     struct {
         ApuDmcControl control;
         uint8_t load_counter : 7;
