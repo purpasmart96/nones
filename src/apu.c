@@ -219,6 +219,17 @@ static void ApuWriteStatus(Apu *apu, const uint8_t data)
     apu->status.dmc_interrupt = 0;
 }
 
+static void ApuClockFrameCounter(Apu *apu)
+{
+    if (apu->frame_counter.counter > 0)
+        apu->frame_counter.counter--;
+    else
+    {
+        apu->frame_counter.counter = apu->frame_counter.control.sequencer_mode ? 4 : 3;
+    }
+    printf("Frame counter counter: %d\n", apu->frame_counter.counter);
+}
+
 static void ApuClockLengthCounters(Apu *apu)
 {
     if (apu->pulse1.length_counter && !apu->pulse1.reg.counter_halt)
@@ -418,13 +429,12 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
 {
     apu->frame_counter.control.raw = data;
     apu->sequence_step = 0;
-
+    apu->cycle_counter = 0;
+    //ApuClockFrameCounter(apu);
     if (apu->frame_counter.control.sequencer_mode)
     {
-        ApuClockEnvelopes(apu);
-        //ApuClockLinearCounters(apu);
-        ApuClockLengthCounters(apu);
-        ApuClockSweeps(apu);
+        apu->frame_counter.clock_all = true;
+        //printf("Framecounter called on cycle: %d\n", apu->cycle_counter);
     }
 }
 
@@ -708,6 +718,15 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
             step = sequence_mode_1_table_cpu[apu->sequence_step];
         }
 
+        if (apu->cycle_counter == 0 && apu->frame_counter.clock_all)
+        {
+            ApuClockEnvelopes(apu);
+            ApuClockLinearCounters(apu);
+            ApuClockLengthCounters(apu);
+            ApuClockSweeps(apu);
+            apu->frame_counter.clock_all = false;
+        }
+
         if (apu->cycle_counter == step.cycles)
         {
             if (step.quarter_frame_clock)
@@ -745,6 +764,7 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
 
         if ((cpu_cycles - apu_cycles_to_run) & 1)
         {
+            //ApuClockFrameCounter(apu);
             ApuClockTimers(apu);
             ApuMixSample(apu);
         }
