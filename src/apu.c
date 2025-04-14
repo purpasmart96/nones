@@ -123,7 +123,13 @@ static const uint8_t triangle_table[32] =
    
 };
 
-static inline float CreateDutySample(int input, float volume)
+static const uint16_t noise_table[16] =
+{
+    4,   8,   16,  32,  64,  96,   128,  160,
+    202, 254, 380, 508, 762, 1016, 2034, 4068
+};
+
+static inline float CreateSquareSample(int input, float volume)
 {
     return (input ? 1.0f : -1.0f) * volume;
 }
@@ -169,7 +175,6 @@ static void ApuWritePulse1LengthCounter(Apu *apu, const uint8_t data)
     {
         apu->pulse1.length_counter = length_counter_table[apu->pulse1.length_counter_load];
     }
-
 }
 
 static void ApuWritePulse2LengthCounter(Apu *apu, const uint8_t data)
@@ -189,6 +194,16 @@ static void ApuWriteTriangleLengthCounter(Apu *apu, const uint8_t data)
     if (apu->status.triangle)
     {
         apu->triangle.length_counter = length_counter_table[apu->triangle.length_counter_load];
+    }
+}
+
+static void ApuWriteNoiseLengthCounter(Apu *apu, const uint8_t data)
+{
+    apu->noise.length_counter_load = data;
+
+    if (apu->status.noise)
+    {
+        apu->noise.length_counter = length_counter_table[apu->noise.length_counter_load];
     }
 }
 
@@ -214,6 +229,11 @@ static void ApuWriteStatus(Apu *apu, const uint8_t data)
     if (!apu->status.triangle)
     {
         apu->triangle.length_counter = 0;
+    }
+
+    if (!apu->status.noise)
+    {
+        apu->noise.length_counter = 0;
     }
 
     apu->status.dmc_interrupt = 0;
@@ -247,9 +267,15 @@ static void ApuClockLengthCounters(Apu *apu)
         apu->triangle.length_counter--;
     }
 
+    if (apu->noise.length_counter && !apu->noise.reg.counter_halt)
+    {
+        apu->noise.length_counter--;
+    }
+
     //printf("Pulse 1 length counter: %d\n", apu->pulse1.length_counter);
     //printf("Pulse 2 length counter: %d\n", apu->pulse2.length_counter);
     //printf("Triangle length counter: %d\n", apu->triangle.length_counter);
+    //printf("Noise length counter: %d\n", apu->noise.length_counter);
 }
 
 static void ApuClockLinearCounters(Apu *apu)
@@ -409,10 +435,32 @@ static void ApuClockEnvelopes(Apu *apu)
         apu->pulse2.envelope.counter = apu->pulse2.reg.volume_env;
     }
 
+    if (!apu->noise.envelope.start)
+    {
+        if (apu->noise.envelope.counter > 0)
+            apu->noise.envelope.counter--;
+        else
+        {
+            apu->noise.envelope.counter = apu->noise.reg.volume_env;
+            if (apu->noise.envelope.decay_counter > 0)
+                apu->noise.envelope.decay_counter--;
+            else if (apu->noise.reg.counter_halt)
+                apu->noise.envelope.decay_counter = 15;
+        }
+    }
+    else
+    {
+        apu->noise.envelope.start = false;
+        apu->noise.envelope.decay_counter = 15;
+        apu->noise.envelope.counter = apu->noise.reg.volume_env;
+    }
+
     DEBUG_LOG("Pulse 1 envelope counter: %d\n", apu->pulse1.envelope.counter);
     DEBUG_LOG("Pulse 1 envelope decay counter: %d\n", apu->pulse1.envelope.decay_counter);
     DEBUG_LOG("Pulse 2 envelope counter: %d\n", apu->pulse2.envelope.counter);
     DEBUG_LOG("Pulse 2 envelope decay counter: %d\n", apu->pulse2.envelope.decay_counter);
+    DEBUG_LOG("Noise envelope counter: %d\n", apu->noise.envelope.counter);
+    DEBUG_LOG("Noise envelope decay counter: %d\n", apu->noise.envelope.decay_counter);
 
     if (apu->pulse1.reg.constant_volume)
         apu->pulse1.volume = apu->pulse1.reg.volume_env;
@@ -423,6 +471,11 @@ static void ApuClockEnvelopes(Apu *apu)
         apu->pulse2.volume = apu->pulse2.reg.volume_env;
     else
         apu->pulse2.volume = apu->pulse2.envelope.decay_counter;
+
+    if (apu->noise.reg.constant_volume)
+        apu->noise.volume = apu->noise.reg.volume_env;
+    else
+        apu->noise.volume = apu->noise.envelope.decay_counter;
 }
 
 static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
@@ -516,12 +569,15 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             ApuWriteTriangleLengthCounter(apu, data >> 3);
             apu->triangle.reload = true;
             break;
-        case APU_NOISE_TIMER_LOW:
-            //apu->noise.timer_period.low = data;
+        case APU_NOISE:
+            apu->noise.reg.raw = data;
             break;
-        case APU_NOISE_TIMER_HIGH:
-            //apu->noise.timer_period.high = data & 0x7;
-            //apu->noise.length_counter_load = data >> 3;
+        case APU_NOISE_PERIOD:
+            apu->noise.period_reg.raw = data;
+            apu->noise.timer_period.raw = noise_table[apu->noise.period_reg.period];
+            break;
+        case APU_NOISE_LENGTH_COUNTER_LOAD:
+            ApuWriteNoiseLengthCounter(apu, data >> 3);
             apu->noise.envelope.start = true;
             break;
         case APU_STATUS:
@@ -547,6 +603,8 @@ static uint8_t ApuReadStatus(Apu *apu)
         status.channel2 = 0;
     if (apu->triangle.length_counter == 0)
         status.triangle = 0;
+    if (apu->noise.length_counter == 0)
+        status.noise = 0;
     return status.raw;
 }
 
@@ -674,21 +732,50 @@ static void ApuClockTimers(Apu *apu)
         apu->pulse2.output = duty_cycle_table[apu->pulse2.reg.duty][apu->pulse2.duty_step];
     }
 
+    if (apu->noise.timer.raw > 0)
+        apu->noise.timer.raw--;
+    else
+    {
+        apu->noise.timer.raw = apu->noise.timer_period.raw;
+        // Clock shift reg here
+        uint16_t feedback;
+        if (apu->noise.period_reg.mode)
+        {
+            feedback = (apu->noise.shift_reg.bit0 ^ apu->noise.shift_reg.bit6);
+        }
+        else
+        {
+            feedback = (apu->noise.shift_reg.bit0 ^ apu->noise.shift_reg.bit1);
+        }
+        apu->noise.shift_reg.raw >>= 1;
+        apu->noise.shift_reg.bit14 = feedback;
+    }
+
+    if (apu->noise.length_counter == 0 || apu->noise.shift_reg.bit0)
+    {
+        apu->noise.output = 0;
+    }
+    else
+    {
+        apu->noise.output = apu->noise.volume;
+    }
+
 }
 
 static void ApuMixSample(Apu *apu)
 {
-    float sample_l = CreateDutySample(apu->pulse1.output, apu->pulse1.volume / 15.f);
-    float sample_r = CreateDutySample(apu->pulse2.output, apu->pulse2.volume / 15.f);
+    float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume / 15.f);
+    float square2 = CreateSquareSample(apu->pulse2.output, apu->pulse2.volume / 15.f);
     float triangle = CreateTriangleSample(apu->triangle.output) * 0.11;
+    float noise = apu->noise.output * 0.00494;
 
-    //float sample_sum = ((sample_l + sample_r) * 0.5f) * 0.25;
-    apu->pulse_mix = 0.0752 * (sample_l + sample_r) + triangle;
+    apu->mixed_sample = 0.0752 * (square1 + square2) + triangle + noise;
 }
 
 void APU_Init(Apu *apu)
 {
     memset(apu, 0, sizeof(*apu));
+    apu->noise.shift_reg.raw = 1;
 }
 
 static bool irq_triggered = false;
@@ -718,6 +805,7 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
             step = sequence_mode_1_table_cpu[apu->sequence_step];
         }
 
+        // 0x1000's apu test 1 & 2 will fail with this even though this is needed for proper sound
         if (apu->cycle_counter == 0 && apu->frame_counter.clock_all)
         {
             ApuClockEnvelopes(apu);
@@ -757,7 +845,11 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
                 apu->triangle.seq_pos = (apu->triangle.seq_pos + 1) % 32;
         }
 
-        if (apu->triangle.length_counter && apu->triangle.linear_counter)
+        if (apu->triangle.timer_period.raw < 2)
+        {
+            apu->triangle.output = 0;
+        }
+        else if (apu->triangle.length_counter && apu->triangle.linear_counter)
         {
             apu->triangle.output = triangle_table[apu->triangle.seq_pos];
         }
@@ -777,7 +869,7 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
             NonesPutSoundData(apu);
             apu->current_sample = 0;
         }
-        apu->buffer[apu->current_sample++] = apu->pulse_mix;
+        apu->buffer[apu->current_sample++] = apu->mixed_sample;
         apu->cycle_counter++;
         apu_cycles_to_run--;
     }

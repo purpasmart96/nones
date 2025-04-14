@@ -130,28 +130,36 @@ typedef union
     uint8_t raw;
     struct
     {
-        uint8_t volume : 4;
+        uint8_t volume_env : 4;
         uint8_t constant_volume : 1;
         uint8_t counter_halt : 1;
     };
+} ApuNoiseReg;
+
+typedef union 
+{
+    uint16_t raw : 15;
     struct
     {
-        uint8_t envelope : 4;
-        uint8_t : 1;
-        uint8_t loop: 1;
+        uint16_t bit0 : 1;
+        uint16_t bit1 : 1;
+        uint16_t : 4;
+        uint16_t bit6 : 1;
+        uint16_t : 7;
+        uint16_t bit14 : 1;
     };
-} ApuNoiseControl;
+} ApuNoiseShiftReg;
 
 typedef union
 {
     uint16_t raw;
     struct
     {
-        uint8_t volume_env : 4;
-        uint8_t constant_volume : 1;
-        uint8_t counter_halt : 1;
+        uint8_t period : 4;
+        uint8_t : 3;
+        uint8_t mode : 1;
     };
-} ApuNoiseControl1;
+} ApuNoisePeriodReg;
 
 typedef union
 {
@@ -222,14 +230,16 @@ typedef struct
     } triangle;
 
     struct {
-        ApuNoiseControl control;
+        ApuNoiseReg reg;
         ApuEnvelope envelope;
+        ApuNoisePeriodReg period_reg;
+        ApuNoiseShiftReg shift_reg;
         ApuTimer timer_period;
         ApuTimer timer;
-        bool muting;
         uint16_t volume;
         uint16_t output;
         uint16_t length_counter;
+        //uint16_t shift_reg : 15;
         uint8_t length_counter_load : 5;
     } noise;
 
@@ -247,7 +257,7 @@ typedef struct
     float buffer[14890 * 2];
     int16_t outbuffer[735];
 
-    float pulse_mix;
+    float mixed_sample;
     float sample_left;
     float sample_right;
     int sequence_step;
@@ -276,8 +286,9 @@ typedef enum
 #define APU_TRIANGLE_TIMER_LOW 0x400A
 #define APU_TRIANGLE_TIMER_HIGH 0x400B
 
-#define APU_NOISE_TIMER_LOW 0x400C
-#define APU_NOISE_TIMER_HIGH 0x400F
+#define APU_NOISE 0x400C
+#define APU_NOISE_PERIOD 0x400E
+#define APU_NOISE_LENGTH_COUNTER_LOAD 0x400F
 
 #define APU_STATUS 0x4015
 #define APU_FRAME_COUNTER 0x4017
