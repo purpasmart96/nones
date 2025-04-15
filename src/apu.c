@@ -55,7 +55,7 @@ static const SequenceStep sequence_mode_0_table_cpu[] =
 static const SequenceStep sequence_mode_1_table_cpu[] =
 {
     { 7456,  true,  false, false },
-    { 14912,  true,  true,  false },
+    { 14912, true,  true,  false },
     { 22370, true,  false, false },
     { 29828, false, false, false },
     { 37280, true,  true,  false }
@@ -108,10 +108,10 @@ static const uint8_t duty_cycle_table[4][8] =
 
 static const uint8_t duty_cycle_table1[4][8] =
 {
-    {0,1,0,0,0,0,0,0},
-    {0,1,1,0,0,0,0,0},
-    {0,1,1,1,1,0,0,0},
-    {1,0,0,1,1,1,1,1}
+    { 0, 1, 0, 0, 0, 0, 0, 0 },
+    { 0, 1, 1, 0, 0, 0, 0, 0 },
+    { 0, 1, 1, 1, 1, 0, 0, 0 },
+    { 1, 0, 0, 1, 1, 1, 1, 1 }
 };
 
 static const uint8_t triangle_table[32] =
@@ -171,7 +171,7 @@ static void ApuWritePulse1LengthCounter(Apu *apu, const uint8_t data)
 {
     apu->pulse1.length_counter_load = data;
 
-    if (apu->status.channel1)
+    if (apu->status.pulse1)
     {
         apu->pulse1.length_counter = length_counter_table[apu->pulse1.length_counter_load];
     }
@@ -181,7 +181,7 @@ static void ApuWritePulse2LengthCounter(Apu *apu, const uint8_t data)
 {
     apu->pulse2.length_counter_load = data;
 
-    if (apu->status.channel2)
+    if (apu->status.pulse2)
     {
         apu->pulse2.length_counter = length_counter_table[apu->pulse2.length_counter_load];
     }
@@ -216,12 +216,12 @@ static void ApuWriteNoiseLengthCounter(Apu *apu, const uint8_t data)
 static void ApuWriteStatus(Apu *apu, const uint8_t data)
 {
     apu->status.raw = data;
-    if (!apu->status.channel1)
+    if (!apu->status.pulse1)
     {
         apu->pulse1.length_counter = 0;
     }
 
-    if (!apu->status.channel2)
+    if (!apu->status.pulse2)
     {
         apu->pulse2.length_counter = 0;
     }
@@ -597,14 +597,12 @@ static uint8_t ApuReadStatus(Apu *apu)
     apu->status.frame_interrupt = 0;
     ApuStatus status;
     status.raw = apu->status.raw;
-    if (apu->pulse1.length_counter == 0)
-        status.channel1 = 0;
-    if (apu->pulse2.length_counter == 0)
-        status.channel2 = 0;
-    if (apu->triangle.length_counter == 0)
-        status.triangle = 0;
-    if (apu->noise.length_counter == 0)
-        status.noise = 0;
+
+    status.pulse1 = apu->pulse1.length_counter & 1;
+    status.pulse2 = apu->pulse2.length_counter & 1;
+    status.triangle = apu->triangle.length_counter & 1;
+    status.noise = apu->noise.length_counter & 1;
+
     return status.raw;
 }
 

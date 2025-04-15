@@ -82,8 +82,8 @@ typedef union
     uint8_t raw;
     struct
     {
-        uint8_t channel1 : 1;
-        uint8_t channel2 : 1;
+        uint8_t pulse1 : 1;
+        uint8_t pulse2 : 1;
         uint8_t triangle : 1;
         uint8_t noise : 1;
         uint8_t dmc : 1;
