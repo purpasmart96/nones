@@ -1,13 +1,13 @@
 
 # Nones
 
-A simple NES emulator written in C.
+A simple NTSC NES emulator written in C.
 
 ### Current State
 
-Currently only a few games run. Only NROM and few MMC1 based games are currently supported.
+Currently only NROM, UxROM, and MMC1 based games are currently supported.
 
-Audio support is early and currently only supports square/pulse channels.
+Supports square, triangle, and noise audio channels.
 
 ### Building and running
 
