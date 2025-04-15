@@ -527,11 +527,6 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             break;
         case APU_PULSE_1_TIMER_LOW:
             apu->pulse1.timer_period.low = data;
-            //if (apu->pulse1.sweep_reg.enabled)
-            //{
-            //    printf("Pulse 1 timer period: %d\n", apu->pulse1.target_period);
-            //    printf("Pulse 1 timer raw: %d\n", apu->pulse1.timer.raw);
-            //}
             UpdateTargetPeriod1(apu);
             break;
         case APU_PULSE_1_TIMER_HIGH:
