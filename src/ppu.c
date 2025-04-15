@@ -1153,39 +1153,14 @@ static inline void PpuShiftRegsUpdate(Ppu *ppu)
 
 static inline void PpuFetchShifters(Ppu *ppu)
 {
-    //ppu->bg_shift_low.high = ppu->bg_shift_low.low;
-    //ppu->bg_shift_low.low = ppu->bg_lsb;
-//
-    //ppu->bg_shift_high.low = ppu->bg_shift_high.high;
-    //ppu->bg_shift_high.high = ppu->bg_msb;
-    //ppu->bg_shift_low.raw = ppu->bg_shift_low.high | ppu->bg_lsb;
-    //ppu->bg_shift_high.raw = ppu->bg_shift_high.high | ppu->bg_msb;
+    ppu->bg_shift_low.low = ppu->bg_lsb;
+    ppu->bg_shift_high.low = ppu->bg_msb;
 
-    ppu->bg_shift_low.raw = (ppu->bg_shift_low.raw & 0xFF00) | ppu->bg_lsb;
-    ppu->bg_shift_high.raw = (ppu->bg_shift_high.raw & 0xFF00) | ppu->bg_msb;
+    const bool latch_low = ppu->attrib_data & 1;
+    const bool latch_high = (ppu->attrib_data >> 1) & 1;
 
-    //if (ppu->bg_shift_low.raw != 0)
-    //{
-    //    printf("bg shift low low: %d\n", ppu->bg_shift_low.low);
-    //    printf("bg shift low high: %d\n", ppu->bg_shift_low.high);
-    //}
-//
-    //if (ppu->bg_shift_high.raw != 0)
-    //{
-    //    printf("bg shift high low: %d\n", ppu->bg_shift_high.low);
-    //    printf("bg shift high high: %d\n", ppu->bg_shift_high.high);
-    //}
-    uint8_t latch_low = ppu->attrib_data & 0x01;
-    uint8_t latch_high = (ppu->attrib_data >> 1) & 0x01;
-
-    //ppu->attrib_shift_low.raw = ppu->attrib_shift_low.high | latch_low ? 0xFF : 0x00;
-    //ppu->attrib_shift_high.raw = ppu->attrib_shift_high.high | latch_high ? 0xFF : 0x00;
-    //uint8_t quadrant = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
-    //uint8_t attrib_bits = (ppu->attrib_data >> quadrant) & 0x03;
-    //ppu->attrib_shift_low.raw  = (ppu->attrib_shift_low.raw  & 0xFF00) | ((ppu->attrib_data & 0b01) ? 0xFF : 0x00);
-    //ppu->attrib_shift_high.raw = (ppu->attrib_shift_high.raw & 0xFF00) | ((ppu->attrib_data & 0b10) ? 0xFF : 0x00);
-    ppu->attrib_shift_low.raw = (ppu->attrib_shift_low.raw & 0xFF00) | ((ppu->attrib_data & 0x1) ? 0xFF : 0x00);
-    ppu->attrib_shift_high.raw = (ppu->attrib_shift_high.raw & 0xFF00) | ((ppu->attrib_data & 0x2) ? 0xFF : 0x00);
+    ppu->attrib_shift_low.low = latch_low ? 0xFF : 0x00;
+    ppu->attrib_shift_high.low = latch_high ? 0xFF : 0x00;
 }
 
 static uint8_t GetSpritePixel2(Ppu *ppu, int sprite_index, int scanline, int cycle)
