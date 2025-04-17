@@ -24,15 +24,6 @@ static Sprite sprites[64];
 static Sprite sprites_secondary[8];
 static uint8_t palette_table[32];
 
-typedef struct
-{
-    uint8_t r;
-    uint8_t g;
-    uint8_t b;
-    uint8_t a;
-
-} Color;
-
 static Color sys_palette2[64] =
 {
     {0x66, 0x66, 0x66, 255},
@@ -598,47 +589,152 @@ static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, 
     }
 }
 
-static void DrawSpritePlaceholder(Ppu *ppu, int scanline, int cycle)
+static void DrawSpritesPlaceholder(Ppu *ppu)
 {
     if (!ppu->mask.sprites_rendering)
         return;
 
     uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
 
-    for (int n = 0; n < 64; n++)
+    for (int n = 7; n >= 0; n--)
     {
-        Sprite *curr_sprite =  &sprites[n];
+        Sprite *curr_sprite =  &sprites_secondary[n];
 
         uint16_t palette = curr_sprite->attribs.palette;
         size_t tile_offset = bank + (curr_sprite->tile_id * 16);
-        //if (curr_sprite->y < 241 && curr_sprite->x < 255)
-        //{
-            if (ppu->ctrl.sprite_size)
-            {
-                //PpuDrawSprite8x16(ppu, curr_sprite->tile_id, curr_sprite->x, curr_sprite->y + 1,
-                //    palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
-                //bank = (curr_sprite->tile_id & 1) ? 0x1000: 0;
-                if (!curr_sprite->attribs.priority)
-                    PpuDrawSprite16(ppu, curr_sprite->tile_id , curr_sprite->x, curr_sprite->y + 1,
-                                  palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
-                //PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
-                //    curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
-                //    tile_offset = bank + (curr_sprite->tile_id + 1 * 16);
-                //PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 9, palette,
-                //    curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
-            }
-            else
-            {
-                if (!curr_sprite->attribs.priority)
-                    PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
-                   curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
-            }
 
-            //PpuDrawSprite(ppu, tile_offset + 8, curr_sprite->x, curr_sprite->y + 9, palette,
-            //        curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+        if (ppu->ctrl.sprite_size)
+        {
+            if (!curr_sprite->attribs.priority)
+                PpuDrawSprite16(ppu, curr_sprite->tile_id , curr_sprite->x, curr_sprite->y + 1,
+                              palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+        }
+        else
+        {
+            if (!curr_sprite->attribs.priority)
+                PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
+               curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+        }
+    }
+}
+
+
+static void PpuFetchSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, int palette, bool flip_horz, bool flip_vert)
+{
+    int bank = (tile_index & 1) ? 0x1000 : 0x0000;
+    int tile_id = tile_index & 0xFE; 
+
+    for (int y = 0; y < 16; y++)
+    {
+        //int tile_part = (y < 8) ? 0 : 1;
+        int tile_part = (y < 8) ^ flip_vert ? 0 : 1;  // Swap tile part if flipping vertically
+        size_t tile_offset = bank + (tile_id + tile_part) * 16;
+        int row = y & 7;
+        if (flip_vert)
+            row = 7 - (y & 7); 
+
+        uint8_t upper = PpuBusReadChrRom(tile_offset + row); 
+        uint8_t lower = PpuBusReadChrRom(tile_offset + row + 8);
+
+        for (int x = 7; x >= 0; x--)
+        {
+            // Apply horizontal flip
+            int bit = flip_horz ? x : 7 - x;
+            uint8_t pixel = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+
+            //if (!pixel)
+            //    continue;
+
+            ppu->sprites_active = (ppu->sprites_active + 1) % 8;
+            ppu->sprites[ppu->sprites_active].pixel = pixel;
+            ppu->sprites[ppu->sprites_active].tile_x = tile_x;
+            ppu->sprites[ppu->sprites_active].tile_y = tile_y;
+            ppu->sprites[ppu->sprites_active].color = GetspriteColor(palette, pixel);
+
+            //DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
+        }
+    }
+}
+
+static void PpuFetchSprites(Ppu *ppu, int scanline, int cycle)
+{
+    //if (!ppu->mask.sprites_rendering)
+    //    return;
+
+    uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
+
+    for (int n = 0; n < 8; n++)
+    {
+        Sprite *curr_sprite =  &sprites_secondary[n];
+
+        uint16_t palette = curr_sprite->attribs.palette;
+        size_t tile_offset = bank + (curr_sprite->tile_id * 16);
+
+        if (ppu->ctrl.sprite_size)
+        {
+            PpuFetchSprite8x16(ppu, curr_sprite->tile_id, curr_sprite->x, curr_sprite->y + 1,
+                              palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
+        }
+        //else
+        //{
+        //    PpuDrawSprite(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
+        //       curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip);
         //}
     }
 }
+
+
+static void ResetSecondaryOAMSprites(void)
+{
+    memset(sprites_secondary, 0xFF, sizeof(Sprite) * 8);
+}
+
+static void ClearSprites(Ppu *ppu, int scanline, int cycle)
+{
+    //if (!ppu->mask.sprites_rendering)
+    //    return;
+
+    uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
+
+    //Sprite sprites[8];
+    int found_sprites = 0;
+    for (int n = 0; n < 64; n++)
+    {
+        if (found_sprites == 8)
+        {
+            ppu->status.sprite_overflow = 1;
+            break;
+        }
+
+        Sprite curr_sprite = sprites[n];
+        if (curr_sprite.y + 1 == scanline)
+        {
+            //memset(&sprites_secondary[found_sprites++], 0xFF, sizeof(Sprite));
+            sprites_secondary[found_sprites++] = curr_sprite;
+        }
+    }
+}
+
+static void PpuUpdateSprites(Ppu *ppu)
+{
+    int found_sprites = 0;
+    for (int n = 0; n < 64; n++)
+    {
+        if (found_sprites == 8)
+        {
+            ppu->status.sprite_overflow = 1;
+            break;
+        }
+
+        Sprite curr_sprite = sprites[n];
+        if (ppu->scanline >= curr_sprite.y + 1 && ppu->scanline < curr_sprite.y + (ppu->ctrl.sprite_size ? 16 : 8) + 1)
+        {
+            //printf("Found sprite %d at y:%d\n", found_sprites, ppu->scanline);
+            sprites_secondary[found_sprites++] = curr_sprite;
+        }
+    }
+}
+
 
 static void PPU_IsFrameDone(Ppu *ppu)
 {
@@ -654,11 +750,6 @@ static void PPU_IsFrameDone(Ppu *ppu)
         prev_ppu_cycles = ppu->cycles;
         ppu->frame_finished = true;
     }
-}
-
-static void ResetSecondaryOAMSprites(void)
-{
-    memset(sprites_secondary, 0xFF, sizeof(Sprite) * 8);
 }
 
 static int sprite_count = 0;
@@ -1438,7 +1529,38 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             // For the first empty sprite slot, this will consist of sprite #63's Y-coordinate followed by 3 $FF bytes; for subsequent empty sprite slots, this will be four $FF bytes
             // Cycles 321-340+0: Background render pipeline initialization
             // Read the first byte in secondary OAM (while the PPU fetches the first two background tiles for the next scanline)
-            //PrepareSpriteData(scanline, ppu_cycle_counter);
+            //PrepareSpriteData(ppu->scanline, ppu->cycle_counter);
+            if (ppu->cycle_counter == 64 && ppu->scanline < 240)
+                ResetSecondaryOAMSprites();
+            if (ppu->cycle_counter == 257 && (ppu->scanline < 240))
+                PpuUpdateSprites(ppu);
+            if ((ppu->cycle_counter > 260 && ppu->cycle_counter < 321) && ppu->scanline < 240)
+            {
+                switch (ppu->cycle_counter)
+                {
+                    case 262:
+                    {
+                        // Get pattern table address for this tile
+                        size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+                        // Bitplane 0
+                        ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
+                        break;
+                    }
+                    case 264:
+                    {
+                        // Get pattern table address for this tile
+                        size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+                        // Bitplane 1
+                        ppu->bg_msb = PpuBusReadChrRom(tile_offset + 8);
+                        break;
+                    }
+                }
+            }
+
+            if (ppu->cycle_counter == 320 && ppu->scanline < 240)
+            {
+                DrawSpritesPlaceholder(ppu);
+            }
             //if (scanline > 0 && scanline < 240 && ppu_cycle_counter == 256)
             //{
             //    Render(ppu);
@@ -1456,7 +1578,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         //}
         if (PpuSprite0Hit(ppu, ppu->cycle_counter, ppu->scanline))
         {
-            if (ppu->rendering && !ppu->status.sprite_hit && (ppu->cycle_counter > 7 || !(ppu->mask.raw & 0x3)))
+            if (ppu->mask.bg_rendering && ppu->mask.sprites_rendering && !ppu->status.sprite_hit && (ppu->cycle_counter > 7 || !(ppu->mask.raw & 0x3)))
             {
                 ppu->status.sprite_hit = 1;
             }
@@ -1501,7 +1623,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         }
         if (ppu->cycle_counter == 340 && ppu->scanline == 261)
         {
-            DrawSpritePlaceholder(ppu, 240, 256);
+            //DrawSpritesPlaceholder(ppu);
             // Copy the finished image in the back buffer to the front buffer
             memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
         }
