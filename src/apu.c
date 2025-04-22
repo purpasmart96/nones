@@ -120,7 +120,6 @@ static const uint8_t triangle_table[32] =
     7,  6,  5,  4,  3,  2,  1,  0,
     0,  1,  2,  3,  4,  5,  6,  7, 
     8,  9, 10, 11, 12, 13, 14, 15
-   
 };
 
 static const uint16_t noise_table[16] =
@@ -136,7 +135,12 @@ static inline float CreateSquareSample(int input, float volume)
 
 static inline float CreateTriangleSample(int input)
 {
-    return (input / 15.f);
+    return 0.00851 * (input / 15.f);
+}
+
+static inline float CreateNoiseSample(int input)
+{
+    return 0.00494 * (input / 15.f);
 }
 
 #define FCPU 1789773.0
@@ -575,6 +579,10 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             ApuWriteNoiseLengthCounter(apu, data >> 3);
             apu->noise.envelope.start = true;
             break;
+        case APU_DMC_DIRECT_LOAD:
+            apu->dmc.level = data;
+            //printf("Dmc level: %d\n", apu->dmc.level);
+            break;
         case APU_STATUS:
             ApuWriteStatus(apu, data);
             break;
@@ -593,10 +601,10 @@ static uint8_t ApuReadStatus(Apu *apu)
     ApuStatus status;
     status.raw = apu->status.raw;
 
-    status.pulse1 = apu->pulse1.length_counter & 1;
-    status.pulse2 = apu->pulse2.length_counter & 1;
-    status.triangle = apu->triangle.length_counter & 1;
-    status.noise = apu->noise.length_counter & 1;
+    status.pulse1 = apu->pulse1.length_counter != 0;
+    status.pulse2 = apu->pulse2.length_counter != 0;
+    status.triangle = apu->triangle.length_counter != 0;
+    status.noise = apu->noise.length_counter != 0;
 
     return status.raw;
 }
@@ -610,22 +618,6 @@ uint8_t ReadAPURegister(Apu *apu, const uint16_t addr)
         default:
             printf("Reading from open bus at addr: 0x%04X\n", addr);
             return 0;
-    }
-}
-
-static void ApuFrameMode0SetSeqStep1(Apu *apu)
-{
-    switch (apu->cycle_counter) {
-        case 0:
-            apu->sequence_step = 0;
-        case 3728 + 1:
-            apu->sequence_step = 1;
-        case 7456 + 1:
-            apu->sequence_step = 2;
-            break;
-        case 11185 + 1:
-            apu->sequence_step = 3;
-            break;
     }
 }
 
@@ -643,27 +635,6 @@ static void ApuFrameMode0SetSeqStep(Apu *apu)
             break;
         case 22371:
             apu->sequence_step = 3;
-            break;
-    }
-}
-
-static void ApuFrameMode1SetSeqStep1(Apu *apu)
-{
-    switch (apu->cycle_counter) {
-        case 0:
-            apu->sequence_step = 0;
-            break;
-        case 3728 + 1:
-            apu->sequence_step = 1;
-            break;
-        case 7456 + 1:
-            apu->sequence_step = 2;
-            break;
-        case 11185 + 1:
-            apu->sequence_step = 3;
-            break;
-        case 14914 + 1:
-            apu->sequence_step = 4;
             break;
     }
 }
@@ -759,10 +730,11 @@ static void ApuMixSample(Apu *apu)
 {
     float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume / 15.f);
     float square2 = CreateSquareSample(apu->pulse2.output, apu->pulse2.volume / 15.f);
-    float triangle = CreateTriangleSample(apu->triangle.output) * 0.11;
-    float noise = apu->noise.output * 0.00494;
+    float triangle = CreateTriangleSample(apu->triangle.output);
+    float noise = CreateNoiseSample(apu->noise.output);
 
-    apu->mixed_sample = 0.0752 * (square1 + square2) + triangle + noise;
+    float tnd_out =  triangle + noise; // + 0.00335 * apu->dmc.level;
+    apu->mixed_sample = ((0.00752 * (square1 + square2)) + tnd_out) * 10;
 }
 
 void APU_Init(Apu *apu)

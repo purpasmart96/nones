@@ -166,7 +166,7 @@ typedef union
     uint8_t raw;
     struct
     {
-        uint8_t frequency : 4;
+        uint8_t freq_rate : 4;
         uint8_t padding : 2;
         uint8_t loop : 1;
         uint8_t irq : 1;
@@ -245,6 +245,7 @@ typedef struct
 
     struct {
         ApuDmcControl control;
+        uint8_t level : 7;
         uint8_t load_counter : 7;
         uint8_t sample_addr;
         uint8_t sample_length;
@@ -289,6 +290,9 @@ typedef enum
 #define APU_NOISE 0x400C
 #define APU_NOISE_PERIOD 0x400E
 #define APU_NOISE_LENGTH_COUNTER_LOAD 0x400F
+
+#define APU_DMC_CONTROL 0x4010
+#define APU_DMC_DIRECT_LOAD 0x4011
 
 #define APU_STATUS 0x4015
 #define APU_FRAME_COUNTER 0x4017
