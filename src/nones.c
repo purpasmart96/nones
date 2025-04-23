@@ -207,16 +207,18 @@ void NonesRun(Nones *nones, const char *path)
         SDL_RenderPresent(renderer);
         //frames++;
 
-        //if (SDL_GetTicks() - timer >= 1000) {
+        //if (SDL_GetTicks() - timer >= 1000)
+        //{
         //    printf("UPS: %lu, FPS: %lu\r", updates, frames);
         //    fflush(stdout);
         //    updates = frames = 0;
         //    timer += 1000;
         //}
 
-        uint64_t frame_time = SDL_GetTicksNS() - start_time;
-        if (frame_time < FRAME_TIME_NS) {
-            SDL_DelayNS(FRAME_TIME_NS - frame_time);
+        double frame_time = (SDL_GetTicksNS() - start_time);
+        if (frame_time < FRAME_TIME_NS)
+        {
+            SDL_DelayPrecise(FRAME_TIME_NS - frame_time);
         }
     }
 
