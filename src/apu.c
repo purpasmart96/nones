@@ -130,17 +130,17 @@ static const uint16_t noise_table[16] =
 
 static inline float CreateSquareSample(int input, float volume)
 {
-    return (input ? 1.0f : -1.0f) * volume;
+    return input * volume;
 }
 
 static inline float CreateTriangleSample(int input)
 {
-    return 0.00851 * (input / 15.f);
+    return 0.00851 * input;
 }
 
 static inline float CreateNoiseSample(int input)
 {
-    return 0.00494 * (input / 15.f);
+    return 0.00494 * input;
 }
 
 #define FCPU 1789773.0
@@ -728,13 +728,13 @@ static void ApuClockTimers(Apu *apu)
 
 static void ApuMixSample(Apu *apu)
 {
-    float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume / 15.f);
-    float square2 = CreateSquareSample(apu->pulse2.output, apu->pulse2.volume / 15.f);
+    float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume);
+    float square2 = CreateSquareSample(apu->pulse2.output, apu->pulse2.volume);
     float triangle = CreateTriangleSample(apu->triangle.output);
     float noise = CreateNoiseSample(apu->noise.output);
 
     float tnd_out =  triangle + noise; // + 0.00335 * apu->dmc.level;
-    apu->mixed_sample = ((0.00752 * (square1 + square2)) + tnd_out) * 10;
+    apu->mixed_sample = ((0.00752 * (square1 + square2)) + tnd_out);
 }
 
 void APU_Init(Apu *apu)
