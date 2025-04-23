@@ -124,8 +124,8 @@ static const uint8_t triangle_table[32] =
 
 static const uint16_t noise_table[16] =
 {
-    4,   8,   16,  32,  64,  96,   128,  160,
-    202, 254, 380, 508, 762, 1016, 2034, 4068
+    2,   4,   8,  32,  32,  48,   64,  80,
+    101, 127, 190, 254, 381, 508, 1017, 2034
 };
 
 static inline float CreateSquareSample(int input, float volume)
@@ -573,7 +573,7 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             break;
         case APU_NOISE_PERIOD:
             apu->noise.period_reg.raw = data;
-            apu->noise.timer_period.raw = noise_table[apu->noise.period_reg.period];
+            apu->noise.timer_period.raw = noise_table[apu->noise.period_reg.period] - 1;
             break;
         case APU_NOISE_LENGTH_COUNTER_LOAD:
             ApuWriteNoiseLengthCounter(apu, data >> 3);
