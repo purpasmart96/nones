@@ -77,7 +77,7 @@ void NonesRun(Nones *nones, const char *path)
 {
     NonesInit(nones, path);
 
-    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO))
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD))
     {
         SDL_Log("SDL Init Error: %s", SDL_GetError());
         exit(EXIT_FAILURE);
@@ -103,6 +103,21 @@ void NonesRun(Nones *nones, const char *path)
     if (!SDL_SetRenderVSync(renderer, 1))
     {
         SDL_Log( "Could not enable VSync! SDL error: %s\n", SDL_GetError());
+    }
+
+    int num_gamepads;
+    SDL_Gamepad *gamepad = NULL;
+    SDL_JoystickID *gamepads = SDL_GetGamepads(&num_gamepads);
+    if (gamepads)
+    {
+        gamepad = SDL_OpenGamepad(gamepads[0]);
+        char *gamepad_info = SDL_GetGamepadMapping(gamepad);
+        printf("Gamepad: %s\n", gamepad_info);
+        SDL_free(gamepad_info);
+    }
+    else
+    {
+        SDL_Log("No gamepad detected! SDL error: %s\n", SDL_GetError());
     }
 
     SDL_AudioSpec spec;
@@ -171,14 +186,14 @@ void NonesRun(Nones *nones, const char *path)
 
         const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
-        JoyPadSetButton(JOYPAD_B, kb_state[SDL_SCANCODE_LSHIFT]);
-        JoyPadSetButton(JOYPAD_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W]);
-        JoyPadSetButton(JOYPAD_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S]);
-        JoyPadSetButton(JOYPAD_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A]);
-        JoyPadSetButton(JOYPAD_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D]);
-        JoyPadSetButton(JOYPAD_START, kb_state[SDL_SCANCODE_RETURN]);
-        JoyPadSetButton(JOYPAD_SELECT, kb_state[SDL_SCANCODE_TAB]);
+        JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST));
+        JoyPadSetButton(JOYPAD_B, kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH));
+        JoyPadSetButton(JOYPAD_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP));
+        JoyPadSetButton(JOYPAD_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN));
+        JoyPadSetButton(JOYPAD_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT));
+        JoyPadSetButton(JOYPAD_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT));
+        JoyPadSetButton(JOYPAD_START, kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START));
+        JoyPadSetButton(JOYPAD_SELECT, kb_state[SDL_SCANCODE_TAB] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK));
         //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
         //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
 
@@ -239,6 +254,9 @@ void NonesRun(Nones *nones, const char *path)
     CPU_Reset(nones->bus->cpu);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
+    SDL_free(gamepads);
+    if (gamepad)
+        SDL_CloseGamepad(gamepad);
     SDL_DestroyAudioStream(stream);
     SDL_DestroyWindow(window);
     SDL_Quit();
