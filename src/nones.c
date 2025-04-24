@@ -73,6 +73,12 @@ static void NonesInit(Nones *nones, const char *path)
     }
 }
 
+static void NonesSetIntegerScale(SDL_Window *window, SDL_Renderer *renderer, int scale)
+{
+    SDL_SetWindowSize(window, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
+    SDL_SetRenderScale(renderer, scale, scale);
+}
+
 void NonesRun(Nones *nones, const char *path)
 {
     NonesInit(nones, path);
@@ -199,7 +205,16 @@ void NonesRun(Nones *nones, const char *path)
 
         if (kb_state[SDL_SCANCODE_ESCAPE])
             quit = true;
-
+        else if (kb_state[SDL_SCANCODE_1])
+            NonesSetIntegerScale(window, renderer, 1);
+        else if (kb_state[SDL_SCANCODE_2])
+            NonesSetIntegerScale(window, renderer, 2);
+        else if (kb_state[SDL_SCANCODE_3])
+            NonesSetIntegerScale(window, renderer, 3);
+        else if (kb_state[SDL_SCANCODE_4])
+            NonesSetIntegerScale(window, renderer, 4);
+        else if (kb_state[SDL_SCANCODE_5])
+            NonesSetIntegerScale(window, renderer, 5);
 
         nones->bus->ppu->frame_finished = false;
 
