@@ -24,6 +24,7 @@ static Sprite sprites[64];
 static Sprite sprites_secondary[8];
 static uint8_t palette_table[32];
 
+// For sprite priority and sprite 0 hit
 static uint8_t bg_pixels[SCREEN_WIDTH][SCREEN_HEIGHT];
 static uint8_t sprite_pixels[SCREEN_WIDTH][SCREEN_HEIGHT];
 
@@ -44,7 +45,7 @@ static Color sys_palette[64] =
     {0x00, 0x40, 0x4D, 255}, 
     {0x00, 0x00, 0x00, 255},
     {0x00, 0x00, 0x00, 255},
-    {0x00, 0x00, 0x0, 255},
+    {0x00, 0x00, 0x00, 255},
     {0xAD, 0xAD, 0xAD, 255}, 
     {0x15, 0x5F, 0xD9, 255},
     {0x42, 0x40, 0xFF, 255}, 
@@ -121,9 +122,7 @@ static void PpuSetSpritePixel(const int x, const int y, const uint8_t pixel)
 static bool PpuSprite0Hit(Ppu *ppu, int cycle)
 {
     return (ppu->scanline >= sprites[0].y + 1 &&
-             cycle <= (sprites[0].x + 8) && cycle >= sprites[0].x);
-    //return (ppu->scanline >= sprites[0].y + 1 &&
-    //        cycle >= sprites[0].x);
+            cycle <= (sprites[0].x + 8) && cycle >= sprites[0].x);
 }
 
 static Color GetColor(uint8_t palette_index, uint8_t pixel)
@@ -189,15 +188,16 @@ static void IncX(Ppu *ppu)
 {
     if (ppu->v.scrolling.coarse_x == 31) // if coarse X == 31
     {
-        //printf("PPU v addr before: 0x%04X\n", ppu_ptr->v.raw);
-        ppu->v.scrolling.coarse_x = 0; // coarse X = 0
-        //printf("PPU v addr after coarse_x reset : 0x%04X\n", ppu_ptr->v.raw);
-        ppu->v.scrolling.name_table_sel ^= 0x1; // switch horizontal nametable
-        //printf("PPU v addr after nt switch: 0x%04X\n", ppu_ptr->v.raw);
+        //printf("PPU v addr before: 0x%04X\n", ppu->v.raw);
+        ppu->v.scrolling.coarse_x = 0;
+        //printf("PPU v addr after coarse_x reset : 0x%04X\n", ppu->v.raw);
+        // Switch horizontal nametable
+        ppu->v.scrolling.name_table_sel ^= 0x1;
+        //printf("PPU v addr after nt switch: 0x%04X\n", ppu->v.raw);
     }
     else
     {
-        ppu->v.scrolling.coarse_x++; // increment coarse X
+        ppu->v.scrolling.coarse_x++;
     }
 }
 
@@ -205,20 +205,22 @@ static void IncX(Ppu *ppu)
 static void IncY(Ppu *ppu)
 {
     //printf("PPU v addr: 0x%04X\n", ppu_ptr->v.raw);
-    if (ppu->v.scrolling.fine_y < 7)        // if fine Y < 7
-        ppu->v.scrolling.fine_y++;                      // increment fine Y
+    if (ppu->v.scrolling.fine_y < 7)
+        ppu->v.scrolling.fine_y++;
     else
     {
-        ppu->v.scrolling.fine_y = 0;                  // fine Y = 0
+        ppu->v.scrolling.fine_y = 0;
         if (ppu->v.scrolling.coarse_y == 29)
         {
             ppu->v.scrolling.coarse_y = 0;
-            ppu->v.scrolling.name_table_sel ^= 0x2; // Flip vertical nametable bit
+            // Flip vertical nametable bit
+            ppu->v.scrolling.name_table_sel ^= 0x2;
         }
         else if (ppu->v.scrolling.coarse_y == 31)
         {
             //printf("PPU v addr before: 0x%04X\n", ppu_ptr->v.raw);
-            ppu->v.scrolling.coarse_y = 0;// coarse Y = 0, nametable not switched
+            // coarse Y = 0, nametable not switched
+            ppu->v.scrolling.coarse_y = 0;
             //printf("PPU v addr after: 0x%04X\n", ppu_ptr->v.raw);
         }
         else
@@ -348,10 +350,10 @@ uint8_t PPU_ReadData(Ppu *ppu)
     return data;
 }
 
-
 uint8_t ReadPPURegister(Ppu *ppu, const uint16_t address)
 {
-    switch (address) {
+    switch (address)
+    {
         case PPU_STATUS:
             return PPU_ReadStatus(ppu);
         case OAM_DATA:
@@ -449,8 +451,7 @@ void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers)
     ppu_ptr = ppu;
 }
 
-bool nmi_triggered = false;
-bool vblank_set = false; // Prevents multiple VBlank triggers in one frame
+static bool nmi_triggered = false;
 
 const uint32_t dots_per_frame_odd = 341 * 261 + 340;
 const uint32_t dots_per_frame_even = 341 * 261 + 341;
@@ -466,7 +467,7 @@ static void DrawPixel(uint32_t *buffer, int x, int y, Color color)
 }
 
 static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, int palette,
-                             bool flip_horz, bool flip_vert, int priority)
+                             bool flip_horz, bool flip_vert, bool priority)
 {
     for (int y = 0; y < 8; y++)
     {
@@ -500,7 +501,7 @@ static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, 
 }
 
 static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, int palette,
-                              bool flip_horz, bool flip_vert, int priority)
+                              bool flip_horz, bool flip_vert, bool priority)
 {
     int bank = (tile_index & 1) ? 0x1000 : 0x0000;
     int tile_id = tile_index & 0xFE; 
@@ -543,7 +544,7 @@ static void DrawSpritesPlaceholder(Ppu *ppu)
     if (!ppu->mask.sprites_rendering)
         return;
 
-    uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
+    const uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
 
     for (int n = 7; n >= 0; n--)
     {
@@ -628,9 +629,9 @@ static inline void PpuFetchShifters(Ppu *ppu)
 
 static void PpuRender(Ppu *ppu, int scanline, int cycle)
 {
-    uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
-    uint8_t *attribute_table = &nametable[0x3C0];
-    uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+    const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
+    const uint8_t *attribute_table = &nametable[0x3C0];
+    const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
 
     if (ppu->mask.bg_rendering)
         PpuShiftRegsUpdate(ppu);
@@ -693,18 +694,10 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
     {
         // Rendering a pixel (every dot)
         int bit = 15 - ppu->x;
-        uint16_t bit_mux = 0x8000 >> ppu->x;  // fine X scroll masks shift registers
-        //uint8_t pixel_low  = (ppu->bg_shift_low.raw & bit_mux) > 0;
-        //uint8_t pixel_high = (ppu->bg_shift_high.raw & bit_mux) > 0;
-        uint8_t palette_low  = (ppu->attrib_shift_low.raw & bit_mux) > 0;
-        uint8_t palette_high = (ppu->attrib_shift_high.raw & bit_mux) > 0;
         uint8_t pixel_low  = (ppu->bg_shift_low.raw >> bit) & 1;
         uint8_t pixel_high = (ppu->bg_shift_high.raw >> bit) & 1;
-        //uint8_t palette_low  = (ppu->attrib_shift_low.raw & bit_mux) > 0;
-        //uint8_t palette_high = (ppu->attrib_shift_high.raw & bit_mux) > 0;
-        //uint8_t palette_low  = (ppu->attrib_shift_low.raw >> bit) & 1;
-        //uint8_t palette_high = (ppu->attrib_shift_high.low >> bit) & 1;
-        //uint8_t palette = (palette_high << 1) | palette_low;
+        uint8_t palette_low  = (ppu->attrib_shift_low.raw >> bit) & 1;
+        uint8_t palette_high = (ppu->attrib_shift_high.raw >> bit) & 1;
 
         uint8_t pixel = (pixel_high << 1) | pixel_low;
         uint8_t palette = (palette_high << 1) | palette_low;
@@ -716,9 +709,11 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
 
         if (pixel && PpuGetSpritePixel(cycle - 1, scanline))
         {
-            if (PpuSprite0Hit(ppu, cycle - 1) && !ppu->status.sprite_hit && (cycle > 7 || !(ppu->mask.raw & 0x3)))
+            if (PpuSprite0Hit(ppu, cycle - 1) && !ppu->status.sprite_hit && cycle != 255 && 
+                (cycle > 7 || (ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner)))
             {
                 ppu->status.sprite_hit = 1;
+                //printf("Sprite 0 hit at cycle:%d scanline:%d\n", cycle, scanline);
                 memset(sprite_pixels, 0, sizeof(sprite_pixels));
             }
         }

@@ -229,21 +229,12 @@ typedef struct
     ShiftReg attrib_shift_high;
     uint8_t sprite_lsb;
     uint8_t sprite_msb;
-    int next_palette;
-
-    int sprites_active;
-    struct {
-        Color color;
-        uint8_t priority;
-        uint8_t pixel;
-        int tile_x;
-        int tile_y;
-    } sprites[8];
 
     bool rendering;
     bool prev_rendering;
     bool frame_finished;
-    uint8_t buffered_data; // Read buffer for $2007
+    // Read buffer for $2007
+    uint8_t buffered_data;
 
     // Double buffer for SDL
     // buffer 0 is the backbuffer
