@@ -77,6 +77,7 @@ static void NonesSetIntegerScale(SDL_Window *window, SDL_Renderer *renderer, int
 {
     SDL_SetWindowSize(window, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
     SDL_SetRenderScale(renderer, scale, scale);
+    SDL_SetWindowPosition(window,  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED);
 }
 
 void NonesRun(Nones *nones, const char *path)
