@@ -26,7 +26,7 @@ static uint8_t palette_table[32];
 
 // For sprite priority and sprite 0 hit
 static uint8_t bg_pixels[SCREEN_WIDTH][SCREEN_HEIGHT];
-static uint8_t sprite_pixels[SCREEN_WIDTH][SCREEN_HEIGHT];
+static uint8_t sprite0_pixels[SCREEN_WIDTH][SCREEN_HEIGHT];
 
 static Color sys_palette[64] =
 {
@@ -101,22 +101,30 @@ static uint64_t prev_ppu_cycles = 0;
 
 static uint8_t PpuGetBgPixel(const int x, const int y)
 {
-    return bg_pixels[x][y];
+    if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT)
+        return bg_pixels[x][y];
+
+    return 0;
 }
 
 static void PpuSetBgPixel(const int x, const int y, const uint8_t pixel)
 {
-    bg_pixels[x][y] = pixel;
+    if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT)
+        bg_pixels[x][y] = pixel;
 }
 
-static uint8_t PpuGetSpritePixel(const int x, const int y)
+static uint8_t PpuGetSprite0Pixel(const int x, const int y)
 {
-    return sprite_pixels[x][y];
+    if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT)
+        return sprite0_pixels[x][y];
+
+    return 0;
 }
 
-static void PpuSetSpritePixel(const int x, const int y, const uint8_t pixel)
+static void PpuSetSprite0Pixel(const int x, const int y, const uint8_t pixel)
 {
-    sprite_pixels[x][y] = pixel;
+    if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT)
+        sprite0_pixels[x][y] = pixel;
 }
 
 static bool PpuSprite0Hit(Ppu *ppu, int cycle)
@@ -467,8 +475,12 @@ static void DrawPixel(uint32_t *buffer, int x, int y, Color color)
 }
 
 static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, int palette,
-                             bool flip_horz, bool flip_vert, bool priority)
+                             bool flip_horz, bool flip_vert, bool priority, bool sprite0)
 {
+    int bit = 0;
+    uint8_t sprite_pixel = 0;
+    uint8_t bg_pixel = 0;
+
     for (int y = 0; y < 8; y++)
     {
         int row = y;
@@ -482,34 +494,42 @@ static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, 
         for (int x = 7; x >= 0; x--)
         {
             // Apply horizontal flip
-            int bit = flip_horz ? x : 7 - x;
-            uint8_t pixel = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+            bit = flip_horz ? x : 7 - x;
+            sprite_pixel = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+            bg_pixel = PpuGetBgPixel(tile_x + x, tile_y + y);
 
-            if (tile_x + x < SCREEN_WIDTH && tile_y + y < SCREEN_HEIGHT)
+            if (sprite0)
             {
-                PpuSetSpritePixel(tile_x + x, tile_y + y, pixel);
+                PpuSetSprite0Pixel(tile_x + x, tile_y + y, sprite_pixel);
             }
 
-            if (!pixel || (priority && PpuGetBgPixel(tile_x + x, tile_y + y)))
-                continue;
-    
-            Color color = GetspriteColor(palette, pixel);
-
-            DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
+            if ((ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7)))
+            {
+                if (sprite_pixel && (!priority || !bg_pixel))
+                {
+                    Color color = GetspriteColor(palette, sprite_pixel);
+                    DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
+                }
+            }
         }
     }
 }
 
 static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, int palette,
-                              bool flip_horz, bool flip_vert, bool priority)
+                              bool flip_horz, bool flip_vert, bool priority, bool sprite0)
 {
     int bank = (tile_index & 1) ? 0x1000 : 0x0000;
-    int tile_id = tile_index & 0xFE; 
+    int tile_id = tile_index & 0xFE;
+
+    int bit = 0;
+    uint8_t sprite_pixel = 0;
+    uint8_t bg_pixel = 0;
 
     for (int y = 0; y < 16; y++)
     {
         //int tile_part = (y < 8) ? 0 : 1;
-        int tile_part = (y < 8) ^ flip_vert ? 0 : 1;  // Swap tile part if flipping vertically
+        // Swap tile part if flipping vertically
+        int tile_part = (y < 8) ^ flip_vert ? 0 : 1;
         size_t tile_offset = bank + (tile_id + tile_part) * 16;
         int row = y & 7;
         if (flip_vert)
@@ -521,20 +541,23 @@ static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, 
         for (int x = 7; x >= 0; x--)
         {
             // Apply horizontal flip
-            int bit = flip_horz ? x : 7 - x;
-            uint8_t pixel = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+            bit = flip_horz ? x : 7 - x;
+            sprite_pixel = ((upper >> bit) & 1) | (((lower >> bit) & 1) << 1);
+            bg_pixel = PpuGetBgPixel(tile_x + x, tile_y + y);
 
-            if (tile_x + x < SCREEN_WIDTH && tile_y + y < SCREEN_HEIGHT)
+            if (sprite0)
             {
-                PpuSetSpritePixel(tile_x + x, tile_y + y, pixel);
+                PpuSetSprite0Pixel(tile_x + x, tile_y + y, sprite_pixel);
             }
 
-            if (!pixel || (priority && PpuGetBgPixel(tile_x + x, tile_y + y)))
-                continue;
-    
-            Color color = GetspriteColor(palette, pixel);
-
-            DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
+            if ((ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7)))
+            {
+                if (sprite_pixel && (!priority || !bg_pixel))
+                {
+                    Color color = GetspriteColor(palette, sprite_pixel);
+                    DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
+                }
+            }
         }
     }
 }
@@ -545,6 +568,7 @@ static void DrawSpritesPlaceholder(Ppu *ppu)
         return;
 
     const uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000: 0;
+    bool sprite0 = false;
 
     for (int n = 7; n >= 0; n--)
     {
@@ -552,16 +576,18 @@ static void DrawSpritesPlaceholder(Ppu *ppu)
 
         uint16_t palette = curr_sprite->attribs.palette;
         size_t tile_offset = bank + (curr_sprite->tile_id * 16);
+        if (!n && ppu->sprite0_loaded)
+            sprite0 = true;
 
         if (ppu->ctrl.sprite_size)
         {
             PpuDrawSprite8x16(ppu, curr_sprite->tile_id , curr_sprite->x, curr_sprite->y + 1,
-                              palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip, curr_sprite->attribs.priority);
+                              palette,curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip, curr_sprite->attribs.priority, sprite0);
         }
         else
         {
             PpuDrawSprite8x8(ppu, tile_offset, curr_sprite->x, curr_sprite->y + 1, palette,
-               curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip, curr_sprite->attribs.priority);
+               curr_sprite->attribs.horz_flip, curr_sprite->attribs.vert_flip, curr_sprite->attribs.priority, sprite0);
         }
     }
 }
@@ -574,17 +600,26 @@ static void ResetSecondaryOAMSprites(void)
 static void PpuUpdateSprites(Ppu *ppu)
 {
     int found_sprites = 0;
+    ppu->sprite0_loaded = false;
+
     for (int n = 0; n < 64; n++)
     {
-        if (found_sprites == 8)
-        {
-            ppu->status.sprite_overflow = 1;
-            break;
-        }
-
         Sprite curr_sprite = sprites[n];
         if (ppu->scanline >= curr_sprite.y + 1 && ppu->scanline < curr_sprite.y + (ppu->ctrl.sprite_size ? 16 : 8) + 1)
         {
+            if (found_sprites == 8)
+            {
+                ppu->status.sprite_overflow = 1;
+                break;
+            }
+
+            if (!n)
+            {
+                //printf("Found sprite 0 at y:%d\n", ppu->scanline);
+                //printf("sprite0.y: %d sprite0.x: %d\n", curr_sprite.y, curr_sprite.x);
+                ppu->sprite0_loaded = true;
+            }
+
             //printf("Found sprite %d at y:%d\n", found_sprites, ppu->scanline);
             sprites_secondary[found_sprites++] = curr_sprite;
         }
@@ -604,6 +639,7 @@ static void PPU_IsFrameDone(Ppu *ppu)
     {
         prev_ppu_cycles = ppu->cycles;
         ppu->frame_finished = true;
+        ppu->frames++;
     }
 }
 
@@ -702,25 +738,30 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         uint8_t pixel = (pixel_high << 1) | pixel_low;
         uint8_t palette = (palette_high << 1) | palette_low;
 
-        if (cycle - 1 < SCREEN_WIDTH && scanline < SCREEN_HEIGHT)
+        if (ppu->mask.bg_rendering && ppu->mask.sprites_rendering && !ppu->status.sprite_hit && cycle != 255 && 
+            (cycle - 1 > 7 || (ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner)))
         {
-            PpuSetBgPixel(cycle - 1, scanline, pixel);
-        }
-
-        if (pixel && PpuGetSpritePixel(cycle - 1, scanline))
-        {
-            if (PpuSprite0Hit(ppu, cycle - 1) && !ppu->status.sprite_hit && cycle != 255 && 
-                (cycle > 7 || (ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner)))
+            if (PpuSprite0Hit(ppu, cycle - 1) && pixel && PpuGetSprite0Pixel(cycle - 1, scanline))
             {
                 ppu->status.sprite_hit = 1;
                 //printf("Sprite 0 hit at cycle:%d scanline:%d\n", cycle, scanline);
-                memset(sprite_pixels, 0, sizeof(sprite_pixels));
+                //memset(sprite0_pixels, 0, sizeof(sprite0_pixels));
             }
         }
 
         // Draw pixel here
-        Color color = GetColor(palette, pixel);
-        DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
+        if (ppu->mask.show_bg_left_corner || cycle - 1 > 7)
+        {
+            PpuSetBgPixel(cycle - 1, scanline, pixel);
+            Color color = GetColor(palette, pixel);
+            DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
+        }
+        else
+        {
+            PpuSetBgPixel(cycle - 1, scanline, 0);
+            Color color = GetColor(palette, 0);
+            DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
+        }
     }
 }
 
@@ -783,6 +824,9 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         ppu->cycles++;
         ppu_cycles_to_run--;
 
+        if (ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
+            continue;
+
         if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter < 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
 
@@ -792,28 +836,28 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         if (ppu->cycle_counter == 257 && (ppu->scanline < 240))
             PpuUpdateSprites(ppu);
 
-        if ((ppu->cycle_counter > 260 && ppu->cycle_counter < 321) && ppu->scanline < 240)
-        {
-            switch (ppu->cycle_counter)
-            {
-                case 262:
-                {
-                    // Get pattern table address for this tile
-                    size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
-                    // Bitplane 0
-                    ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
-                    break;
-                }
-                case 264:
-                {
-                    // Get pattern table address for this tile
-                    size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
-                    // Bitplane 1
-                    ppu->bg_msb = PpuBusReadChrRom(tile_offset + 8);
-                    break;
-                }
-            }
-        }
+        //if ((ppu->cycle_counter > 260 && ppu->cycle_counter < 321) && ppu->scanline < 240)
+        //{
+        //    switch (ppu->cycle_counter)
+        //    {
+        //        case 262:
+        //        {
+        //            // Get pattern table address for this tile
+        //            size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+        //            // Bitplane 0
+        //            ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
+        //            break;
+        //        }
+        //        case 264:
+        //        {
+        //            // Get pattern table address for this tile
+        //            size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+        //            // Bitplane 1
+        //            ppu->bg_msb = PpuBusReadChrRom(tile_offset + 8);
+        //            break;
+        //        }
+        //    }
+        //}
     
         if (ppu->cycle_counter == 320 && ppu->scanline < 240)
         {
@@ -841,6 +885,8 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             {
                 nmi_triggered = true;
             }
+            // Copy the finished image in the back buffer to the front buffer
+            memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
         }
 
         // Clear VBlank flag at scanline 261, dot 1
@@ -849,7 +895,6 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             ppu->status.vblank = 0;
             ppu->status.sprite_hit = 0;
             ppu->status.sprite_overflow = 0;
-
         }
 
         if (ppu->scanline == 261 && (ppu->cycle_counter >= 280 && ppu->cycle_counter < 305))
@@ -865,9 +910,9 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
 
         if (ppu->cycle_counter == 340 && ppu->scanline == 261)
         {
-            //memset(sprite_pixels, 0, sizeof(sprite_pixels));
+            //memset(bg_pixels, 0, sizeof(bg_pixels));
             // Copy the finished image in the back buffer to the front buffer
-            memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
+            //memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
         }
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;

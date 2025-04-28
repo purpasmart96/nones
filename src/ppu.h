@@ -201,6 +201,7 @@ typedef struct
 {
     uint64_t cycles;
     uint64_t prev_cpu_cycles;
+    uint64_t frames;
 
     // PPU internel regs
     struct {
@@ -230,6 +231,7 @@ typedef struct
     uint8_t sprite_lsb;
     uint8_t sprite_msb;
 
+    bool sprite0_loaded;
     bool rendering;
     bool prev_rendering;
     bool frame_finished;
