@@ -113,6 +113,7 @@ void BusWrite(const uint16_t addr, const uint8_t data)
                 if (addr == 0x4014)
                 {
                     DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
+                    bus_ptr->cpu->cycles += 513;
                     OAM_Dma(data);
                     break;
                 }
