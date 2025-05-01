@@ -14,13 +14,8 @@
 #include <SDL3/SDL_keycode.h>
 #include <SDL3/SDL_scancode.h>
 
-#include "arena.h"
-#include "loader.h"
-#include "cpu.h"
-#include "apu.h"
-#include "ppu.h"
-#include "joypad.h"
 #include "bus.h"
+#include "cart.h"
 #include "nones.h"
 
 #define HIGH_RATE_SAMPLES 29780
@@ -193,14 +188,14 @@ void NonesRun(Nones *nones, const char *path)
 
         const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST));
-        JoyPadSetButton(JOYPAD_B, kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH));
-        JoyPadSetButton(JOYPAD_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP));
-        JoyPadSetButton(JOYPAD_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN));
-        JoyPadSetButton(JOYPAD_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT));
-        JoyPadSetButton(JOYPAD_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT));
-        JoyPadSetButton(JOYPAD_START, kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START));
-        JoyPadSetButton(JOYPAD_SELECT, kb_state[SDL_SCANCODE_TAB] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_A, kb_state[SDL_SCANCODE_SPACE] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_B, kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_START, kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START));
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_SELECT, kb_state[SDL_SCANCODE_TAB] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK));
         //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
         //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
 
@@ -253,18 +248,7 @@ void NonesRun(Nones *nones, const char *path)
         }
     }
 
-    if (nones->bus->cart->battery)
-    {
-        char save_path[128];
-        snprintf(save_path, sizeof(save_path), "%s.sav", nones->bus->cart->name);
-
-        FILE *sav = fopen(save_path, "wb");
-        if (sav != NULL)
-        {
-            fwrite(nones->bus->cart->ram, CART_RAM_SIZE, 1, sav);
-            fclose(sav);
-        }
-    }
+    CartSaveSram(nones->bus->cart);
 
     PPU_Reset();
     CPU_Reset(nones->bus->cpu);

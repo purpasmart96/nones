@@ -5,14 +5,14 @@
 #include <string.h>
 #include <sys/types.h>
 
-#include "nones.h"
 #include "apu.h"
 #include "ppu.h"
-#include "arena.h"
 #include "cpu.h"
-#include "ppu.h"
-#include "loader.h"
+#include "joypad.h"
+#include "arena.h"
+#include "cart.h"
 #include "bus.h"
+#include "nones.h"
 #include "utils.h"
 
 static uint8_t vram[0x800];
@@ -425,18 +425,19 @@ void OAM_Dma(const uint16_t addr)
 // Configure the mirroring type
 void NametableMirroringInit(NameTableMirror mode)
 {
-    switch (mode) {
+    switch (mode)
+    {
         case NAMETABLE_HORIZONTAL:
-            nametables[0] = &vram[0x000];      // NT0 (0x2000)
-            nametables[1] = &vram[0x000];      // NT0 (Mirrored at 0x2400)
+            nametables[0] = &vram[0x000];  // NT0 (0x2000)
+            nametables[1] = &vram[0x000];  // NT0 (Mirrored at 0x2400)
             nametables[2] = &vram[0x400];  // NT1 (0x2800)
             nametables[3] = &vram[0x400];  // NT1 (Mirrored at 0x2C00)
             break;
         
         case NAMETABLE_VERTICAL:
-            nametables[0] = &vram[0x000];      // NT0 (0x2000)
+            nametables[0] = &vram[0x000];  // NT0 (0x2000)
             nametables[1] = &vram[0x400];  // NT1 (0x2400)
-            nametables[2] = &vram[0x000];      // NT0 (Mirrored at 0x2800)
+            nametables[2] = &vram[0x000];  // NT0 (Mirrored at 0x2800)
             nametables[3] = &vram[0x400];  // NT1 (Mirrored at 0x2C00)
             break;
 

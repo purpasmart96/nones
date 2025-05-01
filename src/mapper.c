@@ -2,16 +2,24 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+//#include <stdlib.h>
+//#include <string.h>
 
-#include "cpu.h"
-#include "apu.h"
-#include "ppu.h"
+//#include "cpu.h"
+//#include "apu.h"
+//#include "ppu.h"
+//#include "joypad.h"
+//#include "arena.h"
+//#include "cart.h"
+//#include "bus.h"
+//#include "mapper.h"
+//#include "utils.h"
+
 #include "arena.h"
-#include "loader.h"
-#include "bus.h"
+#include "cart.h"
+#include "ppu.h"
 #include "mapper.h"
+
 #include "utils.h"
 
 static uint8_t NromReadPrgRom(PrgRom *prg_rom, uint16_t addr)

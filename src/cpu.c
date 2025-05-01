@@ -5,18 +5,14 @@
 #include <stdbool.h>
 #include <time.h>
 
-#include "joypad.h"
-#include "ppu.h"
-#include "utils.h"
-
 #include "apu.h"
 #include "cpu.h"
 #include "ppu.h"
 #include "joypad.h"
 #include "arena.h"
-#include "loader.h"
+#include "cart.h"
 #include "bus.h"
-
+#include "utils.h"
 
 static uint8_t CpuRead8(const uint16_t addr)
 {

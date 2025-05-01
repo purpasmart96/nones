@@ -1,17 +1,6 @@
 #ifndef NONES_H
 #define NONES_H
 
-#include <stdint.h>
-#include <stdbool.h>
-#include <stddef.h>
-#include "cpu.h"
-#include "ppu.h"
-#include "apu.h"
-#include "arena.h"
-#include "loader.h"
-#include "arena.h"
-#include "bus.h"
-
 //#define SCREEN_WIDTH 340
 //#define SCREEN_HEIGHT 260
 #define SCREEN_WIDTH 256

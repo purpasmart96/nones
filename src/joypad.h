@@ -20,8 +20,8 @@ typedef struct
     uint8_t button_status;
 } JoyPad;
 
-void JoyPadSetButton(JoypadButton button, bool pressed);
-void WriteJoyPadReg(uint8_t data);
-uint8_t ReadJoyPadReg(void);
+void JoyPadSetButton(JoyPad *joy_pad, JoypadButton button, bool pressed);
+void WriteJoyPadReg(JoyPad *joy_pad, uint8_t data);
+uint8_t ReadJoyPadReg(JoyPad *joy_pad);
 
 #endif

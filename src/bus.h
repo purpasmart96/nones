@@ -1,6 +1,17 @@
 #ifndef BUS_H
 #define BUS_H
 
+#include <stdint.h>
+#include <stdbool.h>
+#include <stddef.h>
+
+#include "arena.h"
+#include "cpu.h"
+#include "apu.h"
+#include "ppu.h"
+#include "joypad.h"
+#include "cart.h"
+
 #define CPU_RAM_START_ADDR 0
 #define CPU_RAM_SIZE 0x800
 #define CPU_RAM_MIRROR0_START_ADDR 0x800
@@ -13,9 +24,6 @@
 #define APU_IO_REGS_START_ADDR 0x4000
 #define APU_IO_REGS_SIZE 0x18
 
-#define CART_RAM_SIZE 0x2000
-#define CHR_RAM_SIZE 0x2000
-
 typedef struct
 {
     Cpu *cpu;
@@ -23,6 +31,7 @@ typedef struct
     Ppu *ppu;
 
     Cart *cart;
+    JoyPad *joy_pad;
     uint8_t *sys_ram;
 } Bus;
 

@@ -6,15 +6,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "arena.h"
-#include "cpu.h"
-#include "apu.h"
-#include "joypad.h"
-#include "ppu.h"
-#include "loader.h"
-#include "mapper.h"
-#include "arena.h"
 #include "bus.h"
+#include "mapper.h"
 #include "utils.h"
 
 static Bus *bus_ptr = NULL;
@@ -26,6 +19,7 @@ Bus *BusCreate(Arena *arena)
     bus->apu = ArenaPush(arena, sizeof(Apu));
     bus->ppu = ArenaPush(arena, sizeof(Ppu));
     bus->cart = ArenaPush(arena, sizeof(Cart));
+    bus->joy_pad = ArenaPush(arena, sizeof(JoyPad));
     bus->sys_ram = ArenaPush(arena, CPU_RAM_SIZE);
 
     bus_ptr = bus;
@@ -34,7 +28,7 @@ Bus *BusCreate(Arena *arena)
 
 int BusLoadCart(Arena *arena, Bus *bus, const char *path)
 {
-    return LoaderLoadCart(arena, bus->cart, path);
+    return CartLoad(arena, bus->cart, path);
 }
 
 uint8_t BusRead(const uint16_t addr)
@@ -59,7 +53,7 @@ uint8_t BusRead(const uint16_t addr)
                 if (addr == 0x4016)
                 {
                     //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    return ReadJoyPadReg();
+                    return ReadJoyPadReg(bus_ptr->joy_pad);
                 }
                 if (addr == 0x4017)
                 {
@@ -120,7 +114,7 @@ void BusWrite(const uint16_t addr, const uint8_t data)
                 else if (addr == 0x4016)
                 {
                     //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    WriteJoyPadReg(data);
+                    WriteJoyPadReg(bus_ptr->joy_pad, data);
                     break;
                 }
                 //else if (addr == 0x4017)
