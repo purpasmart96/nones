@@ -164,6 +164,7 @@ void NonesRun(Nones *nones, const char *path)
     PPU_Update(nones->bus->ppu, nones->bus->cpu->cycles);
 
     bool quit = false;
+    bool buttons[8];
     SDL_Event event;
     void *raw_pixels;
     int raw_pitch;
@@ -188,16 +189,23 @@ void NonesRun(Nones *nones, const char *path)
 
         const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_A, kb_state[SDL_SCANCODE_SPACE] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST));
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_B, kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH));
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_UP, kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP));
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_DOWN, kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN));
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_LEFT, kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT));
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_RIGHT, kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT));
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_START, kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START));
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_SELECT, kb_state[SDL_SCANCODE_TAB] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK));
-        //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
-        //JoyPadSetButton(JOYPAD_A, kb_state[SDL_SCANCODE_SPACE]);
+        buttons[0] = kb_state[SDL_SCANCODE_SPACE]  || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST);
+        buttons[1] = kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH);
+        buttons[2] = kb_state[SDL_SCANCODE_UP]     || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+        buttons[3] = kb_state[SDL_SCANCODE_DOWN]   || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        buttons[4] = kb_state[SDL_SCANCODE_LEFT]   || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        buttons[5] = kb_state[SDL_SCANCODE_RIGHT]  || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        buttons[6] = kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START);
+        buttons[7] = kb_state[SDL_SCANCODE_TAB]    || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK);
+
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_A, buttons[0]);
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_B, buttons[1]);
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_UP, buttons[2]);
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_DOWN, buttons[3]);
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_LEFT, buttons[4]);
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_RIGHT, buttons[5]);
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_START, buttons[6]);
+        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_SELECT, buttons[7]);
 
         if (kb_state[SDL_SCANCODE_ESCAPE])
             quit = true;

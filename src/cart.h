@@ -131,6 +131,60 @@ typedef struct
     uint8_t chr_bank1 : 5;
 } Mmc1;
 
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        // Specify which bank register to update on next write to Bank Data register:
+        // 000: R0: Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
+        // 001: R1: Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
+        // 010: R2: Select 1 KB CHR bank at PPU $1000-$13FF (or $0000-$03FF);
+        // 011: R3: Select 1 KB CHR bank at PPU $1400-$17FF (or $0400-$07FF);
+        // 100: R4: Select 1 KB CHR bank at PPU $1800-$1BFF (or $0800-$0BFF);
+        // 101: R5: Select 1 KB CHR bank at PPU $1C00-$1FFF (or $0C00-$0FFF);
+        // 110: R6: Select 8 KB PRG ROM bank at $8000-$9FFF (or $C000-$DFFF);
+        // 111: R7: Select 8 KB PRG ROM bank at $A000-$BFFF
+        uint8_t reg : 3;
+        uint8_t : 3;
+        // PRG ROM bank mode;
+        // 0: $8000-$9FFF swappable, $C000-$DFFF fixed to second-last bank;
+        // 1: $C000-$DFFF swappable, $8000-$9FFF fixed to second-last bank;
+        uint8_t prg_rom_bank_mode : 1;
+        // CHR A12 inversion;
+        // 0: two 2 KB banks at $0000-$0FFF, four 1 KB banks at $1000-$1FFF;
+        // 1: two 2 KB banks at $1000-$1FFF, four 1 KB banks at $0000-$0FFF;
+        uint8_t chr_a12_invert : 1;
+    };
+
+} Mmc3BankReg;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t : 4;
+        uint8_t : 2;
+        uint8_t write_protect : 1;
+        uint8_t prg_ram_enable : 1;
+    };
+
+} Mmc3PrgRamReg;
+
+typedef struct 
+{
+    uint8_t regs[8];
+    Mmc3BankReg bank_sel;
+    // Nametable arrangement is the swapped form of mirroring
+    uint8_t name_table_arrgmnt;
+    Mmc3PrgRamReg prg_ram_protect;
+    uint8_t irq_counter;
+    uint8_t irq_latch;
+    uint8_t irq_reload;
+    bool irq_enable;
+} Mmc3;
+
 typedef struct
 {
     uint8_t bank;
@@ -150,6 +204,7 @@ typedef struct {
     uint8_t *ram;
     //Mapper mapper;
     Mmc1 mmc1;
+    Mmc3 mmc3;
     UxRom ux_rom;
     int mapper_type;
     int mirroring;
