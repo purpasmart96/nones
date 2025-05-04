@@ -33,7 +33,7 @@ static uint8_t Read16kBank(Cart *cart, int bank, const uint16_t addr)
         case 2:
         case 3:
         {
-            uint16_t offset = cart->prg_rom.size - addr;
+            uint16_t offset = 0x10000 - addr;
             uint32_t final_addr = cart->prg_rom.size - offset;
             //printf("Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
