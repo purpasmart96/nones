@@ -149,11 +149,11 @@ static Color GetBGColor(const uint8_t palette_index, const uint8_t pixel)
 
 }
 
-static Color GetspriteColor(uint8_t palette_index, uint8_t pixel)
+static Color GetSpriteColor(const uint8_t palette_index, const uint8_t pixel)
 {
-    uint16_t palette_addr = 0x10 + (palette_index * 4) + pixel;
+    const uint16_t palette_addr = 0x10 + (palette_index * 4) + pixel;
 
-    uint16_t color_index = palette_table[palette_addr];
+    const uint16_t color_index = palette_table[palette_addr];
 
     return sys_palette[color_index & 0x3F];
 }
