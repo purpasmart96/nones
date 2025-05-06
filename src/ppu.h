@@ -245,8 +245,8 @@ typedef struct
     // External regs for cpu
     PpuCtrl ctrl;
     PpuMask mask;
-    uint8_t oam_addr;
     PpuStatus status;
+    uint8_t oam_addr;
 } Ppu;
 
 typedef union

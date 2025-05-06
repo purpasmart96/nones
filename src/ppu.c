@@ -97,7 +97,6 @@ static Color sys_palette[64] =
 };
 
 static Ppu *ppu_ptr = NULL;
-static uint64_t prev_ppu_cycles = 0;
 
 static uint8_t PpuGetBgPixel(const int x, const int y)
 {
@@ -133,10 +132,10 @@ static bool PpuSprite0Hit(Ppu *ppu, int cycle)
             cycle <= (sprites[0].x + 8) && cycle >= sprites[0].x);
 }
 
-static Color GetColor(uint8_t palette_index, uint8_t pixel)
+static Color GetBGColor(const uint8_t palette_index, const uint8_t pixel)
 {
     // Compute palette memory address
-    uint16_t palette_addr = 0x3F00 + (palette_index * 4) + pixel;
+    const uint16_t palette_addr = 0x3F00 + (palette_index * 4) + pixel;
 
     // Read the color index from PPU palette memory
     uint16_t color_index = palette_table[palette_addr & 0x1F];
@@ -504,13 +503,13 @@ static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, 
                 PpuSetSprite0Pixel(tile_x + x, tile_y + y, sprite_pixel);
             }
 
-            if ((ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7)))
+            if (!sprite_pixel || (priority && bg_pixel))
+                continue;
+
+            if (ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7))
             {
-                if (sprite_pixel && (!priority || !bg_pixel))
-                {
-                    Color color = GetspriteColor(palette, sprite_pixel);
-                    DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
-                }
+                Color color = GetSpriteColor(palette, sprite_pixel);
+                DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
             }
         }
     }
@@ -555,7 +554,7 @@ static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, 
             {
                 if (sprite_pixel && (!priority || !bg_pixel))
                 {
-                    Color color = GetspriteColor(palette, sprite_pixel);
+                    Color color = GetSpriteColor(palette, sprite_pixel);
                     DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
                 }
             }
@@ -610,7 +609,8 @@ static void PpuUpdateSprites(Ppu *ppu)
         {
             if (found_sprites == 8)
             {
-                ppu->status.sprite_overflow = 1;
+                if (ppu->rendering)
+                    ppu->status.sprite_overflow = 1;
                 break;
             }
 
@@ -624,23 +624,6 @@ static void PpuUpdateSprites(Ppu *ppu)
             //printf("Found sprite %d at y:%d\n", found_sprites, ppu->scanline);
             sprites_secondary[found_sprites++] = curr_sprite;
         }
-    }
-}
-
-static void PPU_IsFrameDone(Ppu *ppu)
-{
-    // NES PPU has ~29780 CPU cycles per frame
-    uint32_t num_dots = dots_per_frame_even;
-
-    if (ppu->cycles & 1)
-        num_dots = dots_per_frame_odd;
-
-    // is frame done?
-    if (ppu->cycles >= prev_ppu_cycles + num_dots)
-    {
-        prev_ppu_cycles = ppu->cycles;
-        ppu->frame_finished = true;
-        ppu->frames++;
     }
 }
 
@@ -727,7 +710,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         }
     }
 
-    if (ppu->rendering && scanline < 240 && cycle < 257)
+    if (scanline < 240 && cycle < 257)
     {
         // Rendering a pixel (every dot)
         int bit = 15 - ppu->x;
@@ -739,7 +722,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         uint8_t pixel = (pixel_high << 1) | pixel_low;
         uint8_t palette = (palette_high << 1) | palette_low;
 
-        if (ppu->mask.bg_rendering && ppu->mask.sprites_rendering && !ppu->status.sprite_hit && cycle != 255 && 
+        if (ppu->mask.bg_rendering && ppu->mask.sprites_rendering && !ppu->status.sprite_hit && cycle != 256 && 
             (cycle - 1 > 7 || (ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner)))
         {
             if (PpuSprite0Hit(ppu, cycle - 1) && pixel && PpuGetSprite0Pixel(cycle - 1, scanline))
@@ -751,59 +734,17 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         }
 
         // Draw pixel here
-        if (ppu->mask.show_bg_left_corner || cycle - 1 > 7)
+        if (ppu->rendering && (ppu->mask.show_bg_left_corner || cycle - 1 > 7))
         {
             PpuSetBgPixel(cycle - 1, scanline, pixel);
-            Color color = GetColor(palette, pixel);
+            Color color = GetBGColor(palette, pixel);
             DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
         }
         else
         {
             PpuSetBgPixel(cycle - 1, scanline, 0);
-            Color color = GetColor(palette, 0);
+            Color color = GetBGColor(palette, 0);
             DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
-        }
-    }
-}
-
-static void PpuPreRenderLine(Ppu *ppu, int cycle, int scanline)
-{
-    if (scanline != 261)
-        return;
-
-    // Clear vblank flag at scanline 261, dot 1
-    if (cycle == 1)
-    {
-        ppu->status.vblank = 0;
-        ppu->status.sprite_overflow = 0;
-        ppu->status.sprite_hit = 0;
-    }    
-
-    if (cycle > 279 && cycle < 305)
-    {
-        // reset scroll
-        if (ppu->rendering)
-        {
-            ppu->v.scrolling.coarse_y = ppu->t.scrolling.coarse_y;
-            ppu->v.scrolling.fine_y = ppu->t.scrolling.fine_y;
-            ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
-        }
-    }
-}
-
-static void PpuPostRenderLine(Ppu *ppu, int cycle, int scanline)
-{
-    if (scanline == 241 && cycle == 1)
-    {
-        //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
-        //assert(ppu->v.raw != 0);
-        //ppu->v.raw = ppu->v.raw & 0x3FFF;
-        // VBlank starts at scanline 241
-        ppu->status.vblank = 1;
-        // If NMI is enabled
-        if (ppu->ctrl.vblank_nmi)
-        {
-            nmi_triggered = true;
         }
     }
 }
@@ -820,45 +761,128 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
 
     while (ppu_cycles_to_run != 0)
     {
-        ppu->cycle_counter = (ppu->cycles % 341);
-        ppu->scanline = (ppu->cycles / 341) % 262; // 1 scanline = 341 PPU cycles
+        ppu->cycle_counter = (++ppu->cycle_counter) % 341;
         ppu->cycles++;
         ppu_cycles_to_run--;
 
-        if (ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
+        if (!ppu->cycle_counter)
+        {
+            // 1 scanline = 341 PPU cycles
+            ppu->scanline = (++ppu->scanline) % 262;
+        }
+
+        if (!ppu->cycle_counter && !ppu->scanline)
+        {
+            ppu->frame_finished = true;
+            ppu->frames++;
+        }
+
+        if (ppu->rendering && ppu->cycle_counter == 340 && ppu->scanline == 261 && ppu->frames & 1)
+        {
             continue;
+        }
+
+        if (ppu->cycle_counter == 0 && ppu->scanline == 0 && ppu->frames & 1)
+        {
+            //const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
+            //const uint8_t *attribute_table = &nametable[0x3C0];
+            const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
+            // Get pattern table address for this tile
+            size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+            // Bitplane 0
+            ppu->bg_lsb = PpuBusReadChrRom(tile_offset);
+        }
 
         if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter < 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
 
+        //if (ppu->cycle_counter == 260 && !ppu->ctrl.sprite_size && ppu->ctrl.sprite_pat_table_addr && !ppu->ctrl.bg_pat_table_addr)
+        //    PpuClockMMC3v2(ppu->scanline);
+        //else if (ppu->cycle_counter == 320 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr && ppu->ctrl.bg_pat_table_addr)
+        //    PpuClockMMC3v2(ppu->scanline - 1);
+        //else if (ppu->cycle_counter == 260 && ppu->ctrl.sprite_size)
+        //    PpuClockMMC3v2(ppu->scanline);
+
         if (ppu->cycle_counter == 64 && ppu->scanline < 240)
             ResetSecondaryOAMSprites();
 
-        if (ppu->cycle_counter == 257 && (ppu->scanline < 240))
+        if (ppu->cycle_counter == 256 && (ppu->scanline < 240))
+        {
             PpuUpdateSprites(ppu);
+        }
 
-        //if ((ppu->cycle_counter > 260 && ppu->cycle_counter < 321) && ppu->scanline < 240)
-        //{
-        //    switch (ppu->cycle_counter)
-        //    {
-        //        case 262:
-        //        {
-        //            // Get pattern table address for this tile
-        //            size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
-        //            // Bitplane 0
-        //            ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
-        //            break;
-        //        }
-        //        case 264:
-        //        {
-        //            // Get pattern table address for this tile
-        //            size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
-        //            // Bitplane 1
-        //            ppu->bg_msb = PpuBusReadChrRom(tile_offset + 8);
-        //            break;
-        //        }
-        //    }
-        //}
+        if ((ppu->cycle_counter > 256 && ppu->cycle_counter < 321) && (ppu->scanline < 240 || ppu->scanline == 261))
+        {
+            const uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0;
+            int sprite_index = (320 - ppu->cycle_counter) & 7;
+            Sprite *curr_sprite = &sprites_secondary[sprite_index];
+            //printf("Sprite %d fetch at cycle:%d \n", sprite_index, ppu->cycle_counter);
+
+            uint16_t palette = curr_sprite->attribs.palette;
+
+            //printf("Sprite %d fetch at cycle:%d \n", ppu->cycle_counter & 7, ppu->cycle_counter);
+            //const uint16_t sprite_bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0;
+            //size_t tile_offset = sprite_bank + (curr_sprite->tile_id * 16);
+            //ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
+            //switch (ppu->cycle_counter & 7)
+            //{
+            //    case 0:
+            //    case 1:
+            //        break;
+            //    case 6:
+            //    {
+            //        printf("Sprite %d fetch at cycle:%d \n", sprite_index, ppu->cycle_counter);
+            //        size_t tile_offset = bank + (curr_sprite->tile_id * 16);
+            //        ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
+            //        break;
+            //    }
+//
+            //    case 7:
+            //        printf("Sprite %d fetch at cycle:%d \n", sprite_index, ppu->cycle_counter);
+            //        break;
+            //    //case 1:
+            //    //    //printf("Sprite %d fetch at cycle:%d \n", sprite_index, ppu->cycle_counter);
+            //    //    break;
+            //    default:
+            //        break;
+            //}
+
+            //if (ppu->ctrl.sprite_size)
+            //{
+            //    int bank = (curr_sprite->tile_id & 1) ? 0x1000 : 0x0000;
+            //    int tile_id = curr_sprite->tile_id & 0xFE;
+            //    printf("Sprite %d tile_id:%d \n", sprite_index, tile_id);
+            //    //int tile_part = (y < 8) ^ flip_vert ? 0 : 1;
+            //    //size_t tile_offset = bank + (tile_id + tile_part) * 16;
+            //    //int row = y & 7;
+            //    //if (flip_vert)
+            //    //    row = 7 - (y & 7);
+            //}
+            //else {
+            //    size_t tile_offset = bank + (curr_sprite->tile_id * 16);
+            //    ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
+            //}
+    
+            //switch ((257 - ppu->cycle_counter) & 7)
+            //{
+            //    case 1:
+            //    {
+            //        // Get pattern table address for this tile
+            //        size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+            //        // Bitplane 0
+            //        ppu->sprite_lsb = PpuBusReadChrRom(tile_offset);
+            //        break;
+            //    }
+            //    case 3:
+            //    {
+            //        // Get pattern table address for this tile
+            //        size_t tile_offset = 0x1000 + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+            //        // Bitplane 1
+            //        ppu->sprite_msb = PpuBusReadChrRom(tile_offset + 8);
+            //        break;
+            //    }
+            //}
+        }
     
         if (ppu->cycle_counter == 320 && ppu->scanline < 240)
         {
@@ -908,23 +932,17 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
                 ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
             }
         }
-
-        if (ppu->cycle_counter == 340 && ppu->scanline == 261)
-        {
-            //memset(bg_pixels, 0, sizeof(bg_pixels));
-            // Copy the finished image in the back buffer to the front buffer
-            //memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
-        }
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
-    PPU_IsFrameDone(ppu);
 }
 
 bool PPU_NmiTriggered(void)
 {
     if (nmi_triggered)
     {
-        nmi_triggered = false; // Clear the flag after reading
+        // Clear the flag after reading
+        nmi_triggered = false;
+        //printf("NMI:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
         return true;
     }
     return false;
