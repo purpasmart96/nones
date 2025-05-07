@@ -39,6 +39,9 @@ typedef struct
 {
     uint8_t *data;
     uint32_t size;
+    uint32_t mask;
+    // Number of banks depending on the bank size;
+    int num_banks;
 } PrgRom;
 
 typedef struct
@@ -190,26 +193,21 @@ typedef struct
     uint8_t bank;
 } UxRom;
 
-typedef struct
-{
-    uint8_t (*ReadPrgFn)(void *mapper, const uint16_t addr);
-    uint8_t (*ReadChrFn)(void *mapper, const uint16_t addr);
-    void (*WriteFn)(void *mapper, const uint16_t addr, const uint8_t data);
-} Mapper;
-
-typedef struct {
+typedef struct Cart {
     PrgRom prg_rom;
     ChrRom chr_rom;
     // WRAM or SRAM
     uint8_t *ram;
-    //Mapper mapper;
-    Mmc1 mmc1;
-    Mmc3 mmc3;
-    UxRom ux_rom;
+    //Mmc1 mmc1;
+    //Mmc3 mmc3;
+    //UxRom ux_rom;
     int mapper_type;
     int mirroring;
     const char *name;
     bool battery;
+    uint8_t (*ReadPrgFn)(struct Cart *cart, const uint16_t addr);
+    uint8_t (*ReadChrFn)(struct Cart *cart, const uint16_t addr);
+    void (*WriteFn)(struct Cart *cart, const uint16_t addr, const uint8_t data);
 } Cart;
 
 #define CART_RAM_SIZE 0x2000

@@ -20,6 +20,7 @@
 
 #define HIGH_RATE_SAMPLES 29780
 #define LOW_RATE_SAMPLES 735
+//#define LOW_RATE_SAMPLES 800
 
 static SDL_AudioStream *stream = NULL;
 
@@ -172,6 +173,10 @@ void NonesRun(Nones *nones, const char *path)
     //uint64_t frames = 0, updates = 0;
     //uint64_t timer = SDL_GetTicks();
 
+    char debug_cpu[128] = {'\0'};
+    bool debug_stats = false;
+    bool paused = false;
+    bool step = false;
     while (!quit)
     {
         //memset(pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
@@ -183,6 +188,20 @@ void NonesRun(Nones *nones, const char *path)
             {
                 case SDL_EVENT_QUIT:
                     quit = true;
+                    break;
+                case SDL_EVENT_KEY_UP:
+                    switch (event.key.key)
+                    {
+                        case SDLK_F1:
+                            debug_stats = !debug_stats;
+                            break;
+                        case SDLK_F6:
+                            paused = !paused;
+                            break;
+                        case SDLK_F11:
+                            step = true;
+                            break;
+                    }
                     break;
             }
         }
@@ -222,22 +241,40 @@ void NonesRun(Nones *nones, const char *path)
 
         nones->bus->ppu->frame_finished = false;
 
-        do {
-            CPU_Update(nones->bus->cpu);
-            APU_Update(nones->bus->apu, nones->bus->cpu->cycles);
-            PPU_Update(nones->bus->ppu, nones->bus->cpu->cycles);
-        } while (!nones->bus->ppu->frame_finished);
-        //} while ((nones->cpu.cycles % 29780) != 0);
-        //updates++;
+        if (step)
+        {
+            paused = false;
+        }
+        if (!paused)
+        {
+            do {
+                CPU_Update(nones->bus->cpu);
+            } while (!nones->bus->ppu->frame_finished);
+        }
 
-        //NonesPutSoundData(nones->bus->apu);
+        if (step)
+        {
+            step = false;
+            paused = true;
+        }
+
         SDL_LockTexture(texture, NULL, &raw_pixels, &raw_pitch);
         memcpy(raw_pixels, nones->bus->ppu->buffers[1], buffer_size);
-
         SDL_UnlockTexture(texture);
 
         SDL_RenderClear(renderer);
         SDL_RenderTexture(renderer, texture, NULL, NULL);
+
+        if (debug_stats)
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+            snprintf(debug_cpu, sizeof(debug_cpu), "A:%02X X:%02X Y:%02X SP:%02X", nones->bus->cpu->a,
+                     nones->bus->cpu->x, nones->bus->cpu->y, nones->bus->cpu->sp);
+
+            SDL_RenderDebugText(renderer, 2, 9, nones->bus->cpu->debug_msg);
+            SDL_RenderDebugText(renderer, 2, 1, debug_cpu);
+        }
+
         SDL_RenderPresent(renderer);
         //frames++;
 

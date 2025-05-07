@@ -6,6 +6,7 @@
 
 #include "arena.h"
 #include "cart.h"
+#include "mapper.h"
 
 static void CartLoadSRAM(Cart *cart)
 {
@@ -73,6 +74,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     cart->name = strtok(filename, ".");
 
     cart->prg_rom.size = hdr.prg_rom_size_lsb * 0x4000;
+    cart->prg_rom.mask = cart->prg_rom.size - 1;
     cart->chr_rom.size = hdr.chr_rom_size_lsb * 0x2000;
     cart->mirroring = hdr.name_table_layout;
     cart->battery = hdr.battery;
@@ -113,6 +115,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     fclose(fp);
     free(rom);
 
+    MapperInit(cart);
     return 0;
 }
 

@@ -6,11 +6,13 @@
 #include <time.h>
 
 #include "apu.h"
-#include "cpu.h"
+
 #include "ppu.h"
 #include "joypad.h"
 #include "arena.h"
 #include "cart.h"
+#include "mapper.h"
+#include "cpu.h"
 #include "bus.h"
 #include "utils.h"
 
@@ -46,6 +48,19 @@ static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
     // return ((src_addr / PAGE_SIZE) == (dst_addr / PAGE_SIZE));
     // Using faster version
     return ((src_addr & 0xFF00) == (dst_addr & 0xFF00));
+}
+
+static void HandleIRQ(Cpu *cpu)
+{
+    cpu->status.i = 1;
+
+    StackPush(cpu, (cpu->pc >> 8) & 0xFF);  // Push PC high byte
+    StackPush(cpu, cpu->pc & 0xFF); // Push PC low byte
+    StackPush(cpu, cpu->status.raw & ~0x10); // Push Processor Status (clear Break flag)
+
+    uint16_t ret = CpuReadVector(0xFFFE);
+    CPU_LOG("New PC at 0x%04X\n", ret);
+    cpu->pc = ret;
 }
 
 // PC += 2 
@@ -1302,42 +1317,66 @@ static const OpcodeHandler opcodes[256] =
 
 };
 
+
 static void ExecuteOpcode(Cpu *state)
 {
+    const uint8_t prev_opcode = state->prev_instr;
     const uint8_t opcode = CpuRead8(state->pc);
     const OpcodeHandler *handler = &opcodes[opcode];
 
     if (handler->InstrFn)
     {
         CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, state->pc);
+
+        int half_instr_cycles = handler->cycles / 2;
+        BusUpdate(state->cycles + half_instr_cycles);
+        if (PPU_NmiTriggered())
+        {
+            state->nmi_pending = true;
+        }
+
+        // Execute instruction
         handler->InstrFn(state, handler->addr_mode, handler->page_cross_penalty);
+        snprintf(state->debug_msg, sizeof(state->debug_msg), "PC:%04X %s",
+                 state->pc, handler->name);
+
         state->cycles += handler->cycles;
+
+        if (state->nmi_pending)
+        {
+            CPU_TriggerNMI(state);
+            state->nmi_pending = false;
+            state->irq_pending = false;
+        }
+        else if (state->irq_pending && opcode != 0x18 && opcode != 0x78 && opcode != 0x28)
+        {
+            HandleIRQ(state);
+            state->irq_pending = false;
+        }
+        else if ((prev_opcode == 0x18 || prev_opcode == 0x78 || prev_opcode == 0x28) && state->irq_pending)
+        {
+            HandleIRQ(state);
+            state->irq_pending = false;
+        }
+
+        BusUpdate(state->cycles - half_instr_cycles);
+        if (PPU_NmiTriggered())
+        {
+            state->nmi_pending = true;
+        }
     }
     else
     {
         printf("Unhandled opcode: 0x%02X at PC: 0x%04X\n\n", opcode, state->pc);
         printf("Cycles done: %lu\n", state->cycles);
-        //state->pc++;
         exit(EXIT_FAILURE);
     }
+    state->prev_instr = opcode;
 }
 
 void CPU_Init(Cpu *state)
 {
     memset(state, 0, sizeof(*state));
-}
-
-void HandleIRQ(Cpu *cpu)
-{
-    cpu->status.i = 1;
-
-    StackPush(cpu, (cpu->pc >> 8) & 0xFF);  // Push PC high byte
-    StackPush(cpu, cpu->pc & 0xFF); // Push PC low byte
-    StackPush(cpu, cpu->status.raw & ~0x10); // Push Processor Status (clear Break flag)
-
-    uint16_t ret = CpuReadVector(0xFFFE);
-    CPU_LOG("New PC at 0x%04X\n", ret);
-    cpu->pc = ret;
 }
 
 void CPU_TriggerNMI(Cpu *state)
@@ -1353,23 +1392,15 @@ void CPU_TriggerNMI(Cpu *state)
     state->status.i = 1;
 }
 
-//void CPU_Update(Cpu *state, bool irq_pending, bool nmi_pending)
 void CPU_Update(Cpu *state)
 {
+    // Check for interrupts
+    if (MapperIrqTriggered() /*|| APU_IrqTriggered()*/)
+    {
+        state->irq_pending = true;
+    }
+
     ExecuteOpcode(state);
-
-    // NMI always comes first
-    if (PPU_NmiTriggered())
-    {
-        //printf("NMI triggered!\n");
-        CPU_TriggerNMI(state);
-    }
-
-    // Check for interrupts AFTER executing an instruction
-    if (APU_IrqTriggered() && !state->status.i)
-    {
-        HandleIRQ(state);
-    }
 }
 
 void CPU_Reset(Cpu *state)

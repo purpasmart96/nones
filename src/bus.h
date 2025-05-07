@@ -43,5 +43,12 @@ int BusLoadCart(Arena *arena, Bus *bus, const char *path);
 
 uint8_t PpuBusReadChrRom(const uint16_t addr);
 void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data);
+void PpuClockMMC3(void);
+void PpuClockMMC3v2(int scanline);
+void BusUpdate(uint64_t cycles);
+
+Cart *BusGetCart(void);
+Apu *BusGetApu(void);
+Ppu *BusGetPpu(void);
 
 #endif

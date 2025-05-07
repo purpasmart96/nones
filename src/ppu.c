@@ -158,6 +158,21 @@ static Color GetSpriteColor(const uint8_t palette_index, const uint8_t pixel)
     return sys_palette[color_index & 0x3F];
 }
 
+static uint16_t prev_v;
+static int prev_scanline = 0;
+
+static void Mmc3UpdateIrqCounter(Ppu *ppu)
+{
+    const uint16_t v = (ppu->v.raw >> 12) & 1;
+    if (v && !prev_v)
+    {
+        PpuClockMMC3();
+        printf("mmc3 clock at scnaline: %d cycle: %d\n", ppu->scanline, ppu->cycle_counter);
+    }
+    prev_scanline = ppu->scanline;
+    prev_v = v;
+}
+
 void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
 {
     if (!ppu->w)
@@ -309,20 +324,41 @@ static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
     ppu->w = !ppu->w;
 }
 
+static bool nmi_triggered = false;
+
 uint8_t PPU_ReadStatus(Ppu *ppu)
 {
-    uint8_t status_value = ppu->status.raw;
+    PpuStatus status_value = ppu->status;
+    //status_value.sprite_hit = ppu->status.sprite_hit;
+    //status_value.sprite_overflow = ppu->status.sprite_overflow;
+    //status_value.vblank = ppu->status.vblank;
 
     // Clear vblank and write toggle
     ppu->status.vblank = 0;
     ppu->w = 0;
+    nmi_triggered = false;
 
-    return status_value;
+    //if (ppu->status.sprite_overflow == 1)
+    //{
+    //    //if (ppu->scanline == 241 && (ppu->cycle_counter == 7 || ppu->cycle_counter == 20))
+    //    //    status_value.raw = 0x20;
+    //    //printf("Sprite overflow is set (scanline:%d cycle: %d)\n", ppu->scanline, ppu->cycle_counter);
+    //}
+
+    //printf("$2002 value: 0x%x (scanline:%d cycle: %d)\n", status_value.raw, ppu->scanline, ppu->cycle_counter);
+
+    //if (status_value.raw == 0xA0)
+    //{
+    //    printf("$2002 status is 0xA0 (vblank:%d sprite_hit:%d)\n", ppu->status.vblank, ppu->status.sprite_hit);
+    //}
+
+    return status_value.raw;
 }
 
 uint8_t PPU_ReadData(Ppu *ppu)
 {
     uint16_t addr = ppu->v.raw & 0x3FFF;
+
     uint8_t data = 0;
 
     if (addr >= 0x3F00)
@@ -352,6 +388,7 @@ uint8_t PPU_ReadData(Ppu *ppu)
     {
         // Auto-increment address
         ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
+        //Mmc3UpdateIrqCounter(ppu);
     }
 
     return data;
@@ -456,10 +493,9 @@ void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers)
     ppu->buffers[0] = buffers[0];
     ppu->buffers[1] = buffers[1];
     ppu->ext_input = 0;
+    //ppu->status.open_bus = 0x1c;
     ppu_ptr = ppu;
 }
-
-static bool nmi_triggered = false;
 
 const uint32_t dots_per_frame_odd = 341 * 261 + 340;
 const uint32_t dots_per_frame_even = 341 * 261 + 341;
@@ -762,8 +798,6 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
     while (ppu_cycles_to_run != 0)
     {
         ppu->cycle_counter = (++ppu->cycle_counter) % 341;
-        ppu->cycles++;
-        ppu_cycles_to_run--;
 
         if (!ppu->cycle_counter)
         {
@@ -782,6 +816,9 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             continue;
         }
 
+        ppu->cycles++;
+        ppu_cycles_to_run--;
+
         if (ppu->cycle_counter == 0 && ppu->scanline == 0 && ppu->frames & 1)
         {
             //const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
@@ -793,15 +830,15 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             ppu->bg_lsb = PpuBusReadChrRom(tile_offset);
         }
 
-        if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter < 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
+        if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
 
-        //if (ppu->cycle_counter == 260 && !ppu->ctrl.sprite_size && ppu->ctrl.sprite_pat_table_addr && !ppu->ctrl.bg_pat_table_addr)
-        //    PpuClockMMC3v2(ppu->scanline);
-        //else if (ppu->cycle_counter == 320 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr && ppu->ctrl.bg_pat_table_addr)
-        //    PpuClockMMC3v2(ppu->scanline - 1);
-        //else if (ppu->cycle_counter == 260 && ppu->ctrl.sprite_size)
-        //    PpuClockMMC3v2(ppu->scanline);
+        if (ppu->cycle_counter == 260 && !ppu->ctrl.sprite_size && ppu->ctrl.sprite_pat_table_addr && !ppu->ctrl.bg_pat_table_addr)
+            PpuClockMMC3v2(ppu->scanline);
+        else if (ppu->cycle_counter == 320 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr && ppu->ctrl.bg_pat_table_addr)
+            PpuClockMMC3v2(ppu->scanline - 1);
+        else if (ppu->cycle_counter == 260 && ppu->ctrl.sprite_size)
+            PpuClockMMC3v2(ppu->scanline);
 
         if (ppu->cycle_counter == 64 && ppu->scanline < 240)
             ResetSecondaryOAMSprites();
@@ -811,14 +848,14 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             PpuUpdateSprites(ppu);
         }
 
-        if ((ppu->cycle_counter > 256 && ppu->cycle_counter < 321) && (ppu->scanline < 240 || ppu->scanline == 261))
-        {
-            const uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0;
-            int sprite_index = (320 - ppu->cycle_counter) & 7;
-            Sprite *curr_sprite = &sprites_secondary[sprite_index];
-            //printf("Sprite %d fetch at cycle:%d \n", sprite_index, ppu->cycle_counter);
-
-            uint16_t palette = curr_sprite->attribs.palette;
+        //if ((ppu->cycle_counter > 256 && ppu->cycle_counter < 321) && (ppu->scanline < 240 || ppu->scanline == 261))
+        //{
+        //    const uint16_t bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0;
+        //    int sprite_index = (320 - ppu->cycle_counter) & 7;
+        //    Sprite *curr_sprite = &sprites_secondary[sprite_index];
+        //    //printf("Sprite %d fetch at cycle:%d \n", sprite_index, ppu->cycle_counter);
+//
+        //    uint16_t palette = curr_sprite->attribs.palette;
 
             //printf("Sprite %d fetch at cycle:%d \n", ppu->cycle_counter & 7, ppu->cycle_counter);
             //const uint16_t sprite_bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0;
@@ -882,7 +919,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             //        break;
             //    }
             //}
-        }
+        //}
     
         if (ppu->cycle_counter == 320 && ppu->scanline < 240)
         {

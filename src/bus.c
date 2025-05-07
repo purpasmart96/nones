@@ -6,8 +6,10 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "apu.h"
 #include "bus.h"
 #include "mapper.h"
+#include "ppu.h"
 #include "utils.h"
 
 static Bus *bus_ptr = NULL;
@@ -193,6 +195,21 @@ uint8_t *BusGetPtr(const uint16_t addr)
 }
 
 
+Cart *BusGetCart(void)
+{
+    return bus_ptr->cart;
+}
+
+Apu *BusGetApu(void)
+{
+    return bus_ptr->apu;
+}
+
+Ppu *BusGetPpu(void)
+{
+    return bus_ptr->ppu;
+}
+
 // TODO: The Ppu struct should have a ptr to the chr rom / chr ram
 // The PPU only exposes the io regs on the main bus, it has its own bus
 uint8_t PpuBusReadChrRom(const uint16_t addr)
@@ -204,4 +221,21 @@ void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data)
 {
     ChrRom *chr_rom = &bus_ptr->cart->chr_rom;
     chr_rom->data[addr & (chr_rom->size - 1)] = data;
+}
+
+void PpuClockMMC3(void)
+{
+    Mmc3ClockIrqCounter(bus_ptr->cart);
+}
+
+void PpuClockMMC3v2(int scanline)
+{
+    if (bus_ptr->cart->mapper_type == 4 && scanline == mmc3.irq_latch - 1)
+        Mmc3ClockIrqCounter(bus_ptr->cart);
+}
+
+void BusUpdate(uint64_t cycles)
+{
+    APU_Update(bus_ptr->apu, cycles);
+    PPU_Update(bus_ptr->ppu, cycles);
 }

@@ -43,6 +43,7 @@ typedef union
 
 typedef struct
 {
+    char debug_msg[128];
     uint64_t cycles;
     uint16_t pc;
     uint8_t a;
@@ -50,6 +51,9 @@ typedef struct
     uint8_t y;
     uint8_t sp;
     Flags status;
+    uint8_t prev_instr;
+    bool nmi_pending;
+    bool irq_pending;
 } Cpu;
 
 #define PAGE_MASK 0xFF
