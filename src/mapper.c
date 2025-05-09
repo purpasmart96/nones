@@ -28,7 +28,7 @@ static inline int GetNumPrgRomBanks(const uint32_t prg_rom_size, const uint16_t 
 
 static inline uint32_t GetBankAddr(const int bank, const uint16_t addr, const uint16_t bank_size, const uint32_t prg_rom_mask)
 {
-    return (bank * bank_size) + (addr & (bank_size - 1)) & prg_rom_mask;
+    return ((bank * bank_size) + (addr & (bank_size - 1))) & prg_rom_mask;
 }
 
 static uint8_t Read16kBank(Cart *cart, int bank, const uint16_t addr)
