@@ -239,3 +239,8 @@ void BusUpdate(uint64_t cycles)
     APU_Update(bus_ptr->apu, cycles);
     PPU_Update(bus_ptr->ppu, cycles);
 }
+
+void BusAddCpuCycles(uint32_t cycles)
+{
+    bus_ptr->cpu->cycles += cycles;
+}

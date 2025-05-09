@@ -1359,7 +1359,7 @@ static void ExecuteOpcode(Cpu *state)
             state->irq_pending = false;
         }
 
-        BusUpdate(state->cycles - half_instr_cycles);
+        BusUpdate(state->cycles);
         if (PPU_NmiTriggered())
         {
             state->nmi_pending = true;

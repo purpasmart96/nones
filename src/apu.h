@@ -80,6 +80,15 @@ typedef union
 typedef union
 {
     uint8_t raw;
+
+    //struct
+    //{
+    //    uint8_t pulse1 : 1;
+    //    uint8_t pulse2 : 1;
+    //    uint8_t triangle : 1;
+    //    uint8_t noise : 1;
+    //    uint8_t dmc : 1;
+    //} write;
     struct
     {
         uint8_t pulse1 : 1;
@@ -124,7 +133,6 @@ typedef struct
 // Feedback is calculated as the exclusive-OR of bit 0 and one other bit: bit 6 if Mode flag is set, otherwise bit 1.
 // The shift register is shifted right by one bit.
 // Bit 14, the leftmost bit, is set to the feedback calculated earlier.
-
 typedef union
 {
     uint8_t raw;
@@ -175,7 +183,7 @@ typedef union
 
 typedef struct
 {
-    //uint64_t cycles;
+    uint64_t cycles;
     uint64_t prev_cpu_cycles;
     uint32_t cycle_counter;
 
@@ -239,39 +247,40 @@ typedef struct
         uint16_t volume;
         uint16_t output;
         uint16_t length_counter;
-        //uint16_t shift_reg : 15;
         uint8_t length_counter_load : 5;
     } noise;
 
     struct {
         ApuDmcControl control;
-        uint8_t level : 7;
-        uint8_t load_counter : 7;
-        uint8_t sample_addr;
-        uint8_t sample_length;
+        uint16_t timer_period;
+        uint16_t timer;
+        uint16_t sample_addr;
+        uint16_t sample_length;
+        uint8_t sample_buffer;
+        uint16_t bytes_remaining;
+        uint16_t addr_counter;
+        uint16_t bits_remaining;
+        uint8_t shift_reg;
+        bool empty;
+        bool silence;
+        bool restart;
+        bool looped;
+        uint8_t output_level : 7;
     } dmc;
 
     ApuStatus status;
     ApuFrameCounter frame_counter;
 
     int current_sample;
-    float buffer[14890 * 2];
+    float buffer[29781];
     int16_t outbuffer[735];
 
+    bool odd_frame;
     float mixed_sample;
     float sample_left;
     float sample_right;
     int sequence_step;
 } Apu;
-
-typedef enum 
-{
-    Percent12_5,
-    Percent25,
-    Percent50,
-    Percent25Negated
-
-} DutyCycleMode;
 
 #define APU_PULSE_1_DUTY 0x4000
 #define APU_PULSE_1_SWEEP 0x4001
@@ -293,6 +302,8 @@ typedef enum
 
 #define APU_DMC_CONTROL 0x4010
 #define APU_DMC_DIRECT_LOAD 0x4011
+#define APU_DMC_SAMPLE_ADDR 0x4012
+#define APU_DMC_SAMPLE_LENGTH 0x4013
 
 #define APU_STATUS 0x4015
 #define APU_FRAME_COUNTER 0x4017
@@ -303,7 +314,7 @@ void PushSample(int16_t *samples, float left_sample, float right_sample);
 void APU_Init(Apu *apu);
 //void APU_Update(Apu *apu, uint32_t cycles_delta);
 void APU_Update(Apu *apu, uint64_t cpu_cycles);
-void APU_Reset(void);
+void APU_Reset(Apu *apu);
 bool APU_IrqTriggered(void);
 
 #endif

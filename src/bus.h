@@ -46,6 +46,7 @@ void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data);
 void PpuClockMMC3(void);
 void PpuClockMMC3v2(int scanline);
 void BusUpdate(uint64_t cycles);
+void BusAddCpuCycles(uint32_t cycles);
 
 Cart *BusGetCart(void);
 Apu *BusGetApu(void);
