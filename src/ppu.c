@@ -797,12 +797,12 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
 
     while (ppu_cycles_to_run != 0)
     {
-        ppu->cycle_counter = (++ppu->cycle_counter) % 341;
+        ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
 
         if (!ppu->cycle_counter)
         {
             // 1 scanline = 341 PPU cycles
-            ppu->scanline = (++ppu->scanline) % 262;
+            ppu->scanline = (ppu->scanline + 1) % 262;
         }
 
         if (!ppu->cycle_counter && !ppu->scanline)
