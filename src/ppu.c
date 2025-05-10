@@ -158,21 +158,6 @@ static Color GetSpriteColor(const uint8_t palette_index, const uint8_t pixel)
     return sys_palette[color_index & 0x3F];
 }
 
-static uint16_t prev_v;
-static int prev_scanline = 0;
-
-static void Mmc3UpdateIrqCounter(Ppu *ppu)
-{
-    const uint16_t v = (ppu->v.raw >> 12) & 1;
-    if (v && !prev_v)
-    {
-        PpuClockMMC3();
-        printf("mmc3 clock at scnaline: %d cycle: %d\n", ppu->scanline, ppu->cycle_counter);
-    }
-    prev_scanline = ppu->scanline;
-    prev_v = v;
-}
-
 void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
 {
     if (!ppu->w)
@@ -793,7 +778,10 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
     // Update prev cpu cycles to current amount for next update
     ppu->prev_cpu_cycles = cpu_cycles;
     // Calculate how many ppu ticks we need to run (1 CPU cycle = 3 PPU cycles)
-    uint64_t ppu_cycles_to_run = cpu_cycles_delta * 3;
+    uint32_t ppu_cycles_to_run = (cpu_cycles_delta * 3) + ppu->leftover_cycles;
+    ppu->leftover_cycles = ppu_cycles_to_run;
+
+    bool finish_early = false;
 
     while (ppu_cycles_to_run != 0)
     {
@@ -817,6 +805,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         }
 
         ppu->cycles++;
+        ppu->leftover_cycles--;
         ppu_cycles_to_run--;
 
         if (ppu->cycle_counter == 0 && ppu->scanline == 0 && ppu->frames & 1)
@@ -833,12 +822,21 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
 
-        if (ppu->cycle_counter == 260 && !ppu->ctrl.sprite_size && ppu->ctrl.sprite_pat_table_addr && !ppu->ctrl.bg_pat_table_addr)
-            PpuClockMMC3v2(ppu->scanline);
-        else if (ppu->cycle_counter == 320 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr && ppu->ctrl.bg_pat_table_addr)
-            PpuClockMMC3v2(ppu->scanline - 1);
-        else if (ppu->cycle_counter == 260 && ppu->ctrl.sprite_size)
-            PpuClockMMC3v2(ppu->scanline);
+        if (ppu->cycle_counter == 260 && !ppu->ctrl.sprite_size && ppu->ctrl.sprite_pat_table_addr && !ppu->ctrl.bg_pat_table_addr && (ppu->scanline < 240 || ppu->scanline == 261))
+        {
+            PpuClockMMC3();
+            finish_early = true;
+        }
+        else if (ppu->cycle_counter == 320 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr && ppu->ctrl.bg_pat_table_addr && (ppu->scanline < 240 || ppu->scanline == 261))
+        {
+            PpuClockMMC3();
+            finish_early = true;
+        }
+        else if (ppu->cycle_counter == 260 && ppu->ctrl.sprite_size && (ppu->scanline < 240 || ppu->scanline == 261))
+        {
+            PpuClockMMC3();
+            finish_early = true;
+        }
 
         if (ppu->cycle_counter == 64 && ppu->scanline < 240)
             ResetSecondaryOAMSprites();
@@ -946,6 +944,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             if (ppu->ctrl.vblank_nmi)
             {
                 nmi_triggered = true;
+                finish_early = true;
             }
             // Copy the finished image in the back buffer to the front buffer
             memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
@@ -969,6 +968,8 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
                 ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
             }
         }
+        if (finish_early)
+            break;
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
 }

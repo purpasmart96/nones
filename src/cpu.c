@@ -1353,11 +1353,6 @@ static void ExecuteOpcode(Cpu *state)
             HandleIRQ(state);
             state->irq_pending = false;
         }
-        else if ((prev_opcode == 0x18 || prev_opcode == 0x78 || prev_opcode == 0x28) && state->irq_pending)
-        {
-            HandleIRQ(state);
-            state->irq_pending = false;
-        }
 
         BusUpdate(state->cycles);
         if (PPU_NmiTriggered())

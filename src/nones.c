@@ -271,8 +271,9 @@ void NonesRun(Nones *nones, const char *path)
             snprintf(debug_cpu, sizeof(debug_cpu), "A:%02X X:%02X Y:%02X SP:%02X", nones->bus->cpu->a,
                      nones->bus->cpu->x, nones->bus->cpu->y, nones->bus->cpu->sp);
 
-            SDL_RenderDebugText(renderer, 2, 9, nones->bus->cpu->debug_msg);
             SDL_RenderDebugText(renderer, 2, 1, debug_cpu);
+            SDL_RenderDebugText(renderer, 2, 9, nones->bus->cpu->debug_msg);
+            
         }
 
         SDL_RenderPresent(renderer);

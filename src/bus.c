@@ -225,12 +225,7 @@ void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data)
 
 void PpuClockMMC3(void)
 {
-    Mmc3ClockIrqCounter(bus_ptr->cart);
-}
-
-void PpuClockMMC3v2(int scanline)
-{
-    if (bus_ptr->cart->mapper_type == 4 && scanline == mmc3.irq_latch - 1)
+    if (bus_ptr->cart->mapper_type == 4)
         Mmc3ClockIrqCounter(bus_ptr->cart);
 }
 

@@ -342,7 +342,6 @@ static void Mmc3RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
     }
 }
 
-
 static void UxRomRegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
 {
     //UxRom *ux_rom = &cart->ux_rom;
@@ -371,13 +370,6 @@ static bool irq_triggered = false;
 
 void Mmc3ClockIrqCounter(Cart *cart)
 {
-    //Mmc3 *mmc3 = &cart->mmc3;
-    if (!mmc3.irq_counter && mmc3.irq_enable)
-    {
-        //printf("MMC3 requested IRQ!\n");
-        irq_triggered = true;
-    }
-
     if (!mmc3.irq_counter || mmc3.irq_reload)
     {
         mmc3.irq_counter = mmc3.irq_latch;
@@ -386,13 +378,16 @@ void Mmc3ClockIrqCounter(Cart *cart)
     {
         mmc3.irq_counter--;
     }
-}
 
-void Mmc3ClockIrqCounterHack(Cart *cart)
-{
-    //Mmc3 *mmc3 = &cart->mmc3;
-    printf("MMC3 requested IRQ!\n");
-    irq_triggered = true;
+    if (!mmc3.irq_counter && mmc3.irq_enable)
+    {
+        irq_triggered = true;
+    }
+
+    if (mmc3.irq_reload)
+    {
+        mmc3.irq_reload = false;
+    }
 }
 
 bool MapperIrqTriggered(void)
@@ -401,7 +396,7 @@ bool MapperIrqTriggered(void)
     {
         // Clear the flag after reading
         irq_triggered = false;
-        //printf("NMI:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
+        //printf("IRQ:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
         return true;
     }
     return false;
