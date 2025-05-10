@@ -232,6 +232,7 @@ void PpuClockMMC3(void)
 void BusUpdate(uint64_t cycles)
 {
     APU_Update(bus_ptr->apu, cycles);
+    bus_ptr->cpu->irq_pending = bus_ptr->apu->status.dmc_interrupt | bus_ptr->apu->status.frame_interrupt | MapperIrqTriggered();
     PPU_Update(bus_ptr->ppu, cycles);
 }
 

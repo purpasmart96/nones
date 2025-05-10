@@ -184,6 +184,7 @@ typedef union
 typedef struct
 {
     uint64_t cycles;
+    uint64_t cycles_to_run;
     uint64_t prev_cpu_cycles;
     uint32_t cycle_counter;
 
@@ -276,6 +277,7 @@ typedef struct
     int16_t outbuffer[735];
 
     bool odd_frame;
+    bool finish_early;
     float mixed_sample;
     float sample_left;
     float sample_right;
@@ -315,6 +317,5 @@ void APU_Init(Apu *apu);
 //void APU_Update(Apu *apu, uint32_t cycles_delta);
 void APU_Update(Apu *apu, uint64_t cpu_cycles);
 void APU_Reset(Apu *apu);
-bool APU_IrqTriggered(void);
 
 #endif

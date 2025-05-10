@@ -524,7 +524,6 @@ static void ApuClockDmc(Apu *apu)
     }
 }
 
-static bool irq_triggered = false;
 static int step = 0;
 
 static void ApuClockFrameCounter(Apu *apu)
@@ -564,7 +563,6 @@ static void ApuClockFrameCounter(Apu *apu)
 
     if (!apu->frame_counter.control.sequencer_mode && !apu->frame_counter.control.interrupt_inhibit && step == 4)
     {
-        irq_triggered = true;
         apu->frame_counter.interrupt = true;
     }
 
@@ -583,15 +581,15 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
         //printf("Framecounter called on cycle: %d\n", apu->cycle_counter);
     }
 
-    if (apu->frame_counter.control.interrupt_inhibit)
-    {
-        apu->frame_counter.control.interrupt_inhibit = 0;
-    }
-    else if (apu->frame_counter.control.sequencer_mode == 0)
-    {
-        apu->status.frame_interrupt = 1;
-        irq_triggered = true;
-    }
+    //if (!apu->frame_counter.control.interrupt_inhibit)
+    //{
+    //    apu->frame_counter.control.interrupt_inhibit = 1;
+    //}
+    //else if (apu->frame_counter.control.sequencer_mode == 0)
+    //{
+    //    //apu->status.frame_interrupt = 1;
+    //    //apu->finish_early = true;
+    //}
     apu->cycle_counter = 0;
 }
 
@@ -628,7 +626,7 @@ static void ApuDmcWriteSampleAddr(Apu *apu, const uint8_t data)
 static void ApuUpdateDmcSample(Apu *apu)
 {
     apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
-    BusAddCpuCycles(3);
+    BusAddCpuCycles(4);
 
     apu->dmc.empty = false;
     apu->dmc.addr_counter = MAX(0x8000, (apu->dmc.addr_counter + 1) & 0xFFFF);
@@ -641,7 +639,7 @@ static void ApuUpdateDmcSample(Apu *apu)
     else if (!apu->dmc.bytes_remaining && apu->dmc.control.irq)
     {
         apu->status.dmc_interrupt = 1;
-        irq_triggered = true;
+        apu->finish_early = true;
     }
 }
 
@@ -848,9 +846,11 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
     // Update prev cpu cycles to current amount for next update
     apu->prev_cpu_cycles = cpu_cycles;
     // Calculate how many apu ticks we need to run
-    uint64_t apu_cycles_to_run = cpu_cycles_delta;
+    apu->cycles_to_run = cpu_cycles_delta + apu->cycles_to_run;
 
-    while (apu_cycles_to_run != 0)
+    apu->finish_early = false;
+
+    while (apu->cycles_to_run != 0 && !apu->finish_early)
     {
         SequenceStep step;
         if (apu->frame_counter.control.sequencer_mode == 0)
@@ -902,7 +902,7 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
             if (apu->cycles && step.frame_interrupt && !apu->frame_counter.control.interrupt_inhibit)
             {
                 apu->status.frame_interrupt = 1;
-                //irq_triggered = true;
+                apu->finish_early = true;
             }
             apu->sequence_step = (apu->sequence_step + 1) % 6;
         }
@@ -910,7 +910,7 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
         ApuClockTriangle(apu);
         ApuClockDmc(apu);
 
-        if ((cpu_cycles - apu_cycles_to_run) & 1)
+        if (apu->cycles & 1)
         {
             //ApuClockFrameCounter(apu);
             ApuClockTimers(apu);
@@ -935,7 +935,7 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
         apu->buffer[apu->current_sample++] = apu->mixed_sample;
         apu->cycle_counter++;
         apu->cycles++;
-        apu_cycles_to_run--;
+        apu->cycles_to_run--;
     }
 }
 
@@ -944,12 +944,3 @@ void APU_Reset(Apu *apu)
     ApuWriteStatus(apu, 0x0);
 }
 
-bool APU_IrqTriggered(void)
-{
-    if (irq_triggered)
-    {
-        irq_triggered = false;
-        return true;
-    }
-    return false;
-}

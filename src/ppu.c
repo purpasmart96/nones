@@ -778,12 +778,11 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
     // Update prev cpu cycles to current amount for next update
     ppu->prev_cpu_cycles = cpu_cycles;
     // Calculate how many ppu ticks we need to run (1 CPU cycle = 3 PPU cycles)
-    uint32_t ppu_cycles_to_run = (cpu_cycles_delta * 3) + ppu->leftover_cycles;
-    ppu->leftover_cycles = ppu_cycles_to_run;
+    ppu->cycles_to_run = (cpu_cycles_delta * 3) + ppu->cycles_to_run;
 
     bool finish_early = false;
 
-    while (ppu_cycles_to_run != 0)
+    while (ppu->cycles_to_run != 0 && !finish_early)
     {
         ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
 
@@ -805,19 +804,18 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         }
 
         ppu->cycles++;
-        ppu->leftover_cycles--;
-        ppu_cycles_to_run--;
+        ppu->cycles_to_run--;
 
-        if (ppu->cycle_counter == 0 && ppu->scanline == 0 && ppu->frames & 1)
-        {
-            //const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
-            //const uint8_t *attribute_table = &nametable[0x3C0];
-            const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
-            // Get pattern table address for this tile
-            size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
-            // Bitplane 0
-            ppu->bg_lsb = PpuBusReadChrRom(tile_offset);
-        }
+        //if (ppu->cycle_counter == 0 && ppu->scanline == 0 && ppu->frames & 1)
+        //{
+        //    //const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
+        //    //const uint8_t *attribute_table = &nametable[0x3C0];
+        //    const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
+        //    // Get pattern table address for this tile
+        //    size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+        //    // Bitplane 0
+        //    ppu->bg_lsb = PpuBusReadChrRom(tile_offset);
+        //}
 
         if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
@@ -968,8 +966,6 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
                 ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
             }
         }
-        if (finish_early)
-            break;
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
 }

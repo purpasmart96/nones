@@ -52,15 +52,12 @@ static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
 
 static void HandleIRQ(Cpu *cpu)
 {
+    StackPush(cpu, (cpu->pc >> 8) & 0xFF);
+    StackPush(cpu, cpu->pc & 0xFF);
+    // Push Processor Status (clear Break flag)
+    StackPush(cpu, cpu->status.raw & ~0x10);
     cpu->status.i = 1;
-
-    StackPush(cpu, (cpu->pc >> 8) & 0xFF);  // Push PC high byte
-    StackPush(cpu, cpu->pc & 0xFF); // Push PC low byte
-    StackPush(cpu, cpu->status.raw & ~0x10); // Push Processor Status (clear Break flag)
-
-    uint16_t ret = CpuReadVector(0xFFFE);
-    CPU_LOG("New PC at 0x%04X\n", ret);
-    cpu->pc = ret;
+    cpu->pc = CpuReadVector(0xFFFE);;
 }
 
 // PC += 2 
@@ -1328,8 +1325,8 @@ static void ExecuteOpcode(Cpu *state)
     {
         CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, state->pc);
 
-        int half_instr_cycles = handler->cycles / 2;
-        BusUpdate(state->cycles + half_instr_cycles);
+        //int half_instr_cycles = handler->cycles / 2;
+        BusUpdate(state->cycles/* + half_instr_cycles*/);
         if (PPU_NmiTriggered())
         {
             state->nmi_pending = true;
@@ -1346,18 +1343,10 @@ static void ExecuteOpcode(Cpu *state)
         {
             CPU_TriggerNMI(state);
             state->nmi_pending = false;
-            state->irq_pending = false;
         }
-        else if (state->irq_pending && opcode != 0x18 && opcode != 0x78 && opcode != 0x28)
+        else if (state->irq_pending && !state->status.i)
         {
             HandleIRQ(state);
-            state->irq_pending = false;
-        }
-
-        BusUpdate(state->cycles);
-        if (PPU_NmiTriggered())
-        {
-            state->nmi_pending = true;
         }
     }
     else
@@ -1389,12 +1378,6 @@ void CPU_TriggerNMI(Cpu *state)
 
 void CPU_Update(Cpu *state)
 {
-    // Check for interrupts
-    if (MapperIrqTriggered() /*|| APU_IrqTriggered()*/)
-    {
-        state->irq_pending = true;
-    }
-
     ExecuteOpcode(state);
 }
 

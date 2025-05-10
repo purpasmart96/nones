@@ -201,7 +201,7 @@ typedef struct
 {
     uint64_t cycles;
     uint64_t prev_cpu_cycles;
-    uint32_t leftover_cycles;
+    uint32_t cycles_to_run;
     uint64_t frames;
 
     // PPU internel regs
