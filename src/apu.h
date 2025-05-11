@@ -186,7 +186,7 @@ typedef struct
     uint64_t cycles;
     uint64_t cycles_to_run;
     uint64_t prev_cpu_cycles;
-    uint32_t cycle_counter;
+    int cycle_counter;
 
     struct {
         ApuPulseReg reg;

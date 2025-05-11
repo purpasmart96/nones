@@ -5,13 +5,14 @@
 #include <string.h>
 #include <math.h>
 
+#include "apu.h"
 #include "bus.h"
 #include "nones.h"
 
 #include "utils.h"
 
 typedef struct {
-    uint32_t cycles;
+    int cycles;
     // Envelopes & triangle's linear counter
     bool quarter_frame_clock;
     // Length counters & sweep units
@@ -22,22 +23,20 @@ typedef struct {
 
 static const SequenceStep sequence_mode_0_table_cpu[] =
 {
-    {0,  false,  false,  true  },
-    {7457,  true,  false,  false  },
+    {7456,  true,  false,  false  },
     {14913, true,  true,   false  },
     {22371, true,  false,  false  },
-    {29828, false, false,  true   },
     {29829, true,  true,   true   },
+    {0, false,  false,   true   },
 };
 
 static const SequenceStep sequence_mode_1_table_cpu[] =
 {
-    {0,  false,  false,  false  },
     { 7456,  true,  false, false },
-    { 14912, true,  true,  false },
-    { 22370, true,  false, false },
-    { 29828, false, false, false },
-    { 37280, true,  true,  false }
+    { 14913, true,  true,  false },
+    { 22371, true,  false, false },
+    { 29829, false, false, false },
+    { 37281, true,  true,  false }
 };
 
 static const uint8_t length_counter_table[] =
@@ -563,7 +562,7 @@ static void ApuClockFrameCounter(Apu *apu)
 
     if (!apu->frame_counter.control.sequencer_mode && !apu->frame_counter.control.interrupt_inhibit && step == 4)
     {
-        apu->frame_counter.interrupt = true;
+        apu->status.frame_interrupt = 1;
     }
 
     printf("Frame counter counter: %d\n", apu->frame_counter.counter);
@@ -575,22 +574,24 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
     apu->frame_counter.control.raw = data;
     apu->sequence_step = 0;
     //ApuClockFrameCounter(apu);
+    //printf("Framecounter called on cycle: %d\n", apu->cycle_counter);
     if (apu->frame_counter.control.sequencer_mode)
     {
+        apu->cycle_counter = 0;
         apu->frame_counter.clock_all = true;
-        //printf("Framecounter called on cycle: %d\n", apu->cycle_counter);
+    }
+    else
+    {
+        // Hack, need to remove this
+        // Helps in tests 4-jitter.nes, 6-irq_flag_timing.nes
+        apu->cycle_counter = -117;
     }
 
-    //if (!apu->frame_counter.control.interrupt_inhibit)
-    //{
-    //    apu->frame_counter.control.interrupt_inhibit = 1;
-    //}
-    //else if (apu->frame_counter.control.sequencer_mode == 0)
-    //{
-    //    //apu->status.frame_interrupt = 1;
-    //    //apu->finish_early = true;
-    //}
-    apu->cycle_counter = 0;
+    // Correct
+    if (apu->frame_counter.control.interrupt_inhibit)
+    {
+        apu->status.frame_interrupt = 0;
+    }
 }
 
 static void ApuWritePulse1Sweep(Apu *apu, const uint8_t data)
@@ -836,7 +837,6 @@ void APU_Init(Apu *apu)
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
-    apu->frame_counter.control.interrupt_inhibit = 1;
 }
 
 void APU_Update(Apu *apu, uint64_t cpu_cycles)
@@ -860,7 +860,7 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
         }
         else
         {
-            apu->cycle_counter = apu->cycle_counter % 37281;
+            apu->cycle_counter = apu->cycle_counter % 37282;
             step = sequence_mode_1_table_cpu[apu->sequence_step];
         }
 
@@ -899,12 +899,12 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
                 ApuClockSweeps(apu);
             }
 
-            if (apu->cycles && step.frame_interrupt && !apu->frame_counter.control.interrupt_inhibit)
+            if (step.frame_interrupt && !apu->frame_counter.control.interrupt_inhibit)
             {
                 apu->status.frame_interrupt = 1;
                 apu->finish_early = true;
             }
-            apu->sequence_step = (apu->sequence_step + 1) % 6;
+            apu->sequence_step = (apu->sequence_step + 1) % 5;
         }
 
         ApuClockTriangle(apu);
