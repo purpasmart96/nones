@@ -236,6 +236,14 @@ void BusUpdate(uint64_t cycles)
     PPU_Update(bus_ptr->ppu, cycles);
 }
 
+void ClearIrq(void)
+{
+    if (MapperIrqTriggered() && !bus_ptr->apu->status.dmc_interrupt && !bus_ptr->apu->status.frame_interrupt)
+    {
+        MapperIrqClear();
+    }
+}
+
 void BusAddCpuCycles(uint32_t cycles)
 {
     bus_ptr->cpu->cycles += cycles;

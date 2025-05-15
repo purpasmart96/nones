@@ -50,14 +50,23 @@ static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
     return ((src_addr & 0xFF00) == (dst_addr & 0xFF00));
 }
 
+static inline bool CpuPollIRQ(Cpu *cpu)
+{
+    return !cpu->status.i && cpu->irq_pending;
+}
+
 static void HandleIRQ(Cpu *cpu)
 {
+    //cpu->irq_ready = false;
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     StackPush(cpu, cpu->pc & 0xFF);
     // Push Processor Status (clear Break flag)
-    StackPush(cpu, cpu->status.raw & ~0x10);
+    Flags status = cpu->status;
+    status.b = 0;
+    status.unused = 1;
+    StackPush(cpu, status.raw);
     cpu->status.i = 1;
-    cpu->pc = CpuReadVector(0xFFFE);;
+    cpu->pc = CpuReadVector(0xFFFE);
 }
 
 // PC += 2 
@@ -403,6 +412,7 @@ static inline void ADC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     AddWithCarry(state, operand);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void AND_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -414,6 +424,7 @@ static inline void AND_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Update status flags
     UPDATE_FLAGS_NZ(state->a);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void ASL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -428,6 +439,7 @@ static inline void ASL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     }
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -437,6 +449,7 @@ static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+
     if (!state->status.c)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -448,6 +461,7 @@ static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("BCC pc offset: %d\n", offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -468,6 +482,7 @@ static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("BCS pc offset: %d\n", offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -488,6 +503,7 @@ static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("BEQ pc offset: %d\n", offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BIT_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -497,6 +513,7 @@ static inline void BIT_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     state->status.v = GET_OVERFLOW_BIT(operand);
     state->status.z = !(state->a & operand);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -517,6 +534,7 @@ static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("BMI pc offset: %d\n", offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -537,6 +555,7 @@ static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("BNE pc offset: %d\n", offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -555,8 +574,10 @@ static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->pc += offset;
         state->cycles++;
         CPU_LOG("BPL pc offset: %d\n", offset);
+        //printf("BPL cross page triggered 0x%X --> 0x%X\n", state->pc, state->pc + offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -570,13 +591,14 @@ static inline void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     StackPush(state, (state->pc >> 8) & 0xFF);
     StackPush(state, state->pc & 0xFF);
 
+    // Push status status regs with the b(bit4) and bit5 flag set
     Flags status = state->status;
-    status.b = true;
-    status.unused = true;
+    status.b = 1;
+    status.unused = 1;
     StackPush(state, status.raw);
 
     state->status.i = true;
-    // Load IRQ/BRK vector ($FFFE-$FFFF) into PC
+    // Load IRQ vector ($FFFE-$FFFF) into PC
     state->pc = CpuReadVector(0xFFFE);
 
     CPU_LOG("Jumping to IRQ vector at 0x%X\n", state->pc);
@@ -600,6 +622,7 @@ static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("BVC pc offset: %d\n", offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -619,6 +642,7 @@ static inline void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("PC Offset %d\n", offset);
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void CLC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -629,6 +653,7 @@ static inline void CLC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     state->status.c = 0;
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void CLD_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -639,6 +664,7 @@ static inline void CLD_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     state->status.d = 0;
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void CLI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -647,6 +673,7 @@ static inline void CLI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    state->irq_ready = CpuPollIRQ(state);
     state->status.i = 0;
     state->pc++;
 }
@@ -659,6 +686,7 @@ static inline void CLV_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     state->status.v = 0;
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void CMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -666,6 +694,7 @@ static inline void CMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     CompareRegAndSetFlags(state, state->a, operand);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void CPX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -673,6 +702,7 @@ static inline void CPX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     CompareRegAndSetFlags(state, state->x, operand);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void CPY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -680,6 +710,7 @@ static inline void CPY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
     CompareRegAndSetFlags(state, state->y, operand);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void DEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -692,6 +723,7 @@ static inline void DEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(operand);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void DEX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -705,6 +737,7 @@ static inline void DEX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void DEY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -718,6 +751,7 @@ static inline void DEY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Update status flags
     UPDATE_FLAGS_NZ(state->y);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void EOR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -728,6 +762,7 @@ static inline void EOR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Update status flags
     UPDATE_FLAGS_NZ(state->a);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void INC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -747,6 +782,7 @@ static inline void INC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     }
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void INX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -761,6 +797,7 @@ static inline void INX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void INY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -775,6 +812,7 @@ static inline void INY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(state->y);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void JMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -782,6 +820,7 @@ static inline void JMP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->pc = addr_mode == Absolute ? GetAbsoluteAddr(state) : GetIndirectAddr(state);
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -798,6 +837,7 @@ static inline void JSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
     state->pc = new_pc;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void LDA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -807,6 +847,7 @@ static inline void LDA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Update status flags
     UPDATE_FLAGS_NZ(state->a);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void LDX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -816,6 +857,7 @@ static inline void LDX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Update status flags
     UPDATE_FLAGS_NZ(state->x);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void LDY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -825,6 +867,7 @@ static inline void LDY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Update status flags
     UPDATE_FLAGS_NZ(state->y);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void LSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -838,6 +881,7 @@ static inline void LSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         ShiftOneRightFromMem(state, GetOperandAddrFromMem(state, addr_mode, page_cycle));
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void NOP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -846,7 +890,25 @@ static inline void NOP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    state->pc++;
+    switch (addr_mode)
+    {
+        case Implied:
+            state->pc++;
+            break;
+        case Immediate:
+        case ZeroPage:
+        case ZeroPageX:
+            state->pc += 2;
+            break;
+        case Absolute:
+        case AbsoluteX:
+            state->pc += 3;
+            break;
+        default:
+            printf("Bad addr mode!: %d\n", addr_mode);
+            break;
+    }
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void ORA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -857,6 +919,7 @@ static inline void ORA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     // Update status flags
     UPDATE_FLAGS_NZ(state->a);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void PHA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -867,6 +930,7 @@ static inline void PHA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     StackPush(state, state->a);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void PHP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -880,6 +944,7 @@ static inline void PHP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     status.unused = true;
     StackPush(state, status.raw);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void PLA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -889,9 +954,12 @@ static inline void PLA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->a = StackPull(state);
-    state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is Y zero?)
+    // Negative flag (bit 7)
+    state->status.n = GET_NEG_BIT(state->a);
+    // Zero flag (is A zero?)
+    state->status.z = (state->a == 0) ? 1 : 0;
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void PLP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -900,8 +968,10 @@ static inline void PLP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    state->irq_ready = CpuPollIRQ(state);
     uint8_t status_raw = StackPull(state);
     Flags status = {.raw = status_raw};
+
     // Ignore bit for break and 5th bit
     state->status.c = status.c;
     state->status.d = status.d;
@@ -924,6 +994,7 @@ static inline void ROL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         RotateOneLeftFromMem(state, GetOperandAddrFromMem(state, addr_mode, page_cycle));
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static void ROR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -947,6 +1018,7 @@ static inline void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     uint8_t status_raw = StackPull(state);
     Flags status = {.raw = status_raw};
+
     // Ignore bit for break and 5th bit
     state->status.c = status.c;
     state->status.d = status.d;
@@ -955,11 +1027,11 @@ static inline void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     state->status.v = status.v;
     state->status.z = status.z;
 
+    state->irq_ready = CpuPollIRQ(state);
+
     uint8_t pc_low = StackPull(state);
     uint8_t pc_high = StackPull(state);
-
-    uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
-    state->pc = new_pc;
+    state->pc = (uint16_t)pc_high << 8 | pc_low;
 }
 
 static inline void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -975,6 +1047,7 @@ static inline void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     state->pc = new_pc;
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void SBC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -992,6 +1065,7 @@ static inline void SBC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
     state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void SEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -1002,6 +1076,7 @@ static inline void SEC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     state->status.c = 1;
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void SED_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -1012,6 +1087,7 @@ static inline void SED_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     state->status.d = 1;
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void SEI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -1020,7 +1096,7 @@ static inline void SEI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    // Disable interrupts
+    state->irq_ready = CpuPollIRQ(state);
     state->status.i = 1;
     state->pc++;
 }
@@ -1031,6 +1107,7 @@ static inline void STA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     SetOperandToMem(state, addr_mode, state->a);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void STX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -1039,6 +1116,7 @@ static inline void STX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     SetOperandToMem(state, addr_mode, state->x);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void STY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -1047,6 +1125,7 @@ static inline void STY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     SetOperandToMem(state, addr_mode, state->y);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 // Transfer Accumulator to Index X
@@ -1061,6 +1140,7 @@ static inline void TAX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 // Transfer Accumulator to Index Y
@@ -1075,6 +1155,7 @@ static inline void TAY_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(state->y);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 // Transfer Stack Pointer to Index X
@@ -1089,6 +1170,7 @@ static inline void TSX_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(state->x);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 // Transfer Index X to Accumulator
@@ -1103,6 +1185,7 @@ static inline void TXA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UPDATE_FLAGS_NZ(state->a);
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 // Transfer Index X to Stack Register
@@ -1115,6 +1198,7 @@ static inline void TXS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     state->sp = state->x;
 
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 // Transfer Index Y to Accumulator
@@ -1128,40 +1212,33 @@ static inline void TYA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
     UPDATE_FLAGS_NZ(state->a);
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
-
-typedef struct {
-    void (*InstrFn)(Cpu *state, AddressingMode addr_mode, bool page_cross_penalty);
-    // Mnemonic (e.g., "AND", "ASL")
-    const char *name;
-    // Number of bytes the instruction takes
-    uint8_t bytes;
-    // Base cycle count
-    uint8_t cycles;
-    // Extra cycle(s) if page boundary is crossed
-    bool page_cross_penalty;
-    AddressingMode addr_mode;
-} OpcodeHandler;
 
 static const OpcodeHandler opcodes[256] =
 {
     [0x00] = { BRK_Instr, "BRK", 1, 7, false, Implied  },
     [0x01] = { ORA_Instr, "ORA (ind,X)", 2, 6, false, PreIndexedIndirect },
+    [0x04] = { NOP_Instr, "NOP", 2, 3, false, ZeroPage },
     [0x05] = { ORA_Instr, "ORA zp", 2, 3, false, ZeroPage },
     [0x06] = { ASL_Instr, "ASL zp", 2, 5, false, ZeroPage },
     [0x08] = { PHP_Instr, "PHP", 1, 3, false, Implied },
     [0x09] = { ORA_Instr, "ORA #imm", 2, 2, false, Immediate },
     [0x0A] = { ASL_Instr, "ASL A", 1, 2, false, Accumulator },
+    [0x0C] = { NOP_Instr, "NOP", 3, 4, false, Absolute },
     [0x0D] = { ORA_Instr, "ORA abs", 3, 4, false, Absolute },
     [0x0E] = { ASL_Instr, "ASL abs", 3, 6, false, Absolute },
 
     [0x10] = { BPL_Instr, "BPL rel", 2, 2, true, Relative },
     [0x11] = { ORA_Instr, "ORA (ind),Y", 2, 5, true, PostIndexedIndirect},
+    [0x14] = { NOP_Instr, "NOP", 2, 4, false, ZeroPageX },
     [0x15] = { ORA_Instr, "ORA zp,X", 2, 4, false, ZeroPageX },
     [0x16] = { ASL_Instr, "ASL zp,X", 2, 6, false, ZeroPageX },
-    [0x18] = { CLC_Instr, "CLC", 1, 2, false, Implied},
+    [0x18] = { CLC_Instr, "CLC", 1, 2, false, Implied },
     [0x19] = { ORA_Instr, "ORA abs,Y", 3, 4, true, AbsoluteY},
-    [0x1D] = { ORA_Instr, "ORA abs,X", 3, 4, true, AbsoluteX},
+    [0x1A] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0x1C] = { NOP_Instr, "NOP", 3, 4, true, AbsoluteX },
+    [0x1D] = { ORA_Instr, "ORA abs,X", 3, 4, true, AbsoluteX },
     [0x1E] = { ASL_Instr, "ASL abs,X", 3, 7, false, AbsoluteX },
 
     [0x20] = { JSR_Instr, "JSR abs", 3, 6, false, Absolute },
@@ -1178,15 +1255,19 @@ static const OpcodeHandler opcodes[256] =
 
     [0x30] = { BMI_Instr, "BMI rel", 2, 2, true, Relative },
     [0x31] = { AND_Instr, "AND (ind),Y", 2, 5, true, PostIndexedIndirect },
+    [0x34] = { NOP_Instr, "NOP", 2, 4, false, ZeroPageX },
     [0x35] = { AND_Instr, "AND zp,X", 2, 4, false, ZeroPageX },
     [0x36] = { ROL_Instr, "ROL zp,X", 2, 6, false, ZeroPageX },
     [0x38] = { SEC_Instr, "SEC", 1, 2, false, Implied },
     [0x39] = { AND_Instr, "AND abs,Y", 3, 4, true, AbsoluteY },
-    [0x3D] = { AND_Instr, "AND abs,X", 3, 4, true, AbsoluteX},
-    [0x3E] = { ROL_Instr, "ROL abs,X", 3, 7, false, AbsoluteX},
+    [0x3A] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0x3C] = { NOP_Instr, "NOP", 3, 4, true, AbsoluteX },
+    [0x3D] = { AND_Instr, "AND abs,X", 3, 4, true, AbsoluteX },
+    [0x3E] = { ROL_Instr, "ROL abs,X", 3, 7, false, AbsoluteX },
 
     [0x40] = { RTI_Instr, "RTI", 1, 6, false, Implied },
     [0x41] = { EOR_Instr, "EOR (ind,X)", 2, 6, false, PreIndexedIndirect },
+    [0x44] = { NOP_Instr, "NOP", 2, 3, false, ZeroPage },
     [0x45] = { EOR_Instr, "EOR zp", 2, 3, false, ZeroPage },
     [0x46] = { LSR_Instr, "LSR zp", 2, 5, false, ZeroPage },
     [0x48] = { PHA_Instr, "PHA", 1, 3, false, Implied },
@@ -1198,19 +1279,23 @@ static const OpcodeHandler opcodes[256] =
 
     [0x50] = { BVC_Instr, "BVC rel", 2, 2, true, Relative },
     [0x51] = { EOR_Instr, "EOR (ind),Y", 2, 5, true, PostIndexedIndirect },
+    [0x54] = { NOP_Instr, "NOP", 2, 4, false, ZeroPageX },
     [0x55] = { EOR_Instr, "EOR zp,X", 2, 4, false, ZeroPageX },
     [0x56] = { LSR_Instr, "LSR zp,X", 2, 6, false, ZeroPageX},
     [0x58] = { CLI_Instr, "CLI", 1, 2, false, Implied},
     [0x59] = { EOR_Instr, "EOR abs,Y", 3, 4, true, AbsoluteY},
+    [0x5A] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0x5C] = { NOP_Instr, "NOP", 3, 4, true, AbsoluteX },
     [0x5D] = { EOR_Instr, "EOR abs,X", 3, 4, true, AbsoluteX },
     [0x5E] = { LSR_Instr, "LSR abs,X", 3, 7, false, AbsoluteX },
 
     [0x60] = { RTS_Instr, "RTS", 1, 6, false, Implied },
     [0x61] = { ADC_Instr, "ADC (ind,X)", 2, 6, false, PreIndexedIndirect },
+    [0x64] = { NOP_Instr, "NOP", 2, 3, false, ZeroPage },
     [0x65] = { ADC_Instr, "ADC zp", 2, 3, false, ZeroPage },
     [0x66] = { ROR_Instr, "ROR zp", 2, 5, false, ZeroPage },
     [0x68] = { PLA_Instr, "PLA", 1, 4, false, Implied },
-    [0x69] = { ADC_Instr, "ADC #imm", 2, 3, false, Immediate },
+    [0x69] = { ADC_Instr, "ADC #imm", 2, 2, false, Immediate },
     [0x6A] = { ROR_Instr, "ROR A", 1, 2, false, Accumulator },
     [0x6C] = { JMP_Instr, "JMP (ind)", 3, 5, false, Indirect },
     [0x6D] = { ADC_Instr, "ADC abs", 3, 4, false, Absolute },
@@ -1218,18 +1303,24 @@ static const OpcodeHandler opcodes[256] =
 
     [0x70] = { BVS_Instr, "BVS rel", 2, 2, true, Relative },
     [0x71] = { ADC_Instr, "ADC (ind),Y", 2, 5, true, PostIndexedIndirect },
+    [0x74] = { NOP_Instr, "NOP", 2, 4, false, ZeroPageX },
     [0x75] = { ADC_Instr, "ADC zp,X", 2, 4, false, ZeroPageX },
     [0x76] = { ROR_Instr, "ROR zp,X", 2, 6, false, ZeroPageX },
     [0x78] = { SEI_Instr, "SEI", 1, 2, false, Implied },
     [0x79] = { ADC_Instr, "ADC abs,Y", 3, 4, true, AbsoluteY },
+    [0x7A] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0x7C] = { NOP_Instr, "NOP", 3, 4, true, AbsoluteX },
     [0x7D] = { ADC_Instr, "ADC abs,X", 3, 4, true, AbsoluteX },
     [0x7E] = { ROR_Instr, "ROR abs,X", 3, 7, false, AbsoluteX },
 
+    [0x80] = { NOP_Instr, "NOP", 2, 2, false, Immediate },
     [0x81] = { STA_Instr, "STA (ind,X)", 2, 6, false, PreIndexedIndirect },
+    [0x82] = { NOP_Instr, "NOP", 2, 2, false, Immediate },
     [0x84] = { STY_Instr, "STY zp", 2, 3, false, ZeroPage },
     [0x85] = { STA_Instr, "STA zp", 2, 3, false, ZeroPage },
     [0x86] = { STX_Instr, "STX zp", 2, 3, false, ZeroPage },
     [0x88] = { DEY_Instr, "DEY", 1, 2, false, Implied },
+    [0x89] = { NOP_Instr, "NOP", 2, 2, false, Immediate },
     [0x8A] = { TXA_Instr, "TXA", 1, 2, false, Implied },
     [0x8C] = { STY_Instr, "STY abs", 3, 4, false, Absolute },
     [0x8D] = { STA_Instr, "STA abs", 3, 4, false, Absolute },
@@ -1272,6 +1363,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0xC0] = { CPY_Instr, "CPY #imm", 2, 2, false, Immediate },
     [0xC1] = { CMP_Instr, "CMP (ind,X)", 2, 6, false, PreIndexedIndirect },
+    [0xC2] = { NOP_Instr, "NOP", 2, 2, false, Immediate },
     [0xC4] = { CPY_Instr, "CPY zp", 2, 3, false, ZeroPage },
     [0xC5] = { CMP_Instr, "CMP zp", 2, 3, false, ZeroPage },
     [0xC6] = { DEC_Instr, "DEC zp", 2, 5, false, ZeroPage },
@@ -1284,49 +1376,54 @@ static const OpcodeHandler opcodes[256] =
 
     [0xD0] = { BNE_Instr, "BNE rel", 2, 2, true, Relative },
     [0xD1] = { CMP_Instr, "CMP (ind),Y", 2, 5, true, PostIndexedIndirect },
+    [0xD4] = { NOP_Instr, "NOP", 2, 4, false, ZeroPageX },
     [0xD5] = { CMP_Instr, "CMP zp,X", 2, 4, false, ZeroPageX },
     [0xD6] = { DEC_Instr, "DEC zp,X", 2, 6, false, ZeroPageX },
     [0xD8] = { CLD_Instr, "CLD", 1, 2, false, Implied },
     [0xD9] = { CMP_Instr, "CMP abs,Y", 3, 4, true, AbsoluteY },
+    [0xDA] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0xDC] = { NOP_Instr, "NOP", 3, 4, true, AbsoluteX },
     [0xDD] = { CMP_Instr, "CMP abs,X", 3, 4, true, AbsoluteX },
     [0xDE] = { DEC_Instr, "DEC abs,X", 3, 7, false, AbsoluteX },
 
     [0xE0] = { CPX_Instr, "CPX #imm", 2, 2, false, Immediate },
     [0xE1] = { SBC_Instr, "SBC (ind,X)", 2, 6, false, PreIndexedIndirect },
+    [0xE2] = { NOP_Instr, "NOP", 2, 2, false, Immediate },
     [0xE4] = { CPX_Instr, "CPX zp", 2, 3, false, ZeroPage },
     [0xE5] = { SBC_Instr, "SBC zp", 2, 3, false, ZeroPage },
     [0xE6] = { INC_Instr, "INC zp", 2, 5, false, ZeroPage },
     [0xE8] = { INX_Instr, "INX", 1, 2, false, Implied },
     [0xE9] = { SBC_Instr, "SBC #imm", 2, 2, false, Immediate },
     [0xEA] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0xEB] = { SBC_Instr, "SBC #imm", 2, 2, false, Immediate },
     [0xEC] = { CPX_Instr, "CPX abs", 3, 4, false, Absolute },
     [0xED] = { SBC_Instr, "SBC abs", 3, 4, false, Absolute },
     [0xEE] = { INC_Instr, "INC abs", 3, 6, false, Absolute },
 
     [0xF0] = { BEQ_Instr, "BEQ rel", 2, 2, true, Relative },
     [0xF1] = { SBC_Instr, "SBC (ind),Y", 2, 5, true, PostIndexedIndirect },
+    [0xF4] = { NOP_Instr, "NOP", 2, 4, false, ZeroPageX },
     [0xF5] = { SBC_Instr, "SBC zp,X", 2, 4, false, ZeroPageX },
     [0xF6] = { INC_Instr, "INC zp,X", 2, 6, false, ZeroPageX },
     [0xF8] = { SED_Instr, "SED", 1, 2, false, Implied },
     [0xF9] = { SBC_Instr, "SBC abs,Y", 3, 4, true, AbsoluteY },
+    [0xFA] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0xFC] = { NOP_Instr, "NOP", 3, 4, true, AbsoluteX },
     [0xFD] = { SBC_Instr, "SBC abs,X", 3, 4, true, AbsoluteX },
     [0xFE] = { INC_Instr, "INC abs,X", 3, 7, false, AbsoluteX },
-
 };
-
 
 static void ExecuteOpcode(Cpu *state)
 {
-    const uint8_t prev_opcode = state->prev_instr;
     const uint8_t opcode = CpuRead8(state->pc);
     const OpcodeHandler *handler = &opcodes[opcode];
 
     if (handler->InstrFn)
     {
         CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, state->pc);
+        snprintf(state->debug_msg, sizeof(state->debug_msg), "PC:%04X %s", state->pc, handler->name);
 
-        //int half_instr_cycles = handler->cycles / 2;
-        BusUpdate(state->cycles/* + half_instr_cycles*/);
+        BusUpdate(state->cycles);
         if (PPU_NmiTriggered())
         {
             state->nmi_pending = true;
@@ -1334,8 +1431,6 @@ static void ExecuteOpcode(Cpu *state)
 
         // Execute instruction
         handler->InstrFn(state, handler->addr_mode, handler->page_cross_penalty);
-        snprintf(state->debug_msg, sizeof(state->debug_msg), "PC:%04X %s",
-                 state->pc, handler->name);
 
         state->cycles += handler->cycles;
 
@@ -1344,8 +1439,9 @@ static void ExecuteOpcode(Cpu *state)
             CPU_TriggerNMI(state);
             state->nmi_pending = false;
         }
-        else if (state->irq_pending && !state->status.i)
+        else if (state->irq_ready)
         {
+            ClearIrq();
             HandleIRQ(state);
         }
     }
@@ -1355,12 +1451,23 @@ static void ExecuteOpcode(Cpu *state)
         printf("Cycles done: %lu\n", state->cycles);
         exit(EXIT_FAILURE);
     }
-    state->prev_instr = opcode;
 }
 
 void CPU_Init(Cpu *state)
 {
     memset(state, 0, sizeof(*state));
+    // Read the reset vector from 0xFFFC (little-endian)
+    uint16_t reset_vector = CpuReadVector(0xFFFC); 
+    
+    printf("CPU Init: Loading reset vector at PC:0x%04X\n", reset_vector);
+
+    // Set PC to the reset vector address
+    state->pc = reset_vector;
+
+    // Stack pointer is decremented by 3
+    state->sp -= 3;
+
+    state->status.i = 1;
 }
 
 void CPU_TriggerNMI(Cpu *state)
@@ -1386,7 +1493,7 @@ void CPU_Reset(Cpu *state)
     // Read the reset vector from 0xFFFC (little-endian)
     uint16_t reset_vector = CpuReadVector(0xFFFC); 
     
-    CPU_LOG("New PC at 0x%04X\n", reset_vector);
+    printf("CPU Reset: Loading reset vector at PC:0x%04X\n", reset_vector);
 
     // Set PC to the reset vector address
     state->pc = reset_vector;

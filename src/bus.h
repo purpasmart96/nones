@@ -47,6 +47,7 @@ void PpuClockMMC3(void);
 void PpuClockMMC3v2(int scanline);
 void BusUpdate(uint64_t cycles);
 void BusAddCpuCycles(uint32_t cycles);
+void ClearIrq(void);
 
 Cart *BusGetCart(void);
 Apu *BusGetApu(void);

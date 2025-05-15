@@ -51,10 +51,24 @@ typedef struct
     uint8_t y;
     uint8_t sp;
     Flags status;
-    uint8_t prev_instr;
     bool nmi_pending;
     bool irq_pending;
+    bool irq_ready;
 } Cpu;
+
+typedef struct
+{
+    void (*InstrFn)(Cpu *state, AddressingMode addr_mode, bool page_cross_penalty);
+    // Mnemonic (e.g., "AND", "ASL")
+    const char *name;
+    // Number of bytes the instruction takes
+    uint8_t bytes;
+    // Base cycle count
+    uint8_t cycles;
+    // Extra cycle(s) if page boundary is crossed
+    bool page_cross_penalty;
+    AddressingMode addr_mode;
+} OpcodeHandler;
 
 #define PAGE_MASK 0xFF
 #define PAGE_SIZE 256
@@ -71,7 +85,6 @@ typedef struct
 
 void CPU_Init(Cpu *state);
 void CPU_Update(Cpu *state);
-//void CPU_Update(Cpu *state, bool irq_pending, bool nmi_pending);
 void CPU_Reset(Cpu *state);
 void CPU_TriggerNMI(Cpu *state);
 

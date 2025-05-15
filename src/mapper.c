@@ -16,6 +16,8 @@ Mmc1 mmc1;
 Mmc3 mmc3;
 UxRom ux_rom;
 
+static bool irq_triggered = false;
+
 static uint8_t NromReadPrgRom(Cart *cart, uint16_t addr)
 {
     return cart->prg_rom.data[addr & cart->prg_rom.mask];
@@ -366,8 +368,6 @@ void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
     cart->WriteFn(cart, addr, data);
 }
 
-static bool irq_triggered = false;
-
 void Mmc3ClockIrqCounter(Cart *cart)
 {
     if (!mmc3.irq_counter || mmc3.irq_reload)
@@ -392,14 +392,14 @@ void Mmc3ClockIrqCounter(Cart *cart)
 
 bool MapperIrqTriggered(void)
 {
-    if (irq_triggered)
-    {
-        // Clear the flag after reading
-        irq_triggered = false;
-        //printf("IRQ:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
-        return true;
-    }
-    return false;
+    return irq_triggered;
+    //printf("IRQ:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
+}
+
+void MapperIrqClear(void)
+{
+    irq_triggered = false;
+    //printf("IRQ:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
 }
 
 void MapperInit(Cart *cart)

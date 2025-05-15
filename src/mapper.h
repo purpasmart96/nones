@@ -7,6 +7,7 @@ void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data);
 
 void Mmc3ClockIrqCounter(Cart *cart);
 bool MapperIrqTriggered(void);
+void MapperIrqClear(void);
 void Mmc3ClockIrqCounterHack(Cart *cart);
 void MapperInit(Cart *cart);
 
