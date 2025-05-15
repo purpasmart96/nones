@@ -1008,6 +1008,7 @@ static void ROR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
         RotateOneRightFromMem(state, GetOperandAddrFromMem(state, addr_mode, page_cycle));
     }
     state->pc++;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
