@@ -464,7 +464,7 @@ static void ApuClockTriangle(Apu *apu)
     {
         apu->triangle.timer.raw = apu->triangle.timer_period.raw;
         if (apu->triangle.length_counter && apu->triangle.linear_counter)
-            apu->triangle.seq_pos = (apu->triangle.seq_pos + 1) % 32;
+            apu->triangle.seq_pos = (apu->triangle.seq_pos + 1) & 0x1F;
     }
 
     if (apu->triangle.timer_period.raw < 2)
@@ -762,7 +762,7 @@ static void ApuClockTimers(Apu *apu)
     else
     {
         apu->pulse1.timer.raw = apu->pulse1.timer_period.raw;
-        apu->pulse1.duty_step = (apu->pulse1.duty_step + 1) % 8;
+        apu->pulse1.duty_step = (apu->pulse1.duty_step + 1) & 7;
     }
 
     if (apu->pulse1.length_counter == 0 || apu->pulse1.muting)
@@ -779,7 +779,7 @@ static void ApuClockTimers(Apu *apu)
     else
     {
         apu->pulse2.timer.raw = apu->pulse2.timer_period.raw;
-        apu->pulse2.duty_step = (apu->pulse2.duty_step + 1) % 8;
+        apu->pulse2.duty_step = (apu->pulse2.duty_step + 1) & 7;
     }
 
     if (apu->pulse2.length_counter == 0 || apu->pulse2.muting)
@@ -942,5 +942,9 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
 void APU_Reset(Apu *apu)
 {
     ApuWriteStatus(apu, 0x0);
+    memset(apu, 0, sizeof(*apu));
+    apu->noise.shift_reg.raw = 1;
+    apu->dmc.sample_length = 1;
+    apu->dmc.empty = true;
 }
 

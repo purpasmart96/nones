@@ -232,9 +232,13 @@ typedef struct
     uint8_t sprite_lsb;
     uint8_t sprite_msb;
     bool sprite0_loaded;
+    // Per scanline
+    int found_sprites;
+    bool prev_a12;
     bool rendering;
     bool prev_rendering;
     bool frame_finished;
+    bool finish_early;
     // Read buffer for $2007
     uint8_t buffered_data;
 
@@ -275,7 +279,7 @@ typedef union
 
 void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
-void PPU_Reset(void);
+void PPU_Reset(Ppu *ppu);
 uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr);
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data);
 uint8_t *GetPPUMemPtr(uint16_t addr);

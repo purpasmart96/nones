@@ -48,7 +48,7 @@ static void downsample_to_44khz(const float *high_rate_buffer, int16_t *output_4
 
 void NonesPutSoundData(Apu *apu)
 {
-    const int minimum_audio = (44100 * sizeof(int16_t)); // * 2) / 2; // Stereo samples
+    const int minimum_audio = (4096 * sizeof(int16_t)); // * 2) / 2; // Stereo samples
     if (SDL_GetAudioStreamQueued(stream) < minimum_audio) {
 
         downsample_to_44khz(apu->buffer, apu->outbuffer, apu->odd_frame);
@@ -67,6 +67,13 @@ static void NonesInit(Nones *nones, const char *path)
         ArenaDestroy(nones->arena);
         exit(EXIT_FAILURE);
     }
+}
+
+static void NonesReset(Nones *nones)
+{
+    CPU_Reset(nones->bus->cpu);
+    APU_Reset(nones->bus->apu);
+    PPU_Reset(nones->bus->ppu);
 }
 
 static void NonesSetIntegerScale(SDL_Window *window, SDL_Renderer *renderer, int scale)
@@ -160,10 +167,6 @@ void NonesRun(Nones *nones, const char *path)
     APU_Init(nones->bus->apu);
     PPU_Init(nones->bus->ppu, nones->bus->cart->mirroring, buffers);
 
-    CPU_Reset(nones->bus->cpu);
-    APU_Update(nones->bus->apu, nones->bus->cpu->cycles);
-    PPU_Update(nones->bus->ppu, nones->bus->cpu->cycles);
-
     bool quit = false;
     bool buttons[8];
     SDL_Event event;
@@ -194,6 +197,9 @@ void NonesRun(Nones *nones, const char *path)
                     {
                         case SDLK_F1:
                             debug_stats = !debug_stats;
+                            break;
+                        case SDLK_F2:
+                            NonesReset(nones);
                             break;
                         case SDLK_F6:
                             paused = !paused;
@@ -295,9 +301,6 @@ void NonesRun(Nones *nones, const char *path)
     }
 
     CartSaveSram(nones->bus->cart);
-
-    PPU_Reset();
-    CPU_Reset(nones->bus->cpu);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_free(gamepads);

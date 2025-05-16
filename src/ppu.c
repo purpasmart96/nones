@@ -527,7 +527,7 @@ static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, 
             if (!sprite_pixel || (priority && bg_pixel))
                 continue;
 
-            if (ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7))
+            if (ppu->mask.sprites_rendering && (ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7)))
             {
                 Color color = GetSpriteColor(palette, sprite_pixel);
                 DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
@@ -672,7 +672,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
 {
     const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
     const uint8_t *attribute_table = &nametable[0x3C0];
-    const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000: 0;
+    const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
 
     if (ppu->mask.bg_rendering)
         PpuShiftRegsUpdate(ppu);
@@ -784,28 +784,6 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
 
     while (ppu->cycles_to_run != 0 && !finish_early)
     {
-        ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
-
-        if (!ppu->cycle_counter)
-        {
-            // 1 scanline = 341 PPU cycles
-            ppu->scanline = (ppu->scanline + 1) % 262;
-        }
-
-        if (!ppu->cycle_counter && !ppu->scanline)
-        {
-            ppu->frame_finished = true;
-            ppu->frames++;
-        }
-
-        if (ppu->rendering && ppu->cycle_counter == 340 && ppu->scanline == 261 && ppu->frames & 1)
-        {
-            continue;
-        }
-
-        ppu->cycles++;
-        ppu->cycles_to_run--;
-
         //if (ppu->cycle_counter == 0 && ppu->scanline == 0 && ppu->frames & 1)
         //{
         //    //const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
@@ -956,15 +934,33 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             ppu->status.sprite_overflow = 0;
         }
 
-        if (ppu->scanline == 261 && (ppu->cycle_counter >= 280 && ppu->cycle_counter < 305))
+        if (ppu->rendering && ppu->scanline == 261 && (ppu->cycle_counter >= 280 && ppu->cycle_counter < 305))
         {
             // reset scroll
-            if (ppu->rendering)
-            {
-                ppu->v.scrolling.coarse_y = ppu->t.scrolling.coarse_y;
-                ppu->v.scrolling.fine_y = ppu->t.scrolling.fine_y;
-                ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
-            }
+            ppu->v.scrolling.coarse_y = ppu->t.scrolling.coarse_y;
+            ppu->v.scrolling.fine_y = ppu->t.scrolling.fine_y;
+            ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
+        }
+
+        if (ppu->rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
+        {
+            ppu->cycle_counter = 340;
+        }
+
+        ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
+        ppu->cycles++;
+        ppu->cycles_to_run--;
+
+        if (!ppu->cycle_counter)
+        {
+            // 1 scanline = 341 PPU cycles
+            ppu->scanline = (ppu->scanline + 1) % 262;
+        }
+
+        if (!ppu->cycle_counter && !ppu->scanline)
+        {
+            ppu->frame_finished = true;
+            ppu->frames++;
         }
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
@@ -982,7 +978,17 @@ bool PPU_NmiTriggered(void)
     return false;
 }
 
-void PPU_Reset(void)
+void PPU_Reset(Ppu *ppu)
 {
-
+    ppu->cycle_counter = 0;
+    ppu->cycles = 0;
+    ppu->prev_cpu_cycles = 0;
+    ppu->cycles_to_run = 0;
+    ppu->frames = 0;
+    ppu->frame_finished = 0;
+    ppu->w = false;
+    ppu->ctrl.raw = 0;
+    ppu->mask.raw = 0;
+    ppu->buffered_data = 0;
+    ppu->buffered_data = 0;
 }
