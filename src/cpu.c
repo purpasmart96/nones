@@ -84,8 +84,7 @@ static inline uint16_t GetAbsoluteXAddr(Cpu *state, bool add_cycle)
     uint16_t final_addr = base_addr + state->x;
 
     // Apply extra cycle only if required
-    if (add_cycle && !InsidePage(base_addr, final_addr))
-        state->cycles++;
+    state->cycles += (add_cycle && !InsidePage(base_addr, final_addr));
 
     return final_addr;
 }
@@ -96,8 +95,7 @@ static inline uint16_t GetAbsoluteYAddr(Cpu *state, bool add_cycle)
     uint16_t final_addr = base_addr + state->y;
 
     // Apply extra cycle only if required
-    if (add_cycle && !InsidePage(base_addr, final_addr))
-        state->cycles++;
+    state->cycles += (add_cycle && !InsidePage(base_addr, final_addr));
 
     return final_addr;
 }
@@ -150,8 +148,7 @@ static inline uint16_t GetPostIndexedIndirectAddr(Cpu *state, bool page_cycle)
     uint16_t final_addr = base_addr + state->y;
 
     // Extra cycle if in different pages
-    if (page_cycle && !InsidePage(base_addr, final_addr))
-        state->cycles++;
+    state->cycles += (page_cycle && !InsidePage(base_addr, final_addr));
 
     return final_addr;
 }
@@ -453,8 +450,7 @@ static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (!state->status.c)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -474,8 +470,7 @@ static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (state->status.c)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -495,8 +490,7 @@ static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (state->status.z)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -526,8 +520,7 @@ static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (state->status.n)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -547,8 +540,7 @@ static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (!state->status.z)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -568,8 +560,7 @@ static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (!state->status.n)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -614,8 +605,7 @@ static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (!state->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -634,8 +624,7 @@ static inline void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     if (state->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
-        if (!InsidePage(state->pc, state->pc + offset))
-            state->cycles++;
+        state->cycles += !InsidePage(state->pc, state->pc + offset);
 
         state->pc += offset;
         state->cycles++;
@@ -886,8 +875,6 @@ static inline void LSR_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 
 static inline void NOP_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
-    // Unused
-    UNUSED(addr_mode);
     UNUSED(page_cycle);
 
     switch (addr_mode)
@@ -954,10 +941,7 @@ static inline void PLA_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     state->a = StackPull(state);
-    // Negative flag (bit 7)
-    state->status.n = GET_NEG_BIT(state->a);
-    // Zero flag (is A zero?)
-    state->status.z = (state->a == 0) ? 1 : 0;
+    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
@@ -1028,11 +1012,10 @@ static inline void RTI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     state->status.v = status.v;
     state->status.z = status.z;
 
-    state->irq_ready = CpuPollIRQ(state);
-
     uint8_t pc_low = StackPull(state);
     uint8_t pc_high = StackPull(state);
     state->pc = (uint16_t)pc_high << 8 | pc_low;
+    state->irq_ready = CpuPollIRQ(state);
 }
 
 static inline void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -1063,8 +1046,7 @@ static inline void SBC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     state->status.v = ((state->a ^ operand) & (state->a ^ temp) & 0x80) ? 1 : 0;
     state->a = (uint8_t)temp;
 
-    state->status.n = GET_NEG_BIT(state->a);    // Negative flag (bit 7)
-    state->status.z = (state->a == 0) ? 1 : 0;  // Zero flag (is A zero?)
+    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
