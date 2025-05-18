@@ -23,16 +23,17 @@ typedef struct {
 
 static const SequenceStep sequence_mode_0_table_cpu[] =
 {
-    {7456,  true,  false,  false  },
+    {7457,  true,  false,  false  },
     {14913, true,  true,   false  },
     {22371, true,  false,  false  },
+    //{29828, false,  false,   true   },
     {29829, true,  true,   true   },
     {0, false,  false,   true   },
 };
 
 static const SequenceStep sequence_mode_1_table_cpu[] =
 {
-    { 7456,  true,  false, false },
+    { 7457,  true,  false, false },
     { 14913, true,  true,  false },
     { 22371, true,  false, false },
     { 29829, false, false, false },
@@ -183,25 +184,11 @@ static void ApuResetSample(Apu *apu)
 static void ApuWriteStatus(Apu *apu, const uint8_t data)
 {
     apu->status.raw = data;
-    if (!apu->status.pulse1)
-    {
-        apu->pulse1.length_counter = 0;
-    }
 
-    if (!apu->status.pulse2)
-    {
-        apu->pulse2.length_counter = 0;
-    }
-
-    if (!apu->status.triangle)
-    {
-        apu->triangle.length_counter = 0;
-    }
-
-    if (!apu->status.noise)
-    {
-        apu->noise.length_counter = 0;
-    }
+    apu->pulse1.length_counter *= apu->status.pulse1;
+    apu->pulse2.length_counter *= apu->status.pulse2;
+    apu->triangle.length_counter *= apu->status.triangle;
+    apu->noise.length_counter *= apu->status.noise;
 
     if (!apu->status.dmc)
     {
@@ -574,17 +561,15 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
     apu->frame_counter.control.raw = data;
     apu->sequence_step = 0;
     //ApuClockFrameCounter(apu);
-    //printf("Framecounter called on cycle: %d\n", apu->cycle_counter);
     if (apu->frame_counter.control.sequencer_mode)
     {
-        apu->cycle_counter = 0;
         apu->frame_counter.clock_all = true;
+        apu->cycle_counter = -2;
     }
     else
     {
-        // Hack, need to remove this
         // Helps in tests 4-jitter.nes, 6-irq_flag_timing.nes
-        apu->cycle_counter = -117;
+        apu->cycle_counter = -2;
     }
 
     // Correct
@@ -824,11 +809,14 @@ static void ApuMixSample(Apu *apu)
 {
     float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume);
     float square2 = CreateSquareSample(apu->pulse2.output, apu->pulse2.volume);
-    float triangle = CreateTriangleSample(apu->triangle.output);
-    float noise = CreateNoiseSample(apu->noise.output);
 
-    float tnd_out =  triangle + noise + 0.00335 * apu->dmc.output_level;
-    apu->mixed_sample = ((0.00752 * (square1 + square2)) + tnd_out);
+    float pulse = 95.88 / (8128.0 / (square1 + square2)) + 100;
+    //float triangle = CreateTriangleSample(apu->triangle.output);
+    //float noise = CreateNoiseSample(apu->noise.output);
+
+    float tnd_out = 159.79 / (1 / (((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0))) + 100);
+    //float tnd_out =  triangle + noise + 0.00335 * apu->dmc.output_level;
+    apu->mixed_sample = pulse + tnd_out;
 }
 
 void APU_Init(Apu *apu)
