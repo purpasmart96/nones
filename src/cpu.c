@@ -57,7 +57,6 @@ static inline bool CpuPollIRQ(Cpu *cpu)
 
 static void HandleIRQ(Cpu *cpu)
 {
-    //cpu->irq_ready = false;
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     StackPush(cpu, cpu->pc & 0xFF);
     // Push Processor Status (clear Break flag)
@@ -171,9 +170,9 @@ static inline void CompareRegAndSetFlags(Cpu *state, uint8_t reg, uint8_t operan
     // Negative flag (bit 7)
     state->status.n = GET_NEG_BIT(result);
     // Zero flag (is result zero?)
-    state->status.z = (result == 0) ? 1 : 0;
+    state->status.z = !result;
     // Update the Carry Flag (C)
-    state->status.c = (reg >= operand) ? 1 : 0;
+    state->status.c = (reg >= operand);
 }
 
 static inline void RotateOneLeft(Cpu *state, uint8_t *operand)
@@ -232,10 +231,10 @@ static inline void ShiftOneRight(Cpu *state, uint8_t *operand)
     state->status.c = *operand & 1;
     // Shift all bits left by one position
     *operand >>= 1;
-    // Update status flags
-    state->status.n = 0;    // Clear N flag 
-    // Zero flag (is A zero?)
-    state->status.z = (*operand == 0) ? 1 : 0;
+    // Clear N flag 
+    state->status.n = 0;
+    // Zero flag (is operand zero?)
+    state->status.z = !(*operand);
 }
 
 static inline void ShiftOneRightFromMem(Cpu *state, const uint16_t operand_addr)
@@ -247,10 +246,10 @@ static inline void ShiftOneRightFromMem(Cpu *state, const uint16_t operand_addr)
     operand >>= 1;
     // Write to the bus
     CpuWrite8(operand_addr, operand);
-    // Update status flags
-    state->status.n = 0;    // Clear N flag 
+    // Clear N flag 
+    state->status.n = 0;
     // Zero flag (is operand zero?)
-    state->status.z = (operand == 0) ? 1 : 0;
+    state->status.z = !operand;
 }
 
 static inline void ShiftOneLeft(Cpu *state, uint8_t *operand)
@@ -276,16 +275,16 @@ static inline void ShiftOneLeftFromMem(Cpu *state, const uint16_t operand_addr)
     UPDATE_FLAGS_NZ(operand);
 }
 
-// ADC only uses the A register (Accumulator)
+// ADC/SBC only uses the A register (Accumulator)
 static inline void AddWithCarry(Cpu *state, uint8_t operand)
 {
     uint16_t sum = state->a + operand + state->status.c;
 
     // Set Carry Flag (C) - Set if result is > 255 (unsigned overflow)
-    state->status.c = (sum > UINT8_MAX) ? 1 : 0;
+    state->status.c = (sum > UINT8_MAX);
 
     // Set Overflow Flag (V) - Detect signed overflow
-    state->status.v = (~(state->a ^ operand) & (state->a ^ sum) & 0x80) ? 1 : 0;
+    state->status.v = ((sum ^ state->a) & (sum ^ operand) & 0x80) > 0;
 
     // Store result
     state->a = (uint8_t)sum;
@@ -293,7 +292,7 @@ static inline void AddWithCarry(Cpu *state, uint8_t operand)
     // Update status flags
     UPDATE_FLAGS_NZ(state->a);
 
-    CPU_LOG("Operand %x\n", operand);
+    CPU_LOG("ADC/SBC Operand: %x\n", operand);
 }
 
 static inline uint8_t GetOperandFromMem(Cpu *state, AddressingMode addr_mode, bool page_cycle)
@@ -446,7 +445,7 @@ static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
-
+    state->pc++;
     if (!state->status.c)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -456,7 +455,6 @@ static inline void BCC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->cycles++;
         CPU_LOG("BCC pc offset: %d\n", offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -467,6 +465,7 @@ static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+    state->pc++;
     if (state->status.c)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -476,7 +475,6 @@ static inline void BCS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->cycles++;
         CPU_LOG("BCS pc offset: %d\n", offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -487,6 +485,7 @@ static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+    state->pc++;
     if (state->status.z)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -496,7 +495,6 @@ static inline void BEQ_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->cycles++;
         CPU_LOG("BEQ pc offset: %d\n", offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -517,6 +515,7 @@ static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+    state->pc++;
     if (state->status.n)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -526,7 +525,6 @@ static inline void BMI_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->cycles++;
         CPU_LOG("BMI pc offset: %d\n", offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -537,6 +535,7 @@ static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+    state->pc++;
     if (!state->status.z)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -546,7 +545,6 @@ static inline void BNE_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->cycles++;
         CPU_LOG("BNE pc offset: %d\n", offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -557,6 +555,7 @@ static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+    state->pc++;
     if (!state->status.n)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -567,7 +566,6 @@ static inline void BPL_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         CPU_LOG("BPL pc offset: %d\n", offset);
         //printf("BPL cross page triggered 0x%X --> 0x%X\n", state->pc, state->pc + offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -588,10 +586,9 @@ static inline void BRK_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     status.unused = 1;
     StackPush(state, status.raw);
 
-    state->status.i = true;
+    state->status.i = 1;
     // Load IRQ vector ($FFFE-$FFFF) into PC
     state->pc = CpuReadVector(0xFFFE);
-
     CPU_LOG("Jumping to IRQ vector at 0x%X\n", state->pc);
 }
 
@@ -602,6 +599,7 @@ static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+    state->pc++;
     if (!state->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -611,7 +609,6 @@ static inline void BVC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->cycles++;
         CPU_LOG("BVC pc offset: %d\n", offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -621,6 +618,7 @@ static inline void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++state->pc);
+    state->pc++;
     if (state->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -630,7 +628,6 @@ static inline void BVS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
         state->cycles++;
         CPU_LOG("PC Offset %d\n", offset);
     }
-    state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
 
@@ -1037,16 +1034,10 @@ static inline void RTS_Instr(Cpu *state, AddressingMode addr_mode, bool page_cyc
 static inline void SBC_Instr(Cpu *state, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(state, addr_mode, page_cycle);
-    uint16_t temp = state->a - operand - (1 - state->status.c);
 
-    // Carry is set if no borrow occurs
-    state->status.c = (state->a >= operand + (1 - state->status.c)) ? 1 : 0;
+    // Invert operand since were reusing ADC logic for SBC
+    AddWithCarry(state, ~operand);
 
-    // Set Overflow Flag: Checks signed overflow
-    state->status.v = ((state->a ^ operand) & (state->a ^ temp) & 0x80) ? 1 : 0;
-    state->a = (uint8_t)temp;
-
-    UPDATE_FLAGS_NZ(state->a);
     state->pc++;
     state->irq_ready = CpuPollIRQ(state);
 }
@@ -1442,7 +1433,7 @@ void CPU_Init(Cpu *state)
     // Read the reset vector from 0xFFFC (little-endian)
     uint16_t reset_vector = CpuReadVector(0xFFFC); 
     
-    printf("CPU Init: Loading reset vector at PC:0x%04X\n", reset_vector);
+    printf("CPU Init: Loading reset vector PC:0x%04X\n", reset_vector);
 
     // Set PC to the reset vector address
     state->pc = reset_vector;
@@ -1476,7 +1467,7 @@ void CPU_Reset(Cpu *state)
     // Read the reset vector from 0xFFFC (little-endian)
     uint16_t reset_vector = CpuReadVector(0xFFFC); 
     
-    printf("CPU Reset: Loading reset vector at PC:0x%04X\n", reset_vector);
+    printf("CPU Reset: Loading reset vector PC:0x%04X\n", reset_vector);
 
     // Set PC to the reset vector address
     state->pc = reset_vector;
