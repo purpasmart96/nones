@@ -175,23 +175,17 @@ static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
 
 static uint8_t Mmc3ReadChrRom(Cart *cart, const uint16_t addr)
 {
-    //Mmc3 *mmc3 = &cart->mmc3;
-    uint32_t final_addr = 0;
+    const uint32_t effective_addr = addr ^ (mmc3.bank_sel.chr_a12_invert * 0x1000);
 
-    if (mmc3.bank_sel.chr_a12_invert)
-    {
-        if (addr < 0x1000)
-            final_addr = (mmc3.regs[(addr >> 10) + 2] * 0x400) + (addr & 0x3FF);
-        else
-            final_addr = (mmc3.regs[((addr - 0x1000) >> 10) >> 1] * 0x800) + (addr & 0x7FF);
-    }
-    else
-    {
-        if (addr < 0x1000)
-            final_addr = (mmc3.regs[(addr >> 10) >> 1] * 0x800) + (addr & 0x7FF);
-        else
-            final_addr = (mmc3.regs[(addr >> 10) - 2] * 0x400) + (addr & 0x3FF);
-    }
+    // Branchless
+    uint32_t region = effective_addr >> 12;
+    uint32_t shift = 10 + (region ^ 1);
+    uint32_t offset = region * 2;
+    uint32_t bank_size = 1 << shift;
+    
+    uint32_t index = (effective_addr >> shift) - offset;
+    uint32_t bank_base = mmc3.regs[index] << shift;
+    uint32_t final_addr = bank_base | (effective_addr & (bank_size - 1));
 
     return cart->chr_rom.data[final_addr];
 }
@@ -234,38 +228,35 @@ static void Mmc1RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
     mmc1.shift.bit4 = data & 1;
     mmc1.shift_count++;
 
-    if (mmc1.shift_count == 5)
+    if (mmc1.shift_count != 5)
+        return;
+
+    const uint8_t reg = mmc1.shift.raw;
+    switch ((addr >> 13) & 0x3)
     {
-        const uint8_t reg = mmc1.shift.raw;
-        switch ((addr >> 13) & 0x3)
-        {
-            case 0:
-                mmc1.control.raw = reg;
-                Mmc1UpdatePPUMirroring(mmc1.control.name_table_setup);
-                //printf("Set nametable mode to: %d\n", mmc1->control.name_table_setup);
-                //printf("Set prg rom bank mode to: %d\n", mmc1->control.prg_rom_bank_mode);
-                DEBUG_LOG("Set chr bank mode to %d\n", mmc1.control.chr_rom_bank_mode);
-                break;
-            case 1:
-                mmc1.chr_bank0 = reg;
-                DEBUG_LOG("Set chr rom bank0 index to %d\n", mmc1.chr_bank0);
-                break;
-            case 2:
-                mmc1.chr_bank1 = reg;
-                DEBUG_LOG("Set chr rom bank1 index to %d\n", mmc1.chr_bank1);
-                break;
-            case 3:
-                mmc1.prg_bank.raw = reg;
-                DEBUG_LOG("Set prg rom bank index to %d\n", mmc1.prg_bank.mmc1a.select);
-                //DEBUG_LOG("Bypass 16k logic? %d\n", mmc1->prg_bank.mmc1a.bypass_16k_logic);
-                break;
-            default:
-                break;
-        
-        }
-        mmc1.shift.raw = 0x10;
-        mmc1.shift_count = 0;
+        case 0:
+            mmc1.control.raw = reg;
+            Mmc1UpdatePPUMirroring(mmc1.control.name_table_setup);
+            //printf("Set nametable mode to: %d\n", mmc1->control.name_table_setup);
+            //printf("Set prg rom bank mode to: %d\n", mmc1->control.prg_rom_bank_mode);
+            DEBUG_LOG("Set chr bank mode to %d\n", mmc1.control.chr_rom_bank_mode);
+            break;
+        case 1:
+            mmc1.chr_bank0 = reg;
+            DEBUG_LOG("Set chr rom bank0 index to %d\n", mmc1.chr_bank0);
+            break;
+        case 2:
+            mmc1.chr_bank1 = reg;
+            DEBUG_LOG("Set chr rom bank1 index to %d\n", mmc1.chr_bank1);
+            break;
+        case 3:
+            mmc1.prg_bank.raw = reg;
+            DEBUG_LOG("Set prg rom bank index to %d\n", mmc1.prg_bank.mmc1a.select);
+            //DEBUG_LOG("Bypass 16k logic? %d\n", mmc1->prg_bank.mmc1a.bypass_16k_logic);
+            break;
     }
+    mmc1.shift.raw = 0x10;
+    mmc1.shift_count = 0;
 }
 
 static void Mmc3RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
