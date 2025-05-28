@@ -14,8 +14,8 @@ typedef enum
     AbsoluteX,
     AbsoluteY,
     Indirect,
-    PreIndexedIndirect,
-    PostIndexedIndirect
+    IndirectX,
+    IndirectY
 } AddressingMode;
 
 typedef union
@@ -58,7 +58,7 @@ typedef struct
 
 typedef struct
 {
-    void (*InstrFn)(Cpu *state, AddressingMode addr_mode, bool page_cross_penalty);
+    void (*InstrFn)(Cpu *cpu, AddressingMode addr_mode, bool page_cross_penalty);
     // Mnemonic (e.g., "AND", "ASL")
     const char *name;
     // Number of bytes the instruction takes
@@ -80,12 +80,12 @@ typedef struct
 #define GET_NEG_BIT(operand) ((operand >> 7) & 1)
 #define GET_OVERFLOW_BIT(operand) ((operand >> 6) & 1)
 #define UPDATE_FLAGS_NZ(var) \
-    state->status.n = GET_NEG_BIT(var); \
-    state->status.z = !var
+    cpu->status.n = GET_NEG_BIT(var); \
+    cpu->status.z = !var
 
-void CPU_Init(Cpu *state);
-void CPU_Update(Cpu *state);
-void CPU_Reset(Cpu *state);
-void CPU_TriggerNMI(Cpu *state);
+void CPU_Init(Cpu *cpu);
+void CPU_Update(Cpu *cpu);
+void CPU_Reset(Cpu *cpu);
+void CPU_TriggerNMI(Cpu *cpu);
 
 #endif
