@@ -805,18 +805,23 @@ static void ApuClockTimers(Apu *apu)
     }
 }
 
+//#define APU_FAST_MIXER
+
 static void ApuMixSample(Apu *apu)
 {
     float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume);
     float square2 = CreateSquareSample(apu->pulse2.output, apu->pulse2.volume);
 
-    float pulse = 95.88 / (8128.0 / (square1 + square2)) + 100;
-    //float triangle = CreateTriangleSample(apu->triangle.output);
-    //float noise = CreateNoiseSample(apu->noise.output);
-
-    float tnd_out = 159.79 / (1 / (((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0))) + 100);
-    //float tnd_out =  triangle + noise + 0.00335 * apu->dmc.output_level;
+#ifdef APU_FAST_MIXER
+    float triangle = CreateTriangleSample(apu->triangle.output);
+    float noise = CreateNoiseSample(apu->noise.output);
+    float tnd_out =  triangle + noise + 0.00335 * apu->dmc.output_level;
+    apu->mixed_sample = ((0.00752 * (square1 + square2)) + tnd_out);
+#else
+    float pulse = 95.88 / ((8128.0 / (square1 + square2)) + 100);
+    float tnd_out = 159.79 / (1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0)) + 100);
     apu->mixed_sample = pulse + tnd_out;
+#endif
 }
 
 void APU_Init(Apu *apu)
