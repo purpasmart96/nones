@@ -16,8 +16,6 @@ Mmc1 mmc1;
 Mmc3 mmc3;
 UxRom ux_rom;
 
-static bool irq_triggered = false;
-
 static uint8_t NromReadPrgRom(Cart *cart, uint16_t addr)
 {
     return cart->prg_rom.data[addr & cart->prg_rom.mask];
@@ -190,23 +188,13 @@ static uint8_t Mmc3ReadChrRom(Cart *cart, const uint16_t addr)
     return cart->chr_rom.data[final_addr];
 }
 
-static void Mmc1UpdatePPUMirroring(int nt_mirror_mode)
+static const int mmc1_mirror_map[4] =
 {
-    switch (nt_mirror_mode) {
-        case 0:
-            NametableMirroringInit(4);
-            break;
-        case 1:
-            NametableMirroringInit(3);
-            break;
-        case 2:
-            NametableMirroringInit(NAMETABLE_VERTICAL);
-            break;
-        case 3:
-            NametableMirroringInit(NAMETABLE_HORIZONTAL);
-            break;
-    }
-}
+    NAMETABLE_FOUR_SCREEN,
+    NAMETABLE_SINGLE_SCREEN,
+    NAMETABLE_VERTICAL,
+    NAMETABLE_HORIZONTAL
+};
 
 static void Mmc1RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
 {
@@ -236,7 +224,7 @@ static void Mmc1RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
     {
         case 0:
             mmc1.control.raw = reg;
-            Mmc1UpdatePPUMirroring(mmc1.control.name_table_setup);
+            NametableMirroringInit(mmc1_mirror_map[mmc1.control.name_table_setup]);
             //printf("Set nametable mode to: %d\n", mmc1->control.name_table_setup);
             //printf("Set prg rom bank mode to: %d\n", mmc1->control.prg_rom_bank_mode);
             DEBUG_LOG("Set chr bank mode to %d\n", mmc1.control.chr_rom_bank_mode);
@@ -316,7 +304,7 @@ static void Mmc3RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
         // Nametable arrangement ($A000-$BFFE, even)
         case 1:
             mmc3.name_table_arrgmnt = data & 1;
-            NametableMirroringInit(!mmc3.name_table_arrgmnt);
+            NametableMirroringInit(mmc3.name_table_arrgmnt ^ 1);
             //printf("Set MMC3 nametable mirroring mode: %d\n", !cart->mmc3.name_table_setup);
             break;
         // IRQ latch ($C000-$DFFE, even)
@@ -327,6 +315,7 @@ static void Mmc3RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
         // IRQ disable ($E000-$FFFE, even)
         case 3:
             mmc3.irq_enable = false;
+            mmc3.irq_pending = false;
             //printf("Set MMC3 interrupts off: 0x%X\n", data);
             break;
         default:
@@ -356,10 +345,11 @@ uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr)
 
 void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
 {
-    cart->WriteFn(cart, addr, data);
+    if (cart->mapper_num != 0)
+        cart->WriteFn(cart, addr, data);
 }
 
-void Mmc3ClockIrqCounter(Cart *cart)
+bool Mmc3ClockIrqCounter(Cart *cart)
 {
     if (!mmc3.irq_counter || mmc3.irq_reload)
     {
@@ -372,30 +362,25 @@ void Mmc3ClockIrqCounter(Cart *cart)
 
     if (!mmc3.irq_counter && mmc3.irq_enable)
     {
-        irq_triggered = true;
+        mmc3.irq_pending = true;
     }
 
     if (mmc3.irq_reload)
     {
         mmc3.irq_reload = false;
     }
+
+    return mmc3.irq_pending;
 }
 
-bool MapperIrqTriggered(void)
+bool PollMapperIrq(void)
 {
-    return irq_triggered;
-    //printf("IRQ:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
-}
-
-void MapperIrqClear(void)
-{
-    irq_triggered = false;
-    //printf("IRQ:(scanline:%d cycle: %d)\n", ppu_ptr->scanline, ppu_ptr->cycle_counter);
+    return mmc3.irq_pending;
 }
 
 void MapperInit(Cart *cart)
 {
-    switch (cart->mapper_type)
+    switch (cart->mapper_num)
     {
         case 0:
             cart->ReadPrgFn = NromReadPrgRom;
@@ -421,7 +406,7 @@ void MapperInit(Cart *cart)
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, 0x2000);
             break;
         default:
-            printf("Bad Mapper type!: %d\n", cart->mapper_type);
+            printf("Bad Mapper type!: %d\n", cart->mapper_num);
             break;
     }
 }

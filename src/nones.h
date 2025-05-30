@@ -12,7 +12,13 @@
 
 typedef struct {
     Arena *arena;
-    Bus *bus;
+    System *system;
+    SDL_Window *window;
+    SDL_Renderer *renderer;
+    SDL_Texture *texture;
+    int num_gamepads;
+    SDL_Gamepad *gamepad;
+    SDL_JoystickID *gamepads;
 } Nones;
 
 void NonesRun(Nones *nones, const char *path);

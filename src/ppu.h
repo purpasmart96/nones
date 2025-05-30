@@ -13,14 +13,24 @@
 #define PALETTE_START_ADDR 0x3F00
 
 // PPU regs
-#define PPU_CTRL   0x2000
-#define PPU_MASK   0x2001
-#define PPU_STATUS 0x2002
-#define OAM_ADDR   0x2003
-#define OAM_DATA   0x2004
-#define PPU_SCROLL 0x2005
-#define PPU_ADDR   0x2006
-#define PPU_DATA   0x2007
+//#define PPU_CTRL   0x2000
+//#define PPU_MASK   0x2001
+//#define PPU_STATUS 0x2002
+//#define OAM_ADDR   0x2003
+//#define OAM_DATA   0x2004
+//#define PPU_SCROLL 0x2005
+//#define PPU_ADDR   0x2006
+//#define PPU_DATA   0x2007
+//#define OAM_DMA    0x4014
+
+#define PPU_CTRL   0
+#define PPU_MASK   1
+#define PPU_STATUS 2
+#define OAM_ADDR   3
+#define OAM_DATA   4
+#define PPU_SCROLL 5
+#define PPU_ADDR   6
+#define PPU_DATA   7
 #define OAM_DMA    0x4014
 
 typedef enum {
@@ -92,7 +102,8 @@ typedef union
 typedef union
 {
     uint8_t raw;
-    struct {
+    struct
+    {
         uint8_t open_bus : 5;
         uint8_t sprite_overflow : 1;
         uint8_t sprite_hit : 1;
@@ -120,7 +131,8 @@ typedef union
         uint16_t fine_y : 3;
     } scrolling;
 
-    struct {
+    struct
+    {
         // Fine Y offset, the row number within a tile
         uint16_t fine_y : 3;// Bits 0-2
         // Bit plane (0: less significant bit; 1: more significant bit)
@@ -194,15 +206,16 @@ typedef struct
     uint8_t r;
     uint8_t g;
     uint8_t b;
-    uint8_t a;
 } Color;
 
 typedef struct
 {
     uint64_t cycles;
     uint64_t prev_cpu_cycles;
-    uint32_t cycles_to_run;
     uint64_t frames;
+    uint32_t cycles_to_run;
+    uint32_t cycle_counter;
+    int scanline;
 
     // PPU internel regs
     struct {
@@ -218,8 +231,6 @@ typedef struct
     };
 
     NameTableMirror nt_mirror_mode;
-    int scanline;
-    uint32_t cycle_counter;
     int ext_input;
     uint8_t attrib_data;
     uint8_t tile_id;
@@ -231,16 +242,17 @@ typedef struct
     ShiftReg attrib_shift_high;
     uint8_t sprite_lsb;
     uint8_t sprite_msb;
+
     bool sprite0_loaded;
     // Per scanline
     int found_sprites;
-    bool prev_a12;
+
+    uint32_t bus_addr;
     bool rendering;
     bool prev_rendering;
+    bool ignore_vblank;
     bool frame_finished;
     bool finish_early;
-    // Read buffer for $2007
-    uint8_t buffered_data;
 
     // Double buffer for SDL
     // buffer 0 is the backbuffer
@@ -251,6 +263,8 @@ typedef struct
     PpuMask mask;
     PpuStatus status;
     uint8_t oam_addr;
+    // Read buffer for $2007
+    uint8_t buffered_data;
 } Ppu;
 
 typedef union
@@ -279,15 +293,11 @@ typedef union
 
 void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
+void PPU_Tick(Ppu *ppu, uint64_t cpu_cycles);
 void PPU_Reset(Ppu *ppu);
 uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr);
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data);
-uint8_t *GetPPUMemPtr(uint16_t addr);
-
 void NametableMirroringInit(NameTableMirror mode);
-
 void OAM_Dma(const uint16_t addr);
-
-bool PPU_NmiTriggered(void);
 
 #endif

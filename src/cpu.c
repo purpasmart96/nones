@@ -5,15 +5,14 @@
 #include <stdbool.h>
 #include <time.h>
 
+#include "cpu.h"
 #include "apu.h"
-
 #include "ppu.h"
 #include "joypad.h"
 #include "arena.h"
 #include "cart.h"
 #include "mapper.h"
-#include "cpu.h"
-#include "bus.h"
+#include "system.h"
 #include "utils.h"
 
 //#define DISABLE_DUMMY_READ_WRITES
@@ -35,14 +34,14 @@ static uint16_t CpuReadVector(uint16_t addr)
 
 static inline void StackPush(Cpu *cpu, uint8_t data)
 {
-    uint8_t *ptr = BusGetPtr(STACK_START + cpu->sp--);
+    uint8_t *ptr = SystemGetPtr(STACK_START + cpu->sp--);
     *ptr = data;
 }
 
 // Retrieve the value on the top of the stack and then pop it
 static inline uint8_t StackPull(Cpu *cpu)
 {
-    return *BusGetPtr(STACK_START + (++cpu->sp));
+    return *SystemGetPtr(STACK_START + (++cpu->sp));
 }
 
 static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
@@ -56,6 +55,11 @@ static inline bool CpuPollIRQ(Cpu *cpu)
 {
     return !cpu->status.i && cpu->irq_pending;
 }
+
+//static inline bool CpuPollIRQ(Cpu *cpu)
+//{
+//    return !cpu->status.i && SystemPollAllIrqs();
+//}
 
 static void HandleIRQ(Cpu *cpu)
 {
@@ -584,7 +588,8 @@ static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    // Fetch opcode of next instruction,
+    CpuRead8(++cpu->pc);
     if (!cpu->status.n)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -605,9 +610,9 @@ static inline void BRK_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     // Implied BRK	00	1	7
+    ++cpu->pc;
     // Dummy read
     CpuRead8(++cpu->pc);
-    ++cpu->pc;
     // Push PC += 2
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     StackPush(cpu, cpu->pc & 0xFF);
@@ -1448,12 +1453,7 @@ static void ExecuteOpcode(Cpu *cpu)
         CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, cpu->pc);
         snprintf(cpu->debug_msg, sizeof(cpu->debug_msg), "PC:%04X %s", cpu->pc, handler->name);
 
-        BusUpdate(cpu->cycles);
-
-        if (PPU_NmiTriggered())
-        {
-            cpu->nmi_pending = true;
-        }
+        SystemSync(cpu->cycles);
 
         // Execute instruction
         handler->InstrFn(cpu, handler->addr_mode, handler->page_cross_penalty);
@@ -1463,11 +1463,9 @@ static void ExecuteOpcode(Cpu *cpu)
         if (cpu->nmi_pending)
         {
             CPU_TriggerNMI(cpu);
-            cpu->nmi_pending = false;
         }
         else if (cpu->irq_ready)
         {
-            ClearIrq();
             HandleIRQ(cpu);
         }
     }
@@ -1509,6 +1507,8 @@ void CPU_TriggerNMI(Cpu *cpu)
     cpu->status.i = 1;
     // NMI and IRQ have a 7 cycle cost
     cpu->cycles += 7;
+
+    cpu->nmi_pending = false;
 }
 
 void CPU_Update(Cpu *cpu)

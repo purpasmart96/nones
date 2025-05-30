@@ -284,6 +284,17 @@ typedef struct
     int sequence_step;
 } Apu;
 
+typedef struct
+{
+    int cycles;
+    // Envelopes & triangle's linear counter
+    bool quarter_frame_clock;
+    // Length counters & sweep units
+    bool half_frame_clock;
+    // Frame interrupt flag 
+    bool frame_interrupt;
+} SequenceStep;
+
 #define APU_PULSE_1_DUTY 0x4000
 #define APU_PULSE_1_SWEEP 0x4001
 #define APU_PULSE_1_TIMER_LOW 0x4002
@@ -312,7 +323,7 @@ typedef struct
 
 uint8_t ReadAPURegister(Apu *apu, const uint16_t addr);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
-void PushSample(int16_t *samples, float left_sample, float right_sample);
+bool PollApuIrqs(Apu *apu);
 void APU_Init(Apu *apu);
 //void APU_Update(Apu *apu, uint32_t cycles_delta);
 void APU_Update(Apu *apu, uint64_t cpu_cycles);

@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "bus.h"
+#include "system.h"
+#include <SDL3/SDL.h>
 #include "nones.h"
 
 int main(int argc, char **argv)

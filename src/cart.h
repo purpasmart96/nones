@@ -186,6 +186,7 @@ typedef struct
     uint8_t irq_latch;
     uint8_t irq_reload;
     bool irq_enable;
+    bool irq_pending;
 } Mmc3;
 
 typedef struct
@@ -201,7 +202,7 @@ typedef struct Cart {
     //Mmc1 mmc1;
     //Mmc3 mmc3;
     //UxRom ux_rom;
-    int mapper_type;
+    int mapper_num;
     int mirroring;
     const char *name;
     bool battery;

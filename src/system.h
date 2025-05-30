@@ -1,5 +1,5 @@
-#ifndef BUS_H
-#define BUS_H
+#ifndef SYSTEM_H
+#define SYSTEM_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -11,12 +11,10 @@
 #include "ppu.h"
 #include "joypad.h"
 #include "cart.h"
+#include "mapper.h"
 
 #define CPU_RAM_START_ADDR 0
 #define CPU_RAM_SIZE 0x800
-#define CPU_RAM_MIRROR0_START_ADDR 0x800
-#define CPU_RAM_MIRROR1_START_ADDR 0x1000
-#define CPU_RAM_MIRROR2_START_ADDR 0x1800
 #define PPU_REGS_START_ADDR 0x2000
 #define PPU_REGS_SIZE 0x8
 #define PPU_REGS_MIRROR_START_ADDR 0x2008
@@ -24,7 +22,7 @@
 #define APU_IO_REGS_START_ADDR 0x4000
 #define APU_IO_REGS_SIZE 0x18
 
-typedef struct
+typedef struct System
 {
     Cpu *cpu;
     Apu *apu;
@@ -33,24 +31,33 @@ typedef struct
     Cart *cart;
     JoyPad *joy_pad;
     uint8_t *sys_ram;
-} Bus;
+} System;
 
-Bus *BusCreate(Arena *arena);
+System *SystemCreate(Arena *arena);
+void SystemInit(System *system, uint32_t **buffers);
+void SystemRun(System *system, bool paused, bool step_instr, bool step_frame);
+void SystemSync(uint64_t cycles);
+void SystemSendNmiToCpu(void);
+void SystemPrePollAllIrqs(void);
+bool SystemPollAllIrqs(void);
+void SystemReset(System *system);
+void SystemShutdown(System *system);
+
 uint8_t BusRead(const uint16_t addr);
 void BusWrite(const uint16_t addr, const uint8_t data);
-uint8_t *BusGetPtr(const uint16_t addr);
-int BusLoadCart(Arena *arena, Bus *bus, const char *path);
+uint8_t *SystemGetPtr(const uint16_t addr);
+int SystemLoadCart(Arena *arena, System *System, const char *path);
 
 uint8_t PpuBusReadChrRom(const uint16_t addr);
 void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data);
 void PpuClockMMC3(void);
-void PpuClockMMC3v2(int scanline);
-void BusUpdate(uint64_t cycles);
-void BusAddCpuCycles(uint32_t cycles);
-void ClearIrq(void);
 
-Cart *BusGetCart(void);
-Apu *BusGetApu(void);
-Ppu *BusGetPpu(void);
+void SystemAddCpuCycles(uint32_t cycles);
+void SystemUpdateJPButtons(System *system, const bool *buttons);
+
+Cart *SystemGetCart(void);
+Apu *SystemGetApu(void);
+Ppu *SystemGetPpu(void);
+Cpu *SystemGetCpu(void);
 
 #endif

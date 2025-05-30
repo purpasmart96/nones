@@ -7,14 +7,8 @@
 #include <stdalign.h>
 
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_audio.h>
-#include <SDL3/SDL_render.h>
-#include <SDL3/SDL_stdinc.h>
-#include <SDL3/SDL_timer.h>
-#include <SDL3/SDL_keycode.h>
-#include <SDL3/SDL_scancode.h>
 
-#include "bus.h"
+#include "system.h"
 #include "cart.h"
 #include "nones.h"
 
@@ -24,7 +18,7 @@
 
 static SDL_AudioStream *stream = NULL;
 
-static void downsample_to_44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer, bool odd_frame)
+static void upsample_to_44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer, bool odd_frame)
 {
     const double step = (double)(HIGH_RATE_SAMPLES + odd_frame) / LOW_RATE_SAMPLES;
 
@@ -51,7 +45,7 @@ void NonesPutSoundData(Apu *apu)
     const int minimum_audio = (4096 * sizeof(int16_t)); // * 2) / 2; // Stereo samples
     if (SDL_GetAudioStreamQueued(stream) < minimum_audio) {
 
-        downsample_to_44khz(apu->buffer, apu->outbuffer, apu->odd_frame);
+        upsample_to_44khz(apu->buffer, apu->outbuffer, apu->odd_frame);
 
         SDL_PutAudioStreamData(stream, apu->outbuffer, sizeof(apu->outbuffer));
     }
@@ -60,32 +54,13 @@ void NonesPutSoundData(Apu *apu)
 static void NonesInit(Nones *nones, const char *path)
 {
     nones->arena = ArenaCreate(1024 * 1024 * 2);
-    nones->bus = BusCreate(nones->arena);
+    nones->system = SystemCreate(nones->arena);
 
-    if (BusLoadCart(nones->arena, nones->bus, path))
+    if (SystemLoadCart(nones->arena, nones->system, path))
     {
         ArenaDestroy(nones->arena);
         exit(EXIT_FAILURE);
     }
-}
-
-static void NonesReset(Nones *nones)
-{
-    CPU_Reset(nones->bus->cpu);
-    APU_Reset(nones->bus->apu);
-    PPU_Reset(nones->bus->ppu);
-}
-
-static void NonesSetIntegerScale(SDL_Window *window, SDL_Renderer *renderer, int scale)
-{
-    SDL_SetWindowSize(window, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
-    SDL_SetRenderScale(renderer, scale, scale);
-    SDL_SetWindowPosition(window,  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED);
-}
-
-void NonesRun(Nones *nones, const char *path)
-{
-    NonesInit(nones, path);
 
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD))
     {
@@ -93,35 +68,33 @@ void NonesRun(Nones *nones, const char *path)
         exit(EXIT_FAILURE);
     }
 
-    SDL_Window *window = SDL_CreateWindow("nones", SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2, 0);
-    if (!window)
+    nones->window = SDL_CreateWindow("nones", SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2, 0);
+    if (!nones->window)
     {
         SDL_Log("Window Error: %s", SDL_GetError());
         SDL_Quit();
         exit(EXIT_FAILURE);
     }
 
-    SDL_Renderer *renderer = SDL_CreateRenderer(window, NULL);
-    if (!renderer)
+    nones->renderer = SDL_CreateRenderer(nones->window, NULL);
+    if (!nones->renderer)
     {
         SDL_Log("Renderer Error: %s", SDL_GetError());
-        SDL_DestroyWindow(window);
+        SDL_DestroyWindow(nones->window);
         SDL_Quit();
         exit(EXIT_FAILURE);
     }
 
-    if (!SDL_SetRenderVSync(renderer, 1))
+    if (!SDL_SetRenderVSync(nones->renderer, 1))
     {
-        SDL_Log( "Could not enable VSync! SDL error: %s\n", SDL_GetError());
+        SDL_Log("Could not enable VSync! SDL error: %s\n", SDL_GetError());
     }
 
-    int num_gamepads;
-    SDL_Gamepad *gamepad = NULL;
-    SDL_JoystickID *gamepads = SDL_GetGamepads(&num_gamepads);
-    if (gamepads)
+    nones->gamepads = SDL_GetGamepads(&nones->num_gamepads);
+    if (nones->gamepads)
     {
-        gamepad = SDL_OpenGamepad(gamepads[0]);
-        char *gamepad_info = SDL_GetGamepadMapping(gamepad);
+        nones->gamepad = SDL_OpenGamepad(nones->gamepads[0]);
+        char *gamepad_info = SDL_GetGamepadMapping(nones->gamepad);
         printf("Gamepad: %s\n", gamepad_info);
         SDL_free(gamepad_info);
     }
@@ -139,23 +112,56 @@ void NonesRun(Nones *nones, const char *path)
     if (!stream)
     {
         SDL_Log("Couldn't create audio stream: %s", SDL_GetError());
-        SDL_DestroyRenderer(renderer);
-        SDL_DestroyWindow(window);
+        SDL_DestroyRenderer(nones->renderer);
+        SDL_DestroyWindow(nones->window);
         SDL_Quit();
         exit(EXIT_FAILURE);
     }
 
     SDL_ResumeAudioStreamDevice(stream);
 
-    //SDL_SetRenderLogicalPresentation(renderer, SCREEN_WIDTH, SCREEN_WIDTH,  SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
-    SDL_SetRenderScale(renderer,2, 2);
+    //SDL_SetRenderLogicalPresentation(nones->renderer, SCREEN_WIDTH, SCREEN_WIDTH,  SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
+    SDL_SetRenderScale(nones->renderer, 2, 2);
 
-    SDL_Texture *texture = SDL_CreateTexture(renderer,
+    nones->texture = SDL_CreateTexture(nones->renderer,
         SDL_PIXELFORMAT_RGBA8888,
         SDL_TEXTUREACCESS_STREAMING,
         SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    SDL_SetTextureScaleMode(texture, SDL_SCALEMODE_NEAREST);
+    SDL_SetTextureScaleMode(nones->texture, SDL_SCALEMODE_NEAREST);
+}
+
+static void NonesShutdown(Nones *nones)
+{
+    SystemShutdown(nones->system);
+
+    SDL_DestroyTexture(nones->texture);
+    SDL_DestroyRenderer(nones->renderer);
+    SDL_free(nones->gamepads);
+    if (nones->gamepad)
+        SDL_CloseGamepad(nones->gamepad);
+    SDL_DestroyAudioStream(stream);
+    SDL_DestroyWindow(nones->window);
+    SDL_Quit();
+
+    ArenaDestroy(nones->arena);
+}
+
+static void NonesReset(Nones *nones)
+{
+    SystemReset(nones->system);
+}
+
+static void NonesSetIntegerScale(Nones *nones, int scale)
+{
+    SDL_SetWindowSize(nones->window, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
+    SDL_SetRenderScale(nones->renderer, scale, scale);
+    SDL_SetWindowPosition(nones->window,  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED);
+}
+
+void NonesRun(Nones *nones, const char *path)
+{
+    NonesInit(nones, path);
 
     // Allocate pixel buffers (back and front)
     uint32_t *buffers[2];
@@ -163,9 +169,7 @@ void NonesRun(Nones *nones, const char *path)
     buffers[0] = ArenaPush(nones->arena, buffer_size);
     buffers[1] = ArenaPush(nones->arena, buffer_size);
 
-    CPU_Init(nones->bus->cpu);
-    APU_Init(nones->bus->apu);
-    PPU_Init(nones->bus->ppu, nones->bus->cart->mirroring, buffers);
+    SystemInit(nones->system, buffers);
 
     bool quit = false;
     bool buttons[8];
@@ -179,7 +183,8 @@ void NonesRun(Nones *nones, const char *path)
     char debug_cpu[128] = {'\0'};
     bool debug_stats = false;
     bool paused = false;
-    bool step = false;
+    bool step_frame = false;
+    bool step_instr = false;
     while (!quit)
     {
         //memset(pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
@@ -204,8 +209,11 @@ void NonesRun(Nones *nones, const char *path)
                         case SDLK_F6:
                             paused = !paused;
                             break;
+                        case SDLK_F10:
+                            step_frame = true;
+                            break;
                         case SDLK_F11:
-                            step = true;
+                            step_instr = true;
                             break;
                     }
                     break;
@@ -214,75 +222,55 @@ void NonesRun(Nones *nones, const char *path)
 
         const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        buttons[0] = kb_state[SDL_SCANCODE_SPACE]  || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_EAST);
-        buttons[1] = kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_SOUTH);
-        buttons[2] = kb_state[SDL_SCANCODE_UP]     || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP);
-        buttons[3] = kb_state[SDL_SCANCODE_DOWN]   || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
-        buttons[4] = kb_state[SDL_SCANCODE_LEFT]   || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
-        buttons[5] = kb_state[SDL_SCANCODE_RIGHT]  || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
-        buttons[6] = kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_START);
-        buttons[7] = kb_state[SDL_SCANCODE_TAB]    || SDL_GetGamepadButton(gamepad, SDL_GAMEPAD_BUTTON_BACK);
+        buttons[0] = kb_state[SDL_SCANCODE_SPACE]  || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_EAST);
+        buttons[1] = kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_SOUTH);
+        buttons[2] = kb_state[SDL_SCANCODE_UP]     || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP);
+        buttons[3] = kb_state[SDL_SCANCODE_DOWN]   || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        buttons[4] = kb_state[SDL_SCANCODE_LEFT]   || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        buttons[5] = kb_state[SDL_SCANCODE_RIGHT]  || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        buttons[6] = kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_START);
+        buttons[7] = kb_state[SDL_SCANCODE_TAB]    || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_BACK);
 
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_A, buttons[0]);
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_B, buttons[1]);
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_UP, buttons[2]);
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_DOWN, buttons[3]);
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_LEFT, buttons[4]);
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_RIGHT, buttons[5]);
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_START, buttons[6]);
-        JoyPadSetButton(nones->bus->joy_pad, JOYPAD_SELECT, buttons[7]);
+        SystemUpdateJPButtons(nones->system, buttons);
 
         if (kb_state[SDL_SCANCODE_ESCAPE])
             quit = true;
         else if (kb_state[SDL_SCANCODE_1])
-            NonesSetIntegerScale(window, renderer, 1);
+            NonesSetIntegerScale(nones, 1);
         else if (kb_state[SDL_SCANCODE_2])
-            NonesSetIntegerScale(window, renderer, 2);
+            NonesSetIntegerScale(nones, 2);
         else if (kb_state[SDL_SCANCODE_3])
-            NonesSetIntegerScale(window, renderer, 3);
+            NonesSetIntegerScale(nones, 3);
         else if (kb_state[SDL_SCANCODE_4])
-            NonesSetIntegerScale(window, renderer, 4);
+            NonesSetIntegerScale(nones, 4);
         else if (kb_state[SDL_SCANCODE_5])
-            NonesSetIntegerScale(window, renderer, 5);
+            NonesSetIntegerScale(nones, 5);
 
-        nones->bus->ppu->frame_finished = false;
-
-        if (step)
+        SystemRun(nones->system, paused, step_instr, step_frame);
+        if (step_instr | step_frame)
         {
-            paused = false;
-        }
-        if (!paused)
-        {
-            do {
-                CPU_Update(nones->bus->cpu);
-            } while (!nones->bus->ppu->frame_finished);
-        }
-
-        if (step)
-        {
-            step = false;
+            step_instr = step_frame = false;
             paused = true;
         }
 
-        SDL_LockTexture(texture, NULL, &raw_pixels, &raw_pitch);
-        memcpy(raw_pixels, nones->bus->ppu->buffers[1], buffer_size);
-        SDL_UnlockTexture(texture);
+        SDL_LockTexture(nones->texture, NULL, &raw_pixels, &raw_pitch);
+        memcpy(raw_pixels, nones->system->ppu->buffers[1], buffer_size);
+        SDL_UnlockTexture(nones->texture);
 
-        SDL_RenderClear(renderer);
-        SDL_RenderTexture(renderer, texture, NULL, NULL);
+        SDL_RenderClear(nones->renderer);
+        SDL_RenderTexture(nones->renderer, nones->texture, NULL, NULL);
 
         if (debug_stats)
         {
-            SDL_SetRenderDrawColor(renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-            snprintf(debug_cpu, sizeof(debug_cpu), "A:%02X X:%02X Y:%02X SP:%02X", nones->bus->cpu->a,
-                     nones->bus->cpu->x, nones->bus->cpu->y, nones->bus->cpu->sp);
+            SDL_SetRenderDrawColor(nones->renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+            snprintf(debug_cpu, sizeof(debug_cpu), "A:%02X X:%02X Y:%02X S:%02X P:%02X", nones->system->cpu->a,
+                     nones->system->cpu->x, nones->system->cpu->y, nones->system->cpu->sp, nones->system->cpu->status.raw);
 
-            SDL_RenderDebugText(renderer, 2, 1, debug_cpu);
-            SDL_RenderDebugText(renderer, 2, 9, nones->bus->cpu->debug_msg);
-            
+            SDL_RenderDebugText(nones->renderer, 2, 1, debug_cpu);
+            SDL_RenderDebugText(nones->renderer, 2, 9, nones->system->cpu->debug_msg);
         }
 
-        SDL_RenderPresent(renderer);
+        SDL_RenderPresent(nones->renderer);
         //frames++;
 
         //if (SDL_GetTicks() - timer >= 1000)
@@ -300,16 +288,6 @@ void NonesRun(Nones *nones, const char *path)
         }
     }
 
-    CartSaveSram(nones->bus->cart);
-    SDL_DestroyTexture(texture);
-    SDL_DestroyRenderer(renderer);
-    SDL_free(gamepads);
-    if (gamepad)
-        SDL_CloseGamepad(gamepad);
-    SDL_DestroyAudioStream(stream);
-    SDL_DestroyWindow(window);
-    SDL_Quit();
-
-    ArenaDestroy(nones->arena);
+    NonesShutdown(nones);
 }
 

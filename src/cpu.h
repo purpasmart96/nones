@@ -44,6 +44,8 @@ typedef union
 typedef struct
 {
     char debug_msg[128];
+    // Parent
+    //struct System *system;
     uint64_t cycles;
     uint16_t pc;
     uint8_t a;

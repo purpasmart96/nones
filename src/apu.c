@@ -5,21 +5,15 @@
 #include <string.h>
 #include <math.h>
 
+#include <SDL3/SDL.h>
+
 #include "apu.h"
-#include "bus.h"
+#include "system.h"
 #include "nones.h"
 
 #include "utils.h"
 
-typedef struct {
-    int cycles;
-    // Envelopes & triangle's linear counter
-    bool quarter_frame_clock;
-    // Length counters & sweep units
-    bool half_frame_clock;
-    // Frame interrupt flag 
-    bool frame_interrupt;
-} SequenceStep;
+//#define APU_FAST_MIXER
 
 static const SequenceStep sequence_mode_0_table_cpu[] =
 {
@@ -100,6 +94,11 @@ static inline float CreateNoiseSample(int input)
     return 0.00494 * input;
 }
 
+bool PollApuIrqs(Apu *apu)
+{
+    return apu->status.dmc_interrupt | apu->status.frame_interrupt;
+}
+
 #define FCPU 1789773.0
 
 static void ApuWritePulse1Duty(Apu *apu, const uint8_t data)
@@ -132,40 +131,28 @@ static void ApuWritePulse1LengthCounter(Apu *apu, const uint8_t data)
 {
     apu->pulse1.length_counter_load = data;
 
-    if (apu->status.pulse1)
-    {
-        apu->pulse1.length_counter = length_counter_table[apu->pulse1.length_counter_load];
-    }
+    apu->pulse1.length_counter = length_counter_table[apu->pulse1.length_counter_load] * apu->status.pulse1;
 }
 
 static void ApuWritePulse2LengthCounter(Apu *apu, const uint8_t data)
 {
     apu->pulse2.length_counter_load = data;
 
-    if (apu->status.pulse2)
-    {
-        apu->pulse2.length_counter = length_counter_table[apu->pulse2.length_counter_load];
-    }
+    apu->pulse2.length_counter = length_counter_table[apu->pulse2.length_counter_load] * apu->status.pulse2;
 }
 
 static void ApuWriteTriangleLengthCounter(Apu *apu, const uint8_t data)
 {
     apu->triangle.length_counter_load = data;
 
-    if (apu->status.triangle)
-    {
-        apu->triangle.length_counter = length_counter_table[apu->triangle.length_counter_load];
-    }
+    apu->triangle.length_counter = length_counter_table[apu->triangle.length_counter_load] * apu->status.triangle;
 }
 
 static void ApuWriteNoiseLengthCounter(Apu *apu, const uint8_t data)
 {
     apu->noise.length_counter_load = data;
 
-    if (apu->status.noise)
-    {
-        apu->noise.length_counter = length_counter_table[apu->noise.length_counter_load];
-    }
+    apu->noise.length_counter = length_counter_table[apu->noise.length_counter_load] * apu->status.noise;
 }
 
 static void ApuResetSample(Apu *apu)
@@ -241,10 +228,7 @@ static void ApuClockLinearCounters(Apu *apu)
         apu->triangle.linear_counter--;
     }
 
-    if (!apu->triangle.reg.control_halt)
-    {
-        apu->triangle.reload = false;
-    }
+    apu->triangle.reload &= apu->triangle.reg.control_halt; 
 
     //printf("Triangle linear counter: %d\n", apu->triangle.linear_counter);
 }
@@ -297,17 +281,14 @@ static void UpdateTargetPeriod2(Apu *apu)
         apu->pulse2.muting = false;
     }
 
-
     apu->pulse2.target_period = MAX(0, target);
 }
 
 static void ApuWriteDmcControl(Apu *apu, uint8_t data)
 {
     apu->dmc.control.raw = data;
-    if (!apu->dmc.control.irq)
-    {
-        apu->status.dmc_interrupt = 0;
-    }
+
+    apu->status.dmc_interrupt &= apu->dmc.control.irq;
 
     apu->dmc.timer_period = dmc_table[apu->dmc.control.freq_rate] - 1;
     //printf("Raw rate: 0x%X (%d)\n", apu->dmc.control.freq_rate, apu->dmc.control.freq_rate);
@@ -612,7 +593,7 @@ static void ApuDmcWriteSampleAddr(Apu *apu, const uint8_t data)
 static void ApuUpdateDmcSample(Apu *apu)
 {
     apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
-    BusAddCpuCycles(4);
+    SystemAddCpuCycles(4);
 
     apu->dmc.empty = false;
     apu->dmc.addr_counter = MAX(0x8000, (apu->dmc.addr_counter + 1) & 0xFFFF);
@@ -715,8 +696,7 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
 
 static uint8_t ApuReadStatus(Apu *apu)
 {
-    ApuStatus status;
-    status.raw = apu->status.raw;
+    ApuStatus status = apu->status;
     apu->status.frame_interrupt = 0;
 
     status.pulse1 = apu->pulse1.length_counter != 0;
@@ -805,8 +785,6 @@ static void ApuClockTimers(Apu *apu)
     }
 }
 
-//#define APU_FAST_MIXER
-
 static void ApuMixSample(Apu *apu)
 {
     float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume);
@@ -815,13 +793,13 @@ static void ApuMixSample(Apu *apu)
 #ifdef APU_FAST_MIXER
     float triangle = CreateTriangleSample(apu->triangle.output);
     float noise = CreateNoiseSample(apu->noise.output);
+    float pulse = 0.00752 * (square1 + square2);
     float tnd_out =  triangle + noise + 0.00335 * apu->dmc.output_level;
-    apu->mixed_sample = ((0.00752 * (square1 + square2)) + tnd_out);
 #else
     float pulse = 95.88 / ((8128.0 / (square1 + square2)) + 100);
     float tnd_out = 159.79 / (1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0)) + 100);
-    apu->mixed_sample = pulse + tnd_out;
 #endif
+    apu->mixed_sample = pulse + tnd_out;
 }
 
 void APU_Init(Apu *apu)
@@ -857,15 +835,15 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
             step = sequence_mode_1_table_cpu[apu->sequence_step];
         }
 
-        // 0x1000's apu test 1 & 2 will fail with this even though this is needed for proper sound
-        if (apu->frame_counter.clock_all)
-        {
-            ApuClockEnvelopes(apu);
-            ApuClockLinearCounters(apu);
-            ApuClockLengthCounters(apu);
-            ApuClockSweeps(apu);
-            apu->frame_counter.clock_all = false;
-        }
+        //// 0x1000's apu test 1 & 2 will fail with this even though this is needed for proper sound
+        //if (apu->frame_counter.clock_all && apu->cycle_counter == 0)
+        //{
+        //    ApuClockEnvelopes(apu);
+        //    ApuClockLinearCounters(apu);
+        //    ApuClockLengthCounters(apu);
+        //    ApuClockSweeps(apu);
+        //    apu->frame_counter.clock_all = false;
+        //}
 
         if (apu->dmc.restart)
         {
@@ -888,16 +866,19 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
 
             if (step.half_frame_clock)
             {
+                //printf("Sequencer: Length called on cycle: %d cpu cycle: %ld\n", apu->cycle_counter, apu->cycles);
                 ApuClockLengthCounters(apu);
                 ApuClockSweeps(apu);
+                apu->finish_early = true;
             }
 
             if (step.frame_interrupt && !apu->frame_counter.control.interrupt_inhibit)
             {
                 apu->status.frame_interrupt = 1;
+                //printf("Sequencer: Framecounter called on cycle: %d cpu cycle: %ld\n", apu->cycle_counter, apu->cycles);
                 apu->finish_early = true;
             }
-            apu->sequence_step = (apu->sequence_step + 1) % 5;
+            apu->sequence_step = (apu->sequence_step + 1) % 5; //(6 - apu->frame_counter.control.sequencer_mode);
         }
 
         ApuClockTriangle(apu);
@@ -905,13 +886,19 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
 
         if (apu->cycles & 1)
         {
+            // 0x1000's apu test 1 & 2 will fail with this even though this is needed for proper sound
+            if (apu->frame_counter.clock_all)
+            {
+                ApuClockEnvelopes(apu);
+                ApuClockLinearCounters(apu);
+                ApuClockLengthCounters(apu);
+                ApuClockSweeps(apu);
+                apu->frame_counter.clock_all = false;
+            }
             //ApuClockFrameCounter(apu);
             ApuClockTimers(apu);
             ApuMixSample(apu);
         }
-
-        //UpdateTargetPeriod1(apu);
-        //UpdateTargetPeriod2(apu);
 
         if (apu->current_sample == 29780 && !apu->odd_frame)
         {
