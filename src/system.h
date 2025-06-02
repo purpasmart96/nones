@@ -31,6 +31,7 @@ typedef struct System
     Cart *cart;
     JoyPad *joy_pad;
     uint8_t *sys_ram;
+    uint8_t bus_data;
 } System;
 
 System *SystemCreate(Arena *arena);
@@ -43,6 +44,7 @@ bool SystemPollAllIrqs(void);
 void SystemReset(System *system);
 void SystemShutdown(System *system);
 
+uint8_t SystemReadOpenBus(void);
 uint8_t BusRead(const uint16_t addr);
 void BusWrite(const uint16_t addr, const uint8_t data);
 uint8_t *SystemGetPtr(const uint16_t addr);

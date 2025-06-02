@@ -34,14 +34,13 @@ static uint16_t CpuReadVector(uint16_t addr)
 
 static inline void StackPush(Cpu *cpu, uint8_t data)
 {
-    uint8_t *ptr = SystemGetPtr(STACK_START + cpu->sp--);
-    *ptr = data;
+    CpuWrite8(STACK_START + cpu->sp--, data);
 }
 
 // Retrieve the value on the top of the stack and then pop it
 static inline uint8_t StackPull(Cpu *cpu)
 {
-    return *SystemGetPtr(STACK_START + (++cpu->sp));
+    return CpuRead8(STACK_START + (++cpu->sp));
 }
 
 static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
@@ -51,15 +50,10 @@ static bool InsidePage(uint16_t src_addr, uint16_t dst_addr)
     return ((src_addr & 0xFF00) == (dst_addr & 0xFF00));
 }
 
-static inline bool CpuPollIRQ(Cpu *cpu)
+static inline void CpuPollIRQ(Cpu *cpu)
 {
-    return !cpu->status.i && cpu->irq_pending;
+    cpu->irq_pending = !cpu->status.i && SystemPollAllIrqs();
 }
-
-//static inline bool CpuPollIRQ(Cpu *cpu)
-//{
-//    return !cpu->status.i && SystemPollAllIrqs();
-//}
 
 static void HandleIRQ(Cpu *cpu)
 {
@@ -441,7 +435,7 @@ static inline void ADC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     uint8_t operand = GetOperandFromMem(cpu, addr_mode, page_cycle, true);
     AddWithCarry(cpu, operand);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void AND_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -453,22 +447,23 @@ static inline void AND_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->a);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void ASL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     if (addr_mode == Accumulator)
     {
+        // Dummy read of next instruction byte
+        CpuRead8(++cpu->pc);
         ShiftOneLeft(cpu, &cpu->a);
     }
     else
     {
         ShiftOneLeftFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+        ++cpu->pc;
     }
-
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BCC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -478,9 +473,11 @@ static inline void BCC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    ++cpu->pc;
     if (!cpu->status.c)
     {
+        // Opcode of next instruction
+        CpuRead8(cpu->pc);
         // Extra cycle if the branch crosses a page boundary
         cpu->cycles += !InsidePage(cpu->pc, cpu->pc + offset);
 
@@ -488,7 +485,7 @@ static inline void BCC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles++;
         CPU_LOG("BCC pc offset: %d\n", offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -498,9 +495,11 @@ static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    ++cpu->pc;
     if (cpu->status.c)
     {
+        // Opcode of next instruction
+        CpuRead8(cpu->pc);
         // Extra cycle if the branch crosses a page boundary
         cpu->cycles += !InsidePage(cpu->pc, cpu->pc + offset);
 
@@ -508,7 +507,7 @@ static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles++;
         CPU_LOG("BCS pc offset: %d\n", offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -518,9 +517,11 @@ static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    ++cpu->pc;
     if (cpu->status.z)
     {
+        // Opcode of next instruction
+        CpuRead8(cpu->pc);
         // Extra cycle if the branch crosses a page boundary
         cpu->cycles += !InsidePage(cpu->pc, cpu->pc + offset);
 
@@ -528,7 +529,7 @@ static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles++;
         CPU_LOG("BEQ pc offset: %d\n", offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BIT_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -538,7 +539,7 @@ static inline void BIT_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     cpu->status.v = GET_OVERFLOW_BIT(operand);
     cpu->status.z = !(cpu->a & operand);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BMI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -548,9 +549,11 @@ static inline void BMI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    ++cpu->pc;
     if (cpu->status.n)
     {
+        // Opcode of next instruction
+        CpuRead8(cpu->pc);
         // Extra cycle if the branch crosses a page boundary
         cpu->cycles += !InsidePage(cpu->pc, cpu->pc + offset);
 
@@ -558,7 +561,7 @@ static inline void BMI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles++;
         CPU_LOG("BMI pc offset: %d\n", offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -568,9 +571,11 @@ static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    ++cpu->pc;
     if (!cpu->status.z)
     {
+        // Opcode of next instruction
+        CpuRead8(cpu->pc);
         // Extra cycle if the branch crosses a page boundary
         cpu->cycles += !InsidePage(cpu->pc, cpu->pc + offset);
 
@@ -578,7 +583,7 @@ static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles++;
         CPU_LOG("BNE pc offset: %d\n", offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -588,10 +593,11 @@ static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    // Fetch opcode of next instruction,
-    CpuRead8(++cpu->pc);
+    ++cpu->pc;
     if (!cpu->status.n)
     {
+        // Opcode of next instruction
+        CpuRead8(cpu->pc);
         // Extra cycle if the branch crosses a page boundary
         cpu->cycles += !InsidePage(cpu->pc, cpu->pc + offset);
 
@@ -600,7 +606,7 @@ static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         CPU_LOG("BPL pc offset: %d\n", offset);
         //printf("BPL cross page triggered 0x%X --> 0x%X\n", cpu->pc, cpu->pc + offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BRK_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -609,10 +615,9 @@ static inline void BRK_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    // Implied BRK	00	1	7
-    ++cpu->pc;
     // Dummy read
     CpuRead8(++cpu->pc);
+    ++cpu->pc;
     // Push PC += 2
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     StackPush(cpu, cpu->pc & 0xFF);
@@ -636,7 +641,6 @@ static inline void BRK_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->pc = CpuReadVector(0xFFFA);
         CPU_LOG("Jumping to NMI vector at 0x%X from hijacked BRK\n", cpu->pc);
     }
-
 }
 
 static inline void BVC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -646,7 +650,8 @@ static inline void BVC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    // Opcode of next instruction
+    CpuRead8(++cpu->pc);
     if (!cpu->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -656,7 +661,7 @@ static inline void BVC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles++;
         CPU_LOG("BVC pc offset: %d\n", offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void BVS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -665,7 +670,8 @@ static inline void BVS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    cpu->pc++;
+    // Opcode of next instruction
+    CpuRead8(++cpu->pc);
     if (cpu->status.v)
     {
         // Extra cycle if the branch crosses a page boundary
@@ -675,7 +681,7 @@ static inline void BVS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles++;
         CPU_LOG("PC Offset %d\n", offset);
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void CLC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -684,9 +690,11 @@ static inline void CLC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->status.c = 0;
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void CLD_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -695,9 +703,11 @@ static inline void CLD_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->status.d = 0;
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void CLI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -706,9 +716,12 @@ static inline void CLI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
+    // Irq's are polled before the flag is set
+    CpuPollIRQ(cpu);
     cpu->status.i = 0;
-    cpu->pc++;
 }
 
 static inline void CLV_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -717,9 +730,11 @@ static inline void CLV_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->status.v = 0;
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void CMP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -727,7 +742,7 @@ static inline void CMP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     uint8_t operand = GetOperandFromMem(cpu, addr_mode, page_cycle, true);
     CompareRegAndSetFlags(cpu, cpu->a, operand);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void CPX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -735,7 +750,7 @@ static inline void CPX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     uint8_t operand = GetOperandFromMem(cpu, addr_mode, page_cycle, false);
     CompareRegAndSetFlags(cpu, cpu->x, operand);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void CPY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -743,7 +758,7 @@ static inline void CPY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     uint8_t operand = GetOperandFromMem(cpu, addr_mode, page_cycle, false);
     CompareRegAndSetFlags(cpu, cpu->y, operand);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void DEC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -761,7 +776,7 @@ static inline void DEC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UPDATE_FLAGS_NZ(operand);
 
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void DEX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -770,12 +785,14 @@ static inline void DEX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->x--;
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->x);
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void DEY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -784,12 +801,14 @@ static inline void DEY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    cpu->y--;
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
 
+    cpu->y--;
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->y);
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+
+    CpuPollIRQ(cpu);
 }
 
 static inline void EOR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -800,7 +819,7 @@ static inline void EOR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->a);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void INC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -817,7 +836,7 @@ static inline void INC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UPDATE_FLAGS_NZ(operand);
 
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void INX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -826,13 +845,15 @@ static inline void INX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->x++;
 
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->x);
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void INY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -841,13 +862,15 @@ static inline void INY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->y++;
 
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->y);
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void JMP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -855,7 +878,7 @@ static inline void JMP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
 
     cpu->pc = addr_mode == Absolute ? GetAbsoluteAddr(cpu) : GetIndirectAddr(cpu);
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void JSR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -870,9 +893,8 @@ static inline void JSR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     StackPush(cpu, cpu->pc & 0xFF);
 
-    uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
-    cpu->pc = new_pc;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    cpu->pc = (uint16_t)pc_high << 8 | pc_low;
+    CpuPollIRQ(cpu);
 }
 
 static inline void LDA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -882,7 +904,7 @@ static inline void LDA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->a);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void LDX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -891,8 +913,8 @@ static inline void LDX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->x);
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    ++cpu->pc;
+    CpuPollIRQ(cpu);
 }
 
 static inline void LDY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -901,34 +923,34 @@ static inline void LDY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->y);
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    ++cpu->pc;
+    CpuPollIRQ(cpu);
 }
 
 static inline void LSR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     if (addr_mode == Accumulator)
     {
+        // Dummy read of next instruction byte
+        CpuRead8(++cpu->pc);
         ShiftOneRight(cpu, &cpu->a);
-        //CpuRead8(cpu->pc + 1);
     }
     else
     {
         ShiftOneRightFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+        ++cpu->pc;
     }
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void NOP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(page_cycle);
 
-    //CpuRead8(cpu->pc + 1);
     switch (addr_mode)
     {
         case Implied:
-            cpu->pc++;
+            CpuRead8(++cpu->pc);
             break;
         case Immediate:
         case ZeroPage:
@@ -936,14 +958,18 @@ static inline void NOP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
             cpu->pc += 2;
             break;
         case Absolute:
+            GetAbsoluteAddr(cpu);
+            ++cpu->pc;
+            break;
         case AbsoluteX:
-            cpu->pc += 3;
+            GetAbsoluteXAddr(cpu, page_cycle, true);
+            ++cpu->pc;
             break;
         default:
             printf("Bad addr mode!: %d\n", addr_mode);
             break;
     }
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void ORA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -954,7 +980,7 @@ static inline void ORA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->a);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void PHA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -963,10 +989,11 @@ static inline void PHA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+    // Push accumulator reg to stack
     StackPush(cpu, cpu->a);
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
-    CpuRead8(cpu->pc);
+    CpuPollIRQ(cpu);
 }
 
 static inline void PHP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -975,13 +1002,14 @@ static inline void PHP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     Flags status = cpu->status;
     status.b = true;
     status.unused = true;
     StackPush(cpu, status.raw);
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
-    CpuRead8(cpu->pc);
+    CpuPollIRQ(cpu);
 }
 
 static inline void PLA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -990,11 +1018,12 @@ static inline void PLA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->a = StackPull(cpu);
     UPDATE_FLAGS_NZ(cpu->a);
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
-    CpuRead8(cpu->pc);
+    CpuPollIRQ(cpu);
 }
 
 static inline void PLP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1003,7 +1032,10 @@ static inline void PLP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
+    CpuPollIRQ(cpu);
     uint8_t status_raw = StackPull(cpu);
     Flags status = {.raw = status_raw};
 
@@ -1014,36 +1046,38 @@ static inline void PLP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     cpu->status.n = status.n;
     cpu->status.v = status.v;
     cpu->status.z = status.z;
-
-    cpu->pc++;
 }
 
 static inline void ROL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     if (addr_mode == Accumulator)
     {
+        // Dummy read of next instruction byte
+        CpuRead8(++cpu->pc);
         RotateOneLeft(cpu, &cpu->a);
     }
     else
     {
         RotateOneLeftFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+        cpu->pc++;
     }
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static void ROR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     if (addr_mode == Accumulator)
     {
+        // Dummy read of next instruction byte
+        CpuRead8(++cpu->pc);
         RotateOneRight(cpu, &cpu->a);
     }
     else
     {
         RotateOneRightFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+        cpu->pc++;
     }
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void RTI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1051,6 +1085,9 @@ static inline void RTI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     // Unused
     UNUSED(addr_mode);
     UNUSED(page_cycle);
+
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
 
     uint8_t status_raw = StackPull(cpu);
     Flags status = {.raw = status_raw};
@@ -1066,7 +1103,7 @@ static inline void RTI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     uint8_t pc_low = StackPull(cpu);
     uint8_t pc_high = StackPull(cpu);
     cpu->pc = (uint16_t)pc_high << 8 | pc_low;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void RTS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1075,25 +1112,26 @@ static inline void RTS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     uint8_t pc_low = StackPull(cpu);
     uint8_t pc_high = StackPull(cpu);
 
-    uint16_t new_pc = (uint16_t)pc_high << 8 | pc_low;
+    cpu->pc = ((uint16_t)pc_high << 8 | pc_low) + 1;
 
-    cpu->pc = new_pc;
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void SBC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     uint8_t operand = GetOperandFromMem(cpu, addr_mode, page_cycle, true);
 
-    // Invert operand since were reusing ADC logic for SBC
+    // Invert operand since we are reusing ADC logic for SBC
     AddWithCarry(cpu, ~operand);
 
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void SEC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1102,9 +1140,11 @@ static inline void SEC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->status.c = 1;
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void SED_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1113,9 +1153,11 @@ static inline void SED_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->status.d = 1;
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void SEI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1124,20 +1166,21 @@ static inline void SEI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
+    CpuPollIRQ(cpu);
     cpu->status.i = 1;
-    cpu->pc++;
 }
 
 static inline void STA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     UNUSED(page_cycle);
 
-    bool dummy_read = true; // (addr_mode == AbsoluteY || addr_mode == AbsoluteX || addr_mode == IndirectY);
-    SetOperandToMem(cpu, addr_mode, cpu->a, dummy_read);
+    SetOperandToMem(cpu, addr_mode, cpu->a, true);
 
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void STX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1146,7 +1189,7 @@ static inline void STX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     SetOperandToMem(cpu, addr_mode, cpu->x, false);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static inline void STY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1155,7 +1198,7 @@ static inline void STY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     SetOperandToMem(cpu, addr_mode, cpu->y, false);
     cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 // Transfer Accumulator to Index X
@@ -1165,12 +1208,14 @@ static inline void TAX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->x = cpu->a;
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->x);
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 // Transfer Accumulator to Index Y
@@ -1180,12 +1225,14 @@ static inline void TAY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->y = cpu->a;
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->y);
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 // Transfer Stack Pointer to Index X
@@ -1195,12 +1242,14 @@ static inline void TSX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->x = cpu->sp;
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->x);
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 // Transfer Index X to Accumulator
@@ -1210,12 +1259,14 @@ static inline void TXA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->a = cpu->x;
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->a);
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 // Transfer Index X to Stack Register
@@ -1225,10 +1276,12 @@ static inline void TXS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->sp = cpu->x;
 
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 // Transfer Index Y to Accumulator
@@ -1238,11 +1291,13 @@ static inline void TYA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
+    // Dummy read of next instruction byte
+    CpuRead8(++cpu->pc);
+
     cpu->a = cpu->y;
 
     UPDATE_FLAGS_NZ(cpu->a);
-    cpu->pc++;
-    cpu->irq_ready = CpuPollIRQ(cpu);
+    CpuPollIRQ(cpu);
 }
 
 static const OpcodeHandler opcodes[256] =
@@ -1464,7 +1519,7 @@ static void ExecuteOpcode(Cpu *cpu)
         {
             CPU_TriggerNMI(cpu);
         }
-        else if (cpu->irq_ready)
+        else if (cpu->irq_pending)
         {
             HandleIRQ(cpu);
         }

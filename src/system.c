@@ -42,6 +42,11 @@ void SystemInit(System *system, uint32_t **buffers)
     PPU_Init(system->ppu, system->cart->mirroring, buffers);
 }
 
+uint8_t SystemReadOpenBus(void)
+{
+    return system_ptr->bus_data;
+}
+
 static void SWramWrite(System *system, const uint16_t addr, const uint8_t data)
 {
     system->cart->ram[addr & 0x1FFF] = data;
@@ -62,13 +67,15 @@ uint8_t BusRead(const uint16_t addr)
     {
         // $0000 - $1FFF
         case 0x0:
-            return system_ptr->sys_ram[addr & 0x7FF];
+            system_ptr->bus_data = system_ptr->sys_ram[addr & 0x7FF];
+            break;
 
         // $2000 - $3FFF
         case 0x1:
         {
             //SystemSync(system_ptr->cpu->cycles + 1);
-            return ReadPPURegister(system_ptr->ppu, addr);
+            system_ptr->bus_data = ReadPPURegister(system_ptr->ppu, addr);
+            break;
         }
         // $4000 - $5FFF
         case 0x2:
@@ -77,14 +84,18 @@ uint8_t BusRead(const uint16_t addr)
                 if (addr == 0x4016)
                 {
                     //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    return ReadJoyPadReg(system_ptr->joy_pad);
+                    system_ptr->bus_data = ReadJoyPadReg(system_ptr->joy_pad);
                 }
-                if (addr == 0x4017)
+                else if (addr == 0x4017)
                 {
                     //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    return 0;
+                    system_ptr->bus_data = 0;
                 }
-                return ReadAPURegister(system_ptr->apu, addr);
+                else
+                {
+                    system_ptr->bus_data = ReadAPURegister(system_ptr->apu, addr);
+                }
+                break;
             }
             else
             {
@@ -93,17 +104,19 @@ uint8_t BusRead(const uint16_t addr)
             }
 
         case 0x3:  // $6000 - $7FFF
-            return SWramRead(system_ptr, addr);
+            system_ptr->bus_data = SWramRead(system_ptr, addr);
+            break;
     
         case 0x4:  // $8000 - $9FFF
         case 0x5:  // $A000 - $BFFF
         case 0x6:  // $C000 - $DFFF
         case 0x7:  // $E000 - $FFFF
-            return MapperReadPrgRom(system_ptr->cart, addr);
+            system_ptr->bus_data = MapperReadPrgRom(system_ptr->cart, addr);
+        break;
     }
 
-    // open bus
-    return 0;
+    // Finally read the data from the bus
+    return system_ptr->bus_data;
 }
 
 void BusWrite(const uint16_t addr, const uint8_t data)
@@ -276,10 +289,6 @@ void SystemRun(System *system, bool paused, bool step_instr, bool step_frame)
     } while (!system->ppu->frame_finished && !step_instr);
 }
 
-void SystemPrePollAllIrqs(void)
-{
-    system_ptr->cpu->irq_pending = PollApuIrqs(system_ptr->apu) || PollMapperIrq();
-}
 
 bool SystemPollAllIrqs(void)
 {
@@ -294,7 +303,6 @@ void SystemSendNmiToCpu(void)
 void SystemSync(uint64_t cycles)
 {
     APU_Update(system_ptr->apu, cycles);
-    SystemPrePollAllIrqs();
     PPU_Update(system_ptr->ppu, cycles);
 }
 

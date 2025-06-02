@@ -55,7 +55,6 @@ typedef struct
     Flags status;
     bool nmi_pending;
     bool irq_pending;
-    bool irq_ready;
 } Cpu;
 
 typedef struct
