@@ -291,8 +291,8 @@ static void ApuWriteDmcControl(Apu *apu, uint8_t data)
     apu->status.dmc_interrupt &= apu->dmc.control.irq;
 
     apu->dmc.timer_period = dmc_table[apu->dmc.control.freq_rate] - 1;
-    //printf("Raw rate: 0x%X (%d)\n", apu->dmc.control.freq_rate, apu->dmc.control.freq_rate);
-    //printf("Effective rate: %d\n", apu->dmc.timer_period);
+
+    //printf("Dmc timer period set: %d\n", apu->dmc.timer_period);
 }
 
 static void ApuClockSweeps(Apu *apu)
@@ -705,6 +705,7 @@ static uint8_t ApuReadStatus(Apu *apu)
     status.noise = apu->noise.length_counter != 0;
     status.dmc = apu->dmc.bytes_remaining != 0;
 
+    //printf("Timer Period value: %d\n", apu->dmc.timer_period);
     return status.raw;
 }
 
@@ -716,7 +717,7 @@ uint8_t ReadAPURegister(Apu *apu, const uint16_t addr)
             return ApuReadStatus(apu);
         default:
             printf("Reading from open bus at addr: 0x%04X\n", addr);
-            return 0;
+            return 0; //SystemReadOpenBus();
     }
 }
 
@@ -810,18 +811,11 @@ void APU_Init(Apu *apu)
     apu->dmc.empty = true;
 }
 
-void APU_Update(Apu *apu, uint64_t cpu_cycles)
+void APU_Tick(Apu *apu)
 {
-    // Get the delta of cpu cycles since the last cpu instruction
-    uint64_t cpu_cycles_delta = cpu_cycles - apu->prev_cpu_cycles;
-    // Update prev cpu cycles to current amount for next update
-    apu->prev_cpu_cycles = cpu_cycles;
-    // Calculate how many apu ticks we need to run
-    apu->cycles_to_run = cpu_cycles_delta + apu->cycles_to_run;
+    apu->cycles_to_run += 1;
 
-    apu->finish_early = false;
-
-    while (apu->cycles_to_run != 0 && !apu->finish_early)
+    while (apu->cycles_to_run != 0)
     {
         SequenceStep step;
         if (apu->frame_counter.control.sequencer_mode == 0)
@@ -917,6 +911,17 @@ void APU_Update(Apu *apu, uint64_t cpu_cycles)
         apu->cycles++;
         apu->cycles_to_run--;
     }
+}
+
+void APU_Update(Apu *apu, uint64_t cpu_cycles)
+{
+    // Get the delta of cpu cycles since the last cpu instruction
+    int64_t cpu_cycles_delta = cpu_cycles - apu->cycles;
+    // Update prev cpu cycles to current amount for next update
+    apu->prev_cpu_cycles = cpu_cycles;
+    // Calculate how many apu ticks we need to run
+    apu->cycles_to_run = MAX(-1, (cpu_cycles_delta + apu->cycles_to_run) - 1);
+    APU_Tick(apu);
 }
 
 void APU_Reset(Apu *apu)

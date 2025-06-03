@@ -184,8 +184,8 @@ typedef union
 typedef struct
 {
     uint64_t cycles;
-    uint64_t cycles_to_run;
-    uint64_t prev_cpu_cycles;
+    int64_t prev_cpu_cycles;
+    int32_t cycles_to_run;
     int cycle_counter;
 
     struct {
@@ -327,6 +327,7 @@ bool PollApuIrqs(Apu *apu);
 void APU_Init(Apu *apu);
 //void APU_Update(Apu *apu, uint32_t cycles_delta);
 void APU_Update(Apu *apu, uint64_t cpu_cycles);
+void APU_Tick(Apu *apu);
 void APU_Reset(Apu *apu);
 
 #endif
