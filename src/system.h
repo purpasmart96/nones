@@ -13,15 +13,6 @@
 #include "cart.h"
 #include "mapper.h"
 
-#define CPU_RAM_START_ADDR 0
-#define CPU_RAM_SIZE 0x800
-#define PPU_REGS_START_ADDR 0x2000
-#define PPU_REGS_SIZE 0x8
-#define PPU_REGS_MIRROR_START_ADDR 0x2008
-#define PPU_REGS_MIRROR_SIZE 0x1FF8
-#define APU_IO_REGS_START_ADDR 0x4000
-#define APU_IO_REGS_SIZE 0x18
-
 typedef struct System
 {
     Cpu *cpu;
@@ -34,10 +25,14 @@ typedef struct System
     uint8_t bus_data;
 } System;
 
+#define CPU_RAM_SIZE 0x800
+//#define DISABLE_CYCLE_ACCURACY
+
 System *SystemCreate(Arena *arena);
 void SystemInit(System *system, uint32_t **buffers);
 void SystemRun(System *system, bool paused, bool step_instr, bool step_frame);
 void SystemSync(uint64_t cycles);
+void SystemTick(void);
 void SystemSendNmiToCpu(void);
 void SystemPrePollAllIrqs(void);
 bool SystemPollAllIrqs(void);

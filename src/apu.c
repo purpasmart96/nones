@@ -542,6 +542,7 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
     apu->frame_counter.control.raw = data;
     apu->sequence_step = 0;
     //ApuClockFrameCounter(apu);
+    //printf("Apu frame counter called on cycle: %d\n", apu->cycle_counter);
     if (apu->frame_counter.control.sequencer_mode)
     {
         apu->frame_counter.clock_all = true;
@@ -717,7 +718,7 @@ uint8_t ReadAPURegister(Apu *apu, const uint16_t addr)
             return ApuReadStatus(apu);
         default:
             printf("Reading from open bus at addr: 0x%04X\n", addr);
-            return 0; //SystemReadOpenBus();
+            return SystemReadOpenBus();
     }
 }
 
@@ -813,7 +814,7 @@ void APU_Init(Apu *apu)
 
 void APU_Tick(Apu *apu)
 {
-    apu->cycles_to_run += 1;
+    ++apu->cycles_to_run;
 
     while (apu->cycles_to_run != 0)
     {
@@ -907,20 +908,20 @@ void APU_Tick(Apu *apu)
             apu->odd_frame = false;
         }
         apu->buffer[apu->current_sample++] = apu->mixed_sample;
-        apu->cycle_counter++;
-        apu->cycles++;
-        apu->cycles_to_run--;
+        ++apu->cycle_counter;
+        ++apu->cycles;
+        --apu->cycles_to_run;
     }
 }
 
 void APU_Update(Apu *apu, uint64_t cpu_cycles)
 {
-    // Get the delta of cpu cycles since the last cpu instruction
+    // Get the delta of cycles since the last the last tick
     int64_t cpu_cycles_delta = cpu_cycles - apu->cycles;
-    // Update prev cpu cycles to current amount for next update
-    apu->prev_cpu_cycles = cpu_cycles;
     // Calculate how many apu ticks we need to run
     apu->cycles_to_run = MAX(-1, (cpu_cycles_delta + apu->cycles_to_run) - 1);
+    //if (apu->cycles_to_run > -1)
+    //    printf("Syncing of %d Apu cycles\n", apu->cycles_to_run + 1);
     APU_Tick(apu);
 }
 

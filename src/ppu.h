@@ -13,25 +13,27 @@
 #define PALETTE_START_ADDR 0x3F00
 
 // PPU regs
-//#define PPU_CTRL   0x2000
-//#define PPU_MASK   0x2001
-//#define PPU_STATUS 0x2002
-//#define OAM_ADDR   0x2003
-//#define OAM_DATA   0x2004
-//#define PPU_SCROLL 0x2005
-//#define PPU_ADDR   0x2006
-//#define PPU_DATA   0x2007
-//#define OAM_DMA    0x4014
+#define PPU_CTRL_REG   0x2000
+#define PPU_MASK_REG   0x2001
+#define PPU_STATUS_REG 0x2002
+#define OAM_ADDR_REG   0x2003
+#define OAM_DATA_REG   0x2004
+#define PPU_SCROLL_REG 0x2005
+#define PPU_ADDR_REG   0x2006
+#define PPU_DATA_REG   0x2007
+#define OAM_DMA_REG    0x4014
 
-#define PPU_CTRL   0
-#define PPU_MASK   1
-#define PPU_STATUS 2
-#define OAM_ADDR   3
-#define OAM_DATA   4
-#define PPU_SCROLL 5
-#define PPU_ADDR   6
-#define PPU_DATA   7
-#define OAM_DMA    0x4014
+typedef enum
+{
+    PPU_CTRL   = 0,
+    PPU_MASK   = 1,
+    PPU_STATUS = 2,
+    OAM_ADDR   = 3,
+    OAM_DATA   = 4,
+    PPU_SCROLL = 5,
+    PPU_ADDR   = 6,
+    PPU_DATA   = 7
+} PpuIoReg;
 
 typedef enum {
     NAMETABLE_HORIZONTAL,
@@ -211,9 +213,8 @@ typedef struct
 typedef struct
 {
     uint64_t cycles;
-    uint64_t prev_cpu_cycles;
     uint64_t frames;
-    uint32_t cycles_to_run;
+    int32_t cycles_to_run;
     uint32_t cycle_counter;
     int scanline;
 
@@ -293,11 +294,10 @@ typedef union
 
 void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
-void PPU_Tick(Ppu *ppu, uint64_t cpu_cycles);
+void PPU_Tick(Ppu *ppu);
 void PPU_Reset(Ppu *ppu);
 uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr);
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data);
 void NametableMirroringInit(NameTableMirror mode);
-void OAM_Dma(const uint16_t addr);
 
 #endif

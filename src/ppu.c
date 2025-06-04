@@ -172,10 +172,13 @@ void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
     }
     else
     {
+        //const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
         // Set low byte of t
         ppu->t.writing.low = value;
         // Transfer t to v
         ppu->v.raw = ppu->t.raw;
+        //if (~prev_a12 & ppu->v.raw_bits.bit12)
+        //    PpuClockMMC3();
     }
     ppu->w = !ppu->w;
 }
@@ -253,8 +256,10 @@ static void WriteToPaletteTable(const uint16_t addr, const uint8_t data)
 
 void PPU_WriteData(Ppu *ppu, const uint8_t data)
 {
+    //const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
     // Extract A13, A12, A11 for region decoding
-    uint8_t ppu_region = (ppu->v.raw >> 11) & 0x7;
+    const uint16_t addr = ppu->v.raw & 0x3FFF;
+    uint8_t ppu_region = (addr >> 11) & 0x7;
     switch (ppu_region)
     {
         case 0x0:
@@ -294,6 +299,8 @@ void PPU_WriteData(Ppu *ppu, const uint8_t data)
     {
         ppu->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
     }
+    //if (~prev_a12 & ppu->v.raw_bits.bit12)
+    //    PpuClockMMC3();
 }
 
 static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
@@ -331,21 +338,20 @@ uint8_t PPU_ReadStatus(Ppu *ppu)
 
 static uint8_t PpuRead(Ppu *ppu, const uint16_t addr)
 {
-    //bool prev_a12 = (ppu->bus_addr >> 12) & 1;
-    //bool new_a12 = (addr >> 12) & 1;
-    //if (!prev_a12 && new_a12)
-    //{
-    //    //printf("PPU A12: %d scanline:%d cycle: %d\n", new_a12, ppu->scanline, ppu->cycle_counter);
-    //    PpuClockMMC3();
-    //    ppu->finish_early = true;
-    //}
+    uint8_t prev_a12 = (ppu->bus_addr >> 12) & 1;
+    uint8_t new_a12 = (addr >> 12) & 1;
+    if (~prev_a12 & new_a12)
+    {
+        //printf("PPU A12: %d scanline:%d cycle: %d\n", new_a12, ppu->scanline, ppu->cycle_counter);
+        PpuClockMMC3();
+    }
     ppu->bus_addr = addr;
     return PpuBusReadChrRom(addr);
 }
 
 uint8_t PPU_ReadData(Ppu *ppu)
 {
-    ppu->bus_addr = ppu->v.raw;
+    //const uint16_t prev_a12 = ppu->v.raw_bits.bit12;
     uint16_t addr = ppu->v.raw & 0x3FFF;
 
     uint8_t data = 0;
@@ -381,6 +387,8 @@ uint8_t PPU_ReadData(Ppu *ppu)
         ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
     }
 
+    //if (~prev_a12 & ppu->v.raw_bits.bit12)
+    //    PpuClockMMC3();
     return data;
 }
 
@@ -391,7 +399,7 @@ uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr)
         case PPU_STATUS:
             return PPU_ReadStatus(ppu);
         case OAM_DATA:
-            return sprites[ppu->oam_addr & 63].raw[ppu->oam_addr & 3];
+            return sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3];
         case PPU_DATA:
             return PPU_ReadData(ppu);
     }
@@ -403,13 +411,7 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
 {
     const uint16_t reg = addr & 7;
 
-    if ((ppu->cycles < 88974) && (reg == PPU_CTRL))
-        return;
-    if ((ppu->cycles < 88974) && (reg == PPU_MASK))
-        return;
-    if ((ppu->cycles < 88974) && (reg == PPU_SCROLL))
-        return;
-    if ((ppu->cycles < 88974) && (reg == PPU_ADDR))
+    if ((ppu->cycles < 88974) && (reg == PPU_CTRL || reg == PPU_MASK || reg == PPU_SCROLL || reg == PPU_ADDR))
         return;
 
     switch (reg)
@@ -426,8 +428,12 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             break;
         case OAM_DATA:
         {
-            const int oam_m = ppu->oam_addr & 3;
-            sprites[ppu->oam_addr++ & 63].raw[oam_m] = data;
+            if (!ppu->rendering || (ppu->scanline > 240 && ppu->scanline < 261))
+            {
+                //printf("PPU Write OAM_DATA $2004 scanline:%d cycle: %d\n", ppu->scanline, ppu->cycle_counter);
+                sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3] = data;
+                ++ppu->oam_addr;
+            }
             break;
         }
         case PPU_SCROLL:
@@ -440,13 +446,6 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             PPU_WriteData(ppu, data);
             break;
     }
-}
-
-void OAM_Dma(const uint16_t addr)
-{
-    uint16_t base_addr = addr * 0x100;
-    uint8_t *data_ptr = SystemGetPtr(base_addr);
-    memcpy(sprites, data_ptr, sizeof(Sprite) * 64);
 }
 
 // Configure the mirroring type
@@ -517,6 +516,8 @@ static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, 
 
         uint8_t upper = PpuRead(ppu, tile_offset + row);
         uint8_t lower = PpuRead(ppu, tile_offset + row + 8);
+        if (ppu->scanline == 261)
+            continue;
 
         for (int x = 7; x >= 0; x--)
         {
@@ -564,6 +565,8 @@ static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, 
 
         uint8_t upper = PpuRead(ppu, tile_offset + row); 
         uint8_t lower = PpuRead(ppu, tile_offset + row + 8);
+        if (ppu->scanline == 261)
+            continue;
 
         for (int x = 7; x >= 0; x--)
         {
@@ -769,17 +772,11 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
     }
 }
 
-// We need to catch up to the cpu
-void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
+void PPU_Tick(Ppu *ppu)
 {
-    // Get the delta of cpu cycles since the last cpu instruction
-    uint64_t cpu_cycles_delta = cpu_cycles - ppu->prev_cpu_cycles;
-    // Update prev cpu cycles to current amount for next update
-    ppu->prev_cpu_cycles = cpu_cycles;
-    // Calculate how many ppu ticks we need to run (1 CPU cycle = 3 PPU cycles)
-    ppu->cycles_to_run = (cpu_cycles_delta * 3) + ppu->cycles_to_run;
+    ppu->cycles_to_run += 3;
 
-    while (ppu->cycles_to_run != 0 && !ppu->finish_early)
+    while (ppu->cycles_to_run != 0)
     {
         if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
@@ -794,30 +791,10 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             PpuUpdateSprites(ppu);
         }
 
-        if (ppu->cycle_counter == 260 && !ppu->ctrl.sprite_size && ppu->ctrl.sprite_pat_table_addr &&
-            !ppu->ctrl.bg_pat_table_addr && (ppu->scanline < 240 || ppu->scanline == 261))
+        if ((ppu->cycle_counter <= 320 && ppu->cycle_counter >= 257) && (ppu->scanline < 240 || ppu->scanline == 261))
         {
-            PpuClockMMC3();
-        }
-        else if (ppu->cycle_counter == 260 && ppu->ctrl.sprite_size && (ppu->scanline < 240 || ppu->scanline == 261))
-        {
-            int bank = (sprites_secondary[0].tile_id & 1) ? 0x1000 : 0x0000;
-            if (ppu->cycle_counter == 260 && ppu->found_sprites < 7 && !bank && !ppu->ctrl.bg_pat_table_addr)
-            {
-                PpuClockMMC3();
-            }
-            else if (bank && !ppu->ctrl.bg_pat_table_addr)
-            {
-                PpuClockMMC3();
-            }
-            else if (ppu->cycle_counter == 260 && !bank && ppu->ctrl.bg_pat_table_addr)
-            {
-                PpuClockMMC3();
-            }
-        }
-
-        if ((ppu->cycle_counter <= 316 && ppu->cycle_counter >= 260) && (ppu->scanline < 240))
-        {
+            if (ppu->rendering)
+                ppu->oam_addr = 0;
             switch (ppu->cycle_counter)
             {
                 case 260:
@@ -847,13 +824,13 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             }
         }
 
-        if (ppu->cycle_counter == 324 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr &&
-            ppu->ctrl.bg_pat_table_addr && (ppu->scanline < 240 || ppu->scanline == 261))
-        {
-            PpuClockMMC3();
-            if (ppu->scanline == 261)
-                PpuClockMMC3();
-        }
+        //if (ppu->cycle_counter == 324 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr &&
+        //    ppu->ctrl.bg_pat_table_addr && (ppu->scanline < 240 || ppu->scanline == 261))
+        //{
+        //    PpuClockMMC3();
+        //    if (ppu->scanline == 261)
+        //        PpuClockMMC3();
+        //}
 
         if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240 || ppu->scanline == 261))
             IncY(ppu);
@@ -875,7 +852,7 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
             if (ppu->ctrl.vblank_nmi)
             {
                 SystemSendNmiToCpu();
-                ppu->finish_early = true;
+                //ppu->finish_early = true;
             }
             // Copy the finished image in the back buffer to the front buffer
             memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
@@ -903,8 +880,8 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         }
 
         ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
-        ppu->cycles++;
-        ppu->cycles_to_run--;
+        ++ppu->cycles;
+        --ppu->cycles_to_run;
 
         if (!ppu->cycle_counter)
         {
@@ -916,10 +893,22 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
         if (!ppu->cycle_counter && !ppu->scanline)
         {
             ppu->frame_finished = true;
-            ppu->frames++;
+            ++ppu->frames;
         }
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
+}
+
+// We need to catch up to the cpu
+void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
+{
+    // Get the delta of ppu cycles that need to be run to catch up
+    int64_t cycles_delta = (cpu_cycles * 3) - ppu->cycles;
+    // Calculate how many ppu ticks we need to run (1 CPU cycle = 3 PPU cycles)
+    ppu->cycles_to_run = MAX(-3, (cycles_delta + ppu->cycles_to_run) - 3);
+    //if (ppu->cycles_to_run > -3)
+    //    printf("Syncing of %d Ppu cycles\n", ppu->cycles_to_run + 3);
+    PPU_Tick(ppu);
     ppu->finish_early = false;
 }
 
@@ -927,7 +916,6 @@ void PPU_Reset(Ppu *ppu)
 {
     ppu->cycle_counter = 0;
     ppu->cycles = 0;
-    ppu->prev_cpu_cycles = 0;
     ppu->cycles_to_run = 0;
     ppu->frames = 0;
     ppu->frame_finished = 0;

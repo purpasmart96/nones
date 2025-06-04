@@ -37,14 +37,24 @@ int SystemLoadCart(Arena *arena, System *system, const char *path)
 
 void SystemInit(System *system, uint32_t **buffers)
 {
+    PPU_Init(system->ppu, system->cart->mirroring, buffers);
     CPU_Init(system->cpu);
     APU_Init(system->apu);
-    PPU_Init(system->ppu, system->cart->mirroring, buffers);
 }
 
 uint8_t SystemReadOpenBus(void)
 {
     return system_ptr->bus_data;
+}
+
+static void SystemRamWrite(System *system, const uint16_t addr, const uint8_t data)
+{
+    system->sys_ram[addr & 0x7FF] = data;
+}
+
+static uint8_t SystemRamRead(System *system, const uint16_t addr)
+{
+    return system->sys_ram[addr & 0x7FF];
 }
 
 static void SWramWrite(System *system, const uint16_t addr, const uint8_t data)
@@ -57,23 +67,47 @@ static uint8_t SWramRead(System *system, const uint16_t addr)
     return system->cart->ram[addr & 0x1FFF];
 }
 
+static void SystemStartOamDma(const uint8_t page_num)
+{
+    uint16_t base_addr = (page_num * 0x100);
+
+    // Older faster version
+    //uint8_t *data_ptr = SystemGetPtr(base_addr);
+    //memcpy(sprites, data_ptr, sizeof(Sprite) * 64);
+    //SystemAddCpuCycles(513);
+
+    // Add cpu halt cycle
+    SystemAddCpuCycles(1);
+#ifndef DISABLE_CYCLE_ACCURACY
+    SystemTick();
+#endif
+    for (int i = 0; i < 256; i++)
+    {
+        // OAM DMA uses Ppu reg $2004 (OAM_DATA) internally
+        WritePPURegister(system_ptr->ppu,OAM_DATA_REG, BusRead(base_addr++));
+        SystemAddCpuCycles(2);
+#ifndef DISABLE_CYCLE_ACCURACY
+        SystemTick();
+        SystemTick();
+#endif
+    }
+}
+
 uint8_t BusRead(const uint16_t addr)
 {
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
-    //SystemSync(system_ptr->cpu->cycles);
 
     switch (region)
     {
         // $0000 - $1FFF
         case 0x0:
-            system_ptr->bus_data = system_ptr->sys_ram[addr & 0x7FF];
+            system_ptr->bus_data = SystemRamRead(system_ptr, addr);
             break;
 
         // $2000 - $3FFF
         case 0x1:
         {
-            //SystemSync(system_ptr->cpu->cycles + 1);
             system_ptr->bus_data = ReadPPURegister(system_ptr->ppu, addr);
             break;
         }
@@ -123,19 +157,17 @@ void BusWrite(const uint16_t addr, const uint8_t data)
 {
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
-    //SystemSync(system_ptr->cpu->cycles);
 
     switch (region)
     {
         // $0000 - $1FFF
         case 0x0:
             // Internal RAM (mirrored)
-            system_ptr->sys_ram[addr & 0x7FF] = data;
+            SystemRamWrite(system_ptr, addr, data);
             break;
 
         // $2000 - $3FFF
         case 0x1:
-            //SystemSync(system_ptr->cpu->cycles);
             WritePPURegister(system_ptr->ppu, addr, data);
             break;
 
@@ -145,8 +177,7 @@ void BusWrite(const uint16_t addr, const uint8_t data)
             if (addr == 0x4014)
             {
                 DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
-                system_ptr->cpu->cycles += 513;
-                OAM_Dma(data);
+                SystemStartOamDma(data);
             }
             else if (addr == 0x4016)
             {
@@ -228,7 +259,6 @@ uint8_t *SystemGetPtr(const uint16_t addr)
     return NULL; 
 }
 
-
 Cart *SystemGetCart(void)
 {
     return system_ptr->cart;
@@ -298,6 +328,12 @@ bool SystemPollAllIrqs(void)
 void SystemSendNmiToCpu(void)
 {
     system_ptr->cpu->nmi_pending = true;
+}
+
+void SystemTick(void)
+{
+    APU_Tick(system_ptr->apu);
+    PPU_Tick(system_ptr->ppu);
 }
 
 void SystemSync(uint64_t cycles)
