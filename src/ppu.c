@@ -137,7 +137,7 @@ static bool PpuSprite0Hit(Ppu *ppu, int cycle)
             cycle <= (sprites[0].x + 8) && cycle >= sprites[0].x);
 }
 
-static Color GetBGColor(const uint8_t palette_index, const uint8_t pixel)
+static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
 {
     // Compute palette memory address
     const uint16_t palette_addr = 0x3F00 + (palette_index * 4) + pixel;
@@ -150,14 +150,24 @@ static Color GetBGColor(const uint8_t palette_index, const uint8_t pixel)
         color_index = palette_table[0];
     }
 
+    if (ppu->mask.grey_scale)
+    {
+        color_index &= 0x30;
+    }
+
     return sys_palette[color_index & 0x3F];
 
 }
 
-static Color GetSpriteColor(const uint8_t palette_index, const uint8_t pixel)
+static Color GetSpriteColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
 {
     const uint16_t palette_addr = 0x10 + (palette_index * 4) + pixel;
-    const uint16_t color_index = palette_table[palette_addr];
+    uint16_t color_index = palette_table[palette_addr];
+
+    if (ppu->mask.grey_scale)
+    {
+        color_index &= 0x30;
+    }
 
     return sys_palette[color_index & 0x3F];
 }
@@ -172,35 +182,31 @@ void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
     }
     else
     {
-        //const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
+        const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
         // Set low byte of t
         ppu->t.writing.low = value;
         // Transfer t to v
         ppu->v.raw = ppu->t.raw;
-        //if (~prev_a12 & ppu->v.raw_bits.bit12)
-        //    PpuClockMMC3();
+        if (~prev_a12 & ppu->v.raw_bits.bit12)
+            PpuClockMMC3();
     }
     ppu->w = !ppu->w;
 }
 
-void WriteToNametable(uint16_t addr, uint8_t data)
+static void PpuNametableWrite(Ppu *ppu, uint16_t addr, uint8_t data)
 {
-    addr &= 0x2FFF;  // Force address within 0x2000-0x2FFF range
-    uint8_t table_index = (addr >> 10) & 3;  // Select which nametable
-    nametables[table_index][addr & 0x3FF] = data;
+    nametables[ppu->v.scrolling.name_table_sel][addr & 0x3FF] = data;
 }
 
-uint8_t ReadNametable(uint16_t addr)
+static uint8_t PpuNametableRead(Ppu *ppu, uint16_t addr)
 {
-    //addr &= 0x2FFF;  // Force address within 0x2000-0x2FFF range
-    uint8_t table_index = (addr >> 10) & 3;  // Select which nametable
-    return nametables[table_index][addr & 0x3FF];
+    return nametables[ppu->v.scrolling.name_table_sel][addr & 0x3FF];
 }
 
 // Horizontal scrolling
 static void IncX(Ppu *ppu)
 {
-    if (ppu->v.scrolling.coarse_x == 31) // if coarse X == 31
+    if (ppu->v.scrolling.coarse_x == 31)
     {
         //printf("PPU v addr before: 0x%04X\n", ppu->v.raw);
         ppu->v.scrolling.coarse_x = 0;
@@ -211,7 +217,7 @@ static void IncX(Ppu *ppu)
     }
     else
     {
-        ppu->v.scrolling.coarse_x++;
+        ++ppu->v.scrolling.coarse_x;
     }
 }
 
@@ -239,7 +245,7 @@ static void IncY(Ppu *ppu)
         else
         {
             // increment coarse Y
-            ppu->v.scrolling.coarse_y++;
+            ++ppu->v.scrolling.coarse_y;
         }
     }
 }
@@ -254,37 +260,41 @@ static void WriteToPaletteTable(const uint16_t addr, const uint8_t data)
     palette_table[effective_addr] = data;
 }
 
+static void PPU_WriteCtrl(Ppu *ppu, const uint8_t data)
+{
+    ppu->ctrl.raw = data;
+    ppu->t.scrolling.name_table_sel = data & 0x3;
+
+    // TODO: Delay by one instruction
+    //if (ppu->ctrl.vblank_nmi & ppu->status.vblank)
+    //    SystemSendNmiToCpu();
+}
+
 void PPU_WriteData(Ppu *ppu, const uint8_t data)
 {
-    //const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
-    // Extract A13, A12, A11 for region decoding
+    const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
     const uint16_t addr = ppu->v.raw & 0x3FFF;
-    uint8_t ppu_region = (addr >> 11) & 0x7;
-    switch (ppu_region)
+
+    // Extract A13, A12, A11 for region decoding
+    switch (addr >> 12)
     {
         case 0x0:
         case 0x1:
-        case 0x2:
-        case 0x3:
         {
             // chr rom is actually chr ram
             PpuBusWriteChrRam(ppu->v.raw, data);
             //printf("ppu v: 0x%X\n", ppu->v.raw);
             break;
         }
-        case 0x4:
-        case 0x5:
-            //vram[ppu->v & 0x1FFF] = data;
-            WriteToNametable(ppu->v.raw, data);
+        case 0x2:
+        case 0x3:
+        {
+            if (addr < 0x3F00)
+                PpuNametableWrite(ppu, ppu->v.raw, data);
+            else
+                WriteToPaletteTable(ppu->v.raw & 0x1F, data);
             break;
-        case 0x6:
-            printf("ppu v: 0x%04X\n", ppu->v.raw);
-            break;
-        case 0x7:
-            WriteToPaletteTable(ppu->v.raw & 0x1F, data);
-            break;
-        default:
-            break;
+        }
     }
 
     // Outside of rendering, reads from or writes to $2007 will add either 1 or 32 to v depending on the VRAM increment bit set via $2000.
@@ -299,8 +309,8 @@ void PPU_WriteData(Ppu *ppu, const uint8_t data)
     {
         ppu->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
     }
-    //if (~prev_a12 & ppu->v.raw_bits.bit12)
-    //    PpuClockMMC3();
+    if (~prev_a12 & ppu->v.raw_bits.bit12)
+        PpuClockMMC3();
 }
 
 static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
@@ -323,7 +333,7 @@ static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
 uint8_t PPU_ReadStatus(Ppu *ppu)
 {
     PpuStatus status_value = ppu->status;
-
+    //printf("PPU_ReadStatus : %d scanline:%d cycle: %d\n", ppu->ctrl.vblank_nmi, ppu->scanline, ppu->cycle_counter);
     // I think this is a hack, prob shouldn't be done normally
     // Allows the vblank timing tests to pass
     if (ppu->scanline == 241 && ppu->cycle_counter == 1)
@@ -336,7 +346,7 @@ uint8_t PPU_ReadStatus(Ppu *ppu)
     return status_value.raw;
 }
 
-static uint8_t PpuRead(Ppu *ppu, const uint16_t addr)
+static uint8_t PpuReadChr(Ppu *ppu, const uint16_t addr)
 {
     uint8_t prev_a12 = (ppu->bus_addr >> 12) & 1;
     uint8_t new_a12 = (addr >> 12) & 1;
@@ -351,29 +361,38 @@ static uint8_t PpuRead(Ppu *ppu, const uint16_t addr)
 
 uint8_t PPU_ReadData(Ppu *ppu)
 {
-    //const uint16_t prev_a12 = ppu->v.raw_bits.bit12;
+    const uint16_t prev_a12 = ppu->v.raw_bits.bit12;
     uint16_t addr = ppu->v.raw & 0x3FFF;
 
     uint8_t data = 0;
 
-    if (addr >= 0x3F00)
-    {  
-        // Palette memory (no buffering)
-        // Mirror palette range
-        data = palette_table[addr & 0x1F];
-    }
-    else if (addr <= 0x1FFF)
+    switch (addr >> 12)
     {
-        // Grab the stale buffer value
-        data = ppu->buffered_data;
-        // Load new data into buffer
-        ppu->buffered_data = PpuRead(ppu, addr);
-    }
-    else if (addr <= 0x2FFF)
-    {
-        // Return stale buffer value
-        data = ppu->buffered_data;
-        ppu->buffered_data = vram[addr & 0x7FF];
+        case 0:
+        case 1:
+        {
+            // Grab the stale buffer value
+            data = ppu->buffered_data;
+            // Load new data into buffer
+            ppu->buffered_data = PpuReadChr(ppu, addr);
+            break;
+        }
+
+        case 2:
+        case 3:
+        {
+            if (addr < 0x3F00)
+            {
+                // Return stale buffer value
+                data = ppu->buffered_data;
+                ppu->buffered_data = PpuNametableRead(ppu, addr);
+            }
+            else
+            {
+                data = palette_table[addr & 0x1F];
+            }
+            break;
+        }
     }
 
     if (ppu->rendering && (ppu->scanline < 240 || ppu->scanline == 261))
@@ -387,8 +406,8 @@ uint8_t PPU_ReadData(Ppu *ppu)
         ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
     }
 
-    //if (~prev_a12 & ppu->v.raw_bits.bit12)
-    //    PpuClockMMC3();
+    if (~prev_a12 & ppu->v.raw_bits.bit12)
+        PpuClockMMC3();
     return data;
 }
 
@@ -403,8 +422,9 @@ uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr)
         case PPU_DATA:
             return PPU_ReadData(ppu);
     }
+
     // Read from open bus;
-    return 0;
+    return ppu->bus_latch;
 }
 
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
@@ -417,8 +437,7 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
     switch (reg)
     {
         case PPU_CTRL:
-            ppu->ctrl.raw = data;
-            ppu->t.scrolling.name_table_sel = data & 0x3;
+            PPU_WriteCtrl(ppu, data);
             break;
         case PPU_MASK:
             ppu->mask.raw = data;
@@ -428,11 +447,14 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             break;
         case OAM_DATA:
         {
-            if (!ppu->rendering || (ppu->scanline > 240 && ppu->scanline < 261))
+            if (!ppu->rendering || (ppu->scanline > 239 && ppu->scanline < 261))
             {
-                //printf("PPU Write OAM_DATA $2004 scanline:%d cycle: %d\n", ppu->scanline, ppu->cycle_counter);
                 sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3] = data;
                 ++ppu->oam_addr;
+            }
+            else
+            {
+                ppu->oam_addr += 4;
             }
             break;
         }
@@ -446,6 +468,7 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             PPU_WriteData(ppu, data);
             break;
     }
+    ppu->bus_latch = data;
 }
 
 // Configure the mirroring type
@@ -514,10 +537,10 @@ static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, 
         if (flip_vert)
             row = 7 - y;
 
-        uint8_t upper = PpuRead(ppu, tile_offset + row);
-        uint8_t lower = PpuRead(ppu, tile_offset + row + 8);
+        uint8_t upper = PpuReadChr(ppu, tile_offset + row);
+        uint8_t lower = PpuReadChr(ppu, tile_offset + row + 8);
         if (ppu->scanline == 261)
-            continue;
+            return;
 
         for (int x = 7; x >= 0; x--)
         {
@@ -536,7 +559,7 @@ static void PpuDrawSprite8x8(Ppu *ppu, int tile_offset, int tile_x, int tile_y, 
 
             if (ppu->mask.sprites_rendering && (ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7)))
             {
-                Color color = GetSpriteColor(palette, sprite_pixel);
+                Color color = GetSpriteColor(ppu, palette, sprite_pixel);
                 DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
             }
         }
@@ -562,11 +585,10 @@ static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, 
         int row = y & 7;
         if (flip_vert)
             row = 7 - (y & 7); 
-
-        uint8_t upper = PpuRead(ppu, tile_offset + row); 
-        uint8_t lower = PpuRead(ppu, tile_offset + row + 8);
+        uint8_t upper = PpuReadChr(ppu, tile_offset + row); 
+        uint8_t lower = PpuReadChr(ppu, tile_offset + row + 8);
         if (ppu->scanline == 261)
-            continue;
+            return;
 
         for (int x = 7; x >= 0; x--)
         {
@@ -585,7 +607,7 @@ static void PpuDrawSprite8x16(Ppu *ppu, int tile_index, int tile_x, int tile_y, 
 
             if (ppu->mask.sprites_rendering && (ppu->mask.show_sprites_left_corner || ((tile_x + x) > 7)))
             {
-                Color color = GetSpriteColor(palette, sprite_pixel);
+                Color color = GetSpriteColor(ppu, palette, sprite_pixel);
                 DrawPixel(ppu->buffers[0], tile_x + x, tile_y + y, color);
             }
         }
@@ -671,8 +693,6 @@ static inline void PpuFetchShifters(Ppu *ppu)
 
 static void PpuRender(Ppu *ppu, int scanline, int cycle)
 {
-    const uint8_t *nametable = nametables[ppu->v.scrolling.name_table_sel];
-    const uint8_t *attribute_table = &nametable[0x3C0];
     const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
 
     if (ppu->mask.bg_rendering)
@@ -693,26 +713,19 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         }
         case 2:
         {
-            const uint16_t tile_addr = (ppu->v.raw & 0x0FFF);
-            ppu->tile_id = nametable[tile_addr & 0x3FF];
+            ppu->bus_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+            ppu->tile_id = PpuNametableRead(ppu, ppu->bus_addr);
             break;
         }
         case 4:
         {
-            uint16_t attrib_addr = (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-            //printf("Attrib addr: 0x%X\n", 0x23C0 | attrib_addr);
-            uint8_t attrib_data = attribute_table[attrib_addr & 0x3f];
+            ppu->bus_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+            uint8_t attrib_data = PpuNametableRead(ppu, ppu->bus_addr);
             if (ppu->v.scrolling.coarse_y & 0x02)
                 attrib_data >>= 4;
             if (ppu->v.scrolling.coarse_x & 0x02)
                 attrib_data >>= 2;
-            //uint8_t quadrant = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
-            //uint8_t attrib_bits = (ppu->attrib_data >> quadrant) & 0x03;
             ppu->attrib_data = attrib_data & 0x3;
-            //uint8_t attrib_data = attribute_table[attrib_addr & 0x3f];
-            //uint8_t quadrant = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
-            //ppu->next_palette = (ppu->attrib_data >> quadrant) & 0x3;
-            //uint8_t attrib_bits = (ppu->attrib_data >> quadrant) & 0x03;
             break;
         }
         case 6:
@@ -720,7 +733,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
             // Get pattern table address for this tile
             size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
             // Bitplane 0
-            ppu->bg_lsb = PpuRead(ppu, tile_offset);
+            ppu->bg_lsb = PpuReadChr(ppu, tile_offset);
             break;
         }
         case 7:
@@ -728,7 +741,7 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
             // Get pattern table address for this tile
             size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
             // Bitplane 1
-            ppu->bg_msb = PpuRead(ppu, tile_offset + 8);
+            ppu->bg_msb = PpuReadChr(ppu, tile_offset + 8);
             break;
         }
     }
@@ -757,16 +770,16 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         }
 
         // Draw pixel here
-        if (ppu->rendering && (ppu->mask.show_bg_left_corner || cycle - 1 > 7))
+        if (ppu->mask.bg_rendering && (ppu->mask.show_bg_left_corner || cycle - 1 > 7))
         {
             PpuSetBgPixel(cycle - 1, scanline, pixel);
-            Color color = GetBGColor(palette, pixel);
+            Color color = GetBGColor(ppu, palette, pixel);
             DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
         }
         else
         {
             PpuSetBgPixel(cycle - 1, scanline, 0);
-            Color color = GetBGColor(palette, 0);
+            Color color = GetBGColor(ppu, palette, 0);
             DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
         }
     }
@@ -793,8 +806,7 @@ void PPU_Tick(Ppu *ppu)
 
         if ((ppu->cycle_counter <= 320 && ppu->cycle_counter >= 257) && (ppu->scanline < 240 || ppu->scanline == 261))
         {
-            if (ppu->rendering)
-                ppu->oam_addr = 0;
+            ppu->oam_addr *= !ppu->rendering;
             switch (ppu->cycle_counter)
             {
                 case 260:
@@ -823,14 +835,6 @@ void PPU_Tick(Ppu *ppu)
                     break;
             }
         }
-
-        //if (ppu->cycle_counter == 324 && !ppu->ctrl.sprite_size && !ppu->ctrl.sprite_pat_table_addr &&
-        //    ppu->ctrl.bg_pat_table_addr && (ppu->scanline < 240 || ppu->scanline == 261))
-        //{
-        //    PpuClockMMC3();
-        //    if (ppu->scanline == 261)
-        //        PpuClockMMC3();
-        //}
 
         if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240 || ppu->scanline == 261))
             IncY(ppu);

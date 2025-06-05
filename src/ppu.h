@@ -249,6 +249,7 @@ typedef struct
     int found_sprites;
 
     uint32_t bus_addr;
+    uint8_t bus_latch;
     bool rendering;
     bool prev_rendering;
     bool ignore_vblank;
