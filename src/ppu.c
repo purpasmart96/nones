@@ -333,6 +333,8 @@ static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
 uint8_t PPU_ReadStatus(Ppu *ppu)
 {
     PpuStatus status_value = ppu->status;
+    status_value.open_bus = ppu->bus_latch & 0x1F;
+
     //printf("PPU_ReadStatus : %d scanline:%d cycle: %d\n", ppu->ctrl.vblank_nmi, ppu->scanline, ppu->cycle_counter);
     // I think this is a hack, prob shouldn't be done normally
     // Allows the vblank timing tests to pass
@@ -389,7 +391,7 @@ uint8_t PPU_ReadData(Ppu *ppu)
             }
             else
             {
-                data = palette_table[addr & 0x1F];
+                data = (palette_table[addr & 0x1F] & 0x3F) | (ppu->bus_latch & 0xC0);
             }
             break;
         }
@@ -416,14 +418,17 @@ uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr)
     switch (addr & 7)
     {
         case PPU_STATUS:
-            return PPU_ReadStatus(ppu);
+            ppu->bus_latch = PPU_ReadStatus(ppu);
+            break;
         case OAM_DATA:
-            return sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3];
+            ppu->bus_latch = sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3];
+            break;
         case PPU_DATA:
-            return PPU_ReadData(ppu);
+            ppu->bus_latch = PPU_ReadData(ppu);
+            break;
     }
 
-    // Read from open bus;
+    // Read value from the bus;
     return ppu->bus_latch;
 }
 
@@ -904,6 +909,9 @@ void PPU_Tick(Ppu *ppu)
         if (!ppu->cycle_counter && !ppu->scanline)
         {
             ppu->frame_finished = true;
+            // Clear bus latch at the end of each frame
+            // (Actually random on real hardware and can be up to a 30 frame delay)
+            ppu->bus_latch = 0;
             ++ppu->frames;
         }
     }
