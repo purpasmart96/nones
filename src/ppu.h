@@ -299,6 +299,6 @@ void PPU_Tick(Ppu *ppu);
 void PPU_Reset(Ppu *ppu);
 uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr);
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data);
-void NametableMirroringInit(NameTableMirror mode);
+void PpuSetMirroring(NameTableMirror mode, int page);
 
 #endif

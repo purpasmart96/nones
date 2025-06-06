@@ -119,7 +119,7 @@ typedef union
         uint8_t bypass_16k_logic : 1;
     } mmc1a;
 
-} PrgBank;
+} Mmc1PrgBankReg;
 
 typedef struct 
 {
@@ -127,7 +127,7 @@ typedef struct
     Mmc1ShiftReg shift;
     Mmc1LoadReg load;
     Mmc1ControlReg control;
-    PrgBank prg_bank;
+    Mmc1PrgBankReg prg_bank;
     // Select 4 KB or 8 KB CHR bank at PPU $0000 (low bit ignored in 8 KB mode)
     uint8_t chr_bank0 : 5;
     // Select 4 KB CHR bank at PPU $1000 (ignored in 8 KB mode)
@@ -193,6 +193,23 @@ typedef struct
 {
     uint8_t bank;
 } UxRom;
+
+typedef struct
+{
+    union
+    {
+        uint8_t raw;
+        struct
+        {
+            // Select 32 KB PRG ROM bank for CPU $8000-$FFFF
+            uint8_t bank : 3;
+            uint8_t : 1;
+            // Select 1 KB VRAM page for all 4 nametables
+            uint8_t page : 1;
+        };
+    } reg;
+
+} AxRom;
 
 typedef struct Cart {
     PrgRom prg_rom;

@@ -12,5 +12,6 @@ void MapperInit(Cart *cart);
 extern Mmc1 mmc1;
 extern Mmc3 mmc3;
 extern UxRom ux_rom;
+extern AxRom ax_rom;
 
 #endif

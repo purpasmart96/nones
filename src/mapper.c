@@ -15,6 +15,7 @@
 Mmc1 mmc1;
 Mmc3 mmc3;
 UxRom ux_rom;
+AxRom ax_rom;
 
 static uint8_t NromReadPrgRom(Cart *cart, uint16_t addr)
 {
@@ -136,6 +137,12 @@ static uint8_t UxRomReadPrgRom(Cart *cart, const uint16_t addr)
     return Read16kBank(cart, ux_rom.bank & 0x7, addr);
 }
 
+static uint8_t AxRomReadPrgRom(Cart *cart, const uint16_t addr)
+{
+    uint32_t final_addr = GetBankAddr(ax_rom.reg.bank, addr, 0x8000, cart->prg_rom.mask);
+    return cart->prg_rom.data[final_addr];
+}
+
 static uint8_t NromReadChrRom(Cart *cart, const uint16_t addr)
 {
     return cart->chr_rom.data[addr & (cart->chr_rom.size - 1)];
@@ -224,7 +231,7 @@ static void Mmc1RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
     {
         case 0:
             mmc1.control.raw = reg;
-            NametableMirroringInit(mmc1_mirror_map[mmc1.control.name_table_setup]);
+            PpuSetMirroring(mmc1_mirror_map[mmc1.control.name_table_setup], 0);
             //printf("Set nametable mode to: %d\n", mmc1->control.name_table_setup);
             //printf("Set prg rom bank mode to: %d\n", mmc1->control.prg_rom_bank_mode);
             DEBUG_LOG("Set chr bank mode to %d\n", mmc1.control.chr_rom_bank_mode);
@@ -304,7 +311,7 @@ static void Mmc3RegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
         // Nametable arrangement ($A000-$BFFE, even)
         case 1:
             mmc3.name_table_arrgmnt = data & 1;
-            NametableMirroringInit(mmc3.name_table_arrgmnt ^ 1);
+            PpuSetMirroring(mmc3.name_table_arrgmnt ^ 1, 0);
             //printf("Set MMC3 nametable mirroring mode: %d\n", !cart->mmc3.name_table_setup);
             break;
         // IRQ latch ($C000-$DFFE, even)
@@ -331,6 +338,12 @@ static void UxRomRegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
     ux_rom.bank = data;
 
     DEBUG_LOG("Set prg rom bank index to %d\n", data & 0x7);
+}
+
+static void AxRomRegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    ax_rom.reg.raw = data;
+    PpuSetMirroring(2, ax_rom.reg.page);
 }
 
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr)
@@ -404,6 +417,12 @@ void MapperInit(Cart *cart)
             cart->ReadChrFn = Mmc3ReadChrRom;
             cart->WriteFn = Mmc3RegWrite;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, 0x2000);
+            break;
+        case 7:
+            cart->ReadPrgFn = AxRomReadPrgRom;
+            cart->ReadChrFn = NromReadChrRom;
+            cart->WriteFn = AxRomRegWrite;
+            cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, 0x8000);
             break;
         default:
             printf("Bad Mapper type!: %d\n", cart->mapper_num);

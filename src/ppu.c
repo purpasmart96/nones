@@ -471,8 +471,9 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
     ppu->bus_latch = data;
 }
 
-// Configure the mirroring type
-void NametableMirroringInit(NameTableMirror mode)
+// Set the mirroring mode for the nametables
+// Note that mirroring is the opposite of arrangement
+void PpuSetMirroring(NameTableMirror mode, int page)
 {
     switch (mode)
     {
@@ -489,6 +490,12 @@ void NametableMirroringInit(NameTableMirror mode)
             nametables[2] = &vram[0x000];  // NT0 (Mirrored at 0x2800)
             nametables[3] = &vram[0x400];  // NT1 (Mirrored at 0x2C00)
             break;
+        case NAMETABLE_SINGLE_SCREEN:
+            nametables[0] = &vram[0x400 * page];
+            nametables[1] = &vram[0x400 * page];
+            nametables[2] = &vram[0x400 * page];
+            nametables[3] = &vram[0x400 * page];
+            break;
 
         default:
             printf("Unimplemented Nametable mirroring mode %d detected!\n", mode);
@@ -500,7 +507,7 @@ void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers)
 {
     memset(ppu, 0, sizeof(*ppu));
     ppu->nt_mirror_mode = name_table_layout;
-    NametableMirroringInit(ppu->nt_mirror_mode);
+    PpuSetMirroring(ppu->nt_mirror_mode, 0);
     ppu->rendering = false;
     ppu->prev_rendering = false;
     ppu->buffers[0] = buffers[0];
