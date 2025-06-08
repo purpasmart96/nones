@@ -16,6 +16,7 @@ Mmc1 mmc1;
 Mmc3 mmc3;
 UxRom ux_rom;
 AxRom ax_rom;
+CnRom cn_rom;
 
 static uint8_t NromReadPrgRom(Cart *cart, uint16_t addr)
 {
@@ -195,6 +196,11 @@ static uint8_t Mmc3ReadChrRom(Cart *cart, const uint16_t addr)
     return cart->chr_rom.data[final_addr];
 }
 
+static uint8_t CnromReadChrRom(Cart *cart, const uint16_t addr)
+{
+    return cart->chr_rom.data[(cn_rom.reg.chr_bank * 0x2000) + (addr & 0x1FFF)];
+}
+
 static const int mmc1_mirror_map[4] =
 {
     NAMETABLE_FOUR_SCREEN,
@@ -346,6 +352,11 @@ static void AxRomRegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
     PpuSetMirroring(2, ax_rom.reg.page);
 }
 
+static void CnRomRegWrite(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    cn_rom.reg.raw = data;
+}
+
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr)
 {
     return cart->ReadPrgFn(cart, addr);
@@ -411,6 +422,11 @@ void MapperInit(Cart *cart)
             cart->ReadChrFn = NromReadChrRom;
             cart->WriteFn = UxRomRegWrite;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, 0x4000);
+            break;
+        case 3:
+            cart->ReadPrgFn = NromReadPrgRom;
+            cart->ReadChrFn = CnromReadChrRom;
+            cart->WriteFn = CnRomRegWrite;
             break;
         case 4:
             cart->ReadPrgFn = Mmc3ReadPrgRom;

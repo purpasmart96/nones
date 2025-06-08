@@ -57,6 +57,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         case 0:
         case 1:
         case 2:
+        case 3:
         case 4:
         case 7:
             break;

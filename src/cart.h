@@ -201,6 +201,23 @@ typedef struct
         uint8_t raw;
         struct
         {
+            // CHR A14..A13 (8 KiB bank)
+            uint8_t chr_bank : 2;
+            uint8_t : 2;
+            uint8_t diode2 : 1;
+            uint8_t diode1 : 1;
+        };
+    } reg;
+
+} CnRom;
+
+typedef struct
+{
+    union
+    {
+        uint8_t raw;
+        struct
+        {
             // Select 32 KB PRG ROM bank for CPU $8000-$FFFF
             uint8_t bank : 3;
             uint8_t : 1;
