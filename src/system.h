@@ -20,7 +20,8 @@ typedef struct System
     Ppu *ppu;
 
     Cart *cart;
-    JoyPad *joy_pad;
+    JoyPad *joy_pad1;
+    JoyPad *joy_pad2;
     uint8_t *sys_ram;
     uint8_t bus_data;
 } System;

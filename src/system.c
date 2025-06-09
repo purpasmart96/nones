@@ -23,7 +23,8 @@ System *SystemCreate(Arena *arena)
     system->apu = ArenaPush(arena, sizeof(Apu));
     system->ppu = ArenaPush(arena, sizeof(Ppu));
     system->cart = ArenaPush(arena, sizeof(Cart));
-    system->joy_pad = ArenaPush(arena, sizeof(JoyPad));
+    system->joy_pad1 = ArenaPush(arena, sizeof(JoyPad));
+    system->joy_pad2 = ArenaPush(arena, sizeof(JoyPad));
     system->sys_ram = ArenaPush(arena, CPU_RAM_SIZE);
 
     system_ptr = system;
@@ -117,13 +118,11 @@ uint8_t BusRead(const uint16_t addr)
             {
                 if (addr == 0x4016)
                 {
-                    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    system_ptr->bus_data = ReadJoyPadReg(system_ptr->joy_pad);
+                    system_ptr->bus_data |= ReadJoyPadReg(system_ptr->joy_pad1) & 0x1F;
                 }
                 else if (addr == 0x4017)
                 {
-                    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                    system_ptr->bus_data = 0;
+                    system_ptr->bus_data |= ReadJoyPadReg(system_ptr->joy_pad2) & 0x1F;
                 }
                 else
                 {
@@ -181,13 +180,9 @@ void BusWrite(const uint16_t addr, const uint8_t data)
             }
             else if (addr == 0x4016)
             {
-                //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-                WriteJoyPadReg(system_ptr->joy_pad, data);
+                WriteJoyPadReg(system_ptr->joy_pad1, data);
+                WriteJoyPadReg(system_ptr->joy_pad2, data);
             }
-            //else if (addr == 0x4017)
-            //{
-            //    //DEBUG_LOG("Requested Joypad reg 0x%04X\n", addr);
-            //}
             else if (addr < 0x4018)
             {
                 WriteAPURegister(system_ptr->apu, addr, data);
@@ -349,14 +344,23 @@ void SystemAddCpuCycles(uint32_t cycles)
 
 void SystemUpdateJPButtons(System *system, const bool *buttons)
 {
-    JoyPadSetButton(system->joy_pad, JOYPAD_A, buttons[0]);
-    JoyPadSetButton(system->joy_pad, JOYPAD_B, buttons[1]);
-    JoyPadSetButton(system->joy_pad, JOYPAD_UP, buttons[2]);
-    JoyPadSetButton(system->joy_pad, JOYPAD_DOWN, buttons[3]);
-    JoyPadSetButton(system->joy_pad, JOYPAD_LEFT, buttons[4]);
-    JoyPadSetButton(system->joy_pad, JOYPAD_RIGHT, buttons[5]);
-    JoyPadSetButton(system->joy_pad, JOYPAD_START, buttons[6]);
-    JoyPadSetButton(system->joy_pad, JOYPAD_SELECT, buttons[7]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_A, buttons[0]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_B, buttons[1]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_UP, buttons[2]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_DOWN, buttons[3]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_LEFT, buttons[4]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_RIGHT, buttons[5]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_START, buttons[6]);
+    JoyPadSetButton(system->joy_pad1, JOYPAD_SELECT, buttons[7]);
+
+    JoyPadSetButton(system->joy_pad2, JOYPAD_A, buttons[8]);
+    JoyPadSetButton(system->joy_pad2, JOYPAD_B, buttons[9]);
+    JoyPadSetButton(system->joy_pad2, JOYPAD_UP, buttons[10]);
+    JoyPadSetButton(system->joy_pad2, JOYPAD_DOWN, buttons[11]);
+    JoyPadSetButton(system->joy_pad2, JOYPAD_LEFT, buttons[12]);
+    JoyPadSetButton(system->joy_pad2, JOYPAD_RIGHT, buttons[13]);
+    JoyPadSetButton(system->joy_pad2, JOYPAD_START, buttons[14]);
+    JoyPadSetButton(system->joy_pad2, JOYPAD_SELECT, buttons[15]);
 }
 
 void SystemReset(System *system)

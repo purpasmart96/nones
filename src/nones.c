@@ -93,10 +93,18 @@ static void NonesInit(Nones *nones, const char *path)
     nones->gamepads = SDL_GetGamepads(&nones->num_gamepads);
     if (nones->gamepads)
     {
-        nones->gamepad = SDL_OpenGamepad(nones->gamepads[0]);
-        char *gamepad_info = SDL_GetGamepadMapping(nones->gamepad);
-        printf("Gamepad: %s\n", gamepad_info);
-        SDL_free(gamepad_info);
+        nones->gamepad1 = SDL_OpenGamepad(nones->gamepads[0]);
+        char *gamepad1_info = SDL_GetGamepadMapping(nones->gamepad1);
+        printf("Gamepad1: %s\n", gamepad1_info);
+        SDL_free(gamepad1_info);
+
+        if (nones->num_gamepads > 1)
+        {
+            nones->gamepad2 = SDL_OpenGamepad(nones->gamepads[1]);
+            char *gamepad2_info = SDL_GetGamepadMapping(nones->gamepad2);
+            printf("Gamepad2: %s\n", gamepad2_info);
+            SDL_free(gamepad2_info);
+        }
     }
     else
     {
@@ -138,8 +146,10 @@ static void NonesShutdown(Nones *nones)
     SDL_DestroyTexture(nones->texture);
     SDL_DestroyRenderer(nones->renderer);
     SDL_free(nones->gamepads);
-    if (nones->gamepad)
-        SDL_CloseGamepad(nones->gamepad);
+    if (nones->gamepad1)
+        SDL_CloseGamepad(nones->gamepad1);
+    if (nones->gamepad2)
+        SDL_CloseGamepad(nones->gamepad2);
     SDL_DestroyAudioStream(stream);
     SDL_DestroyWindow(nones->window);
     SDL_Quit();
@@ -172,7 +182,7 @@ void NonesRun(Nones *nones, const char *path)
     SystemInit(nones->system, buffers);
 
     bool quit = false;
-    bool buttons[8];
+    bool buttons[16];
     SDL_Event event;
     void *raw_pixels;
     int raw_pitch;
@@ -222,14 +232,23 @@ void NonesRun(Nones *nones, const char *path)
 
         const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        buttons[0] = kb_state[SDL_SCANCODE_SPACE]  || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_EAST);
-        buttons[1] = kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_SOUTH);
-        buttons[2] = kb_state[SDL_SCANCODE_UP]     || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_UP);
-        buttons[3] = kb_state[SDL_SCANCODE_DOWN]   || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
-        buttons[4] = kb_state[SDL_SCANCODE_LEFT]   || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
-        buttons[5] = kb_state[SDL_SCANCODE_RIGHT]  || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
-        buttons[6] = kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_START);
-        buttons[7] = kb_state[SDL_SCANCODE_TAB]    || SDL_GetGamepadButton(nones->gamepad, SDL_GAMEPAD_BUTTON_BACK);
+        buttons[0] = kb_state[SDL_SCANCODE_SPACE]  || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_EAST);
+        buttons[1] = kb_state[SDL_SCANCODE_LSHIFT] || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_SOUTH);
+        buttons[2] = kb_state[SDL_SCANCODE_UP]     || kb_state[SDL_SCANCODE_W] || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_UP);
+        buttons[3] = kb_state[SDL_SCANCODE_DOWN]   || kb_state[SDL_SCANCODE_S] || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        buttons[4] = kb_state[SDL_SCANCODE_LEFT]   || kb_state[SDL_SCANCODE_A] || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        buttons[5] = kb_state[SDL_SCANCODE_RIGHT]  || kb_state[SDL_SCANCODE_D] || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        buttons[6] = kb_state[SDL_SCANCODE_RETURN] || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_START);
+        buttons[7] = kb_state[SDL_SCANCODE_TAB]    || SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_BACK);
+
+        buttons[8]  = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_EAST);
+        buttons[9]  = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_SOUTH);
+        buttons[10] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_UP);
+        buttons[11] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        buttons[12] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        buttons[13] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        buttons[14] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_START);
+        buttons[15] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_BACK);
 
         SystemUpdateJPButtons(nones->system, buttons);
 

@@ -17,7 +17,8 @@ typedef struct {
     SDL_Renderer *renderer;
     SDL_Texture *texture;
     int num_gamepads;
-    SDL_Gamepad *gamepad;
+    SDL_Gamepad *gamepad1;
+    SDL_Gamepad *gamepad2;
     SDL_JoystickID *gamepads;
 } Nones;
 
