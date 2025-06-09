@@ -4,7 +4,7 @@ A simple NTSC NES emulator written in C.
 
 ### Current State
 
-NROM, UxROM, MMC1, are currently supported along with most MMC3 based games.
+NROM, UxROM, AxRom, CNROM, MMC1, are currently supported along with most MMC3 based games.
 
 Supports all of the origianl NES audio channels, which includes square, triangle, noise, and dmc audio channels.
 
