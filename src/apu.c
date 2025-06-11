@@ -717,7 +717,7 @@ uint8_t ReadAPURegister(Apu *apu, const uint16_t addr)
         case APU_STATUS:
             return ApuReadStatus(apu);
         default:
-            printf("Reading from open bus at addr: 0x%04X\n", addr);
+            //printf("Reading from open bus at addr: 0x%04X\n", addr);
             return SystemReadOpenBus();
     }
 }
