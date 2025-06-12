@@ -725,19 +725,18 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         }
         case 2:
         {
-            ppu->bus_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
-            ppu->tile_id = PpuNametableRead(ppu, ppu->bus_addr);
+            // TODO: should set the ppu bus addr here
+            const uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
+            ppu->tile_id = PpuNametableRead(ppu, tile_addr);
             break;
         }
         case 4:
         {
-            ppu->bus_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-            uint8_t attrib_data = PpuNametableRead(ppu, ppu->bus_addr);
-            if (ppu->v.scrolling.coarse_y & 0x02)
-                attrib_data >>= 4;
-            if (ppu->v.scrolling.coarse_x & 0x02)
-                attrib_data >>= 2;
-            ppu->attrib_data = attrib_data & 0x3;
+            // TODO: should set the ppu bus addr here
+            const uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+            uint8_t attrib_data = PpuNametableRead(ppu, attrib_addr);
+            uint8_t shift = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
+            ppu->attrib_data = (attrib_data >> shift) & 0x3;
             break;
         }
         case 6:
