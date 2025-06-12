@@ -21,6 +21,7 @@ static uint8_t CpuRead8(const uint16_t addr)
 {
 #ifndef DISABLE_CYCLE_ACCURACY
     SystemTick();
+    SystemPollNmi();
 #endif
     return BusRead(addr);
 }
@@ -29,6 +30,7 @@ static void CpuWrite8(const uint16_t addr, const uint8_t data)
 {
 #ifndef DISABLE_CYCLE_ACCURACY
     SystemTick();
+    SystemPollNmi();
 #endif
     BusWrite(addr, data);
 }
@@ -1641,6 +1643,7 @@ static void ExecuteOpcode(Cpu *cpu)
         snprintf(cpu->debug_msg, sizeof(cpu->debug_msg), "PC:%04X %s", cpu->pc, handler->name);
 
         SystemSync(cpu->cycles);
+        SystemPollNmi();
 
         // Execute instruction
         handler->InstrFn(cpu, handler->addr_mode, handler->page_cross_penalty);

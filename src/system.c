@@ -314,15 +314,30 @@ void SystemRun(System *system, bool paused, bool step_instr, bool step_frame)
     } while (!system->ppu->frame_finished && !step_instr);
 }
 
-
 bool SystemPollAllIrqs(void)
 {
     return PollApuIrqs(system_ptr->apu) || PollMapperIrq();
 }
 
-void SystemSendNmiToCpu(void)
+void SystemSetNmiPin(void)
 {
-    system_ptr->cpu->nmi_pending = true;
+    system_ptr->cpu->nmi_pin = ~(system_ptr->ppu->ctrl.vblank_nmi & system_ptr->ppu->status.vblank);
+}
+
+// The PPU pulls /NMI low if and only if both vblank_flag and NMI_output are true.
+static uint8_t SystemReadNmiPin(void)
+{
+    return ~(system_ptr->ppu->ctrl.vblank_nmi & system_ptr->ppu->status.vblank);
+}
+
+void SystemPollNmi(void)
+{
+    uint8_t current_nmi_pin = SystemReadNmiPin();
+    if (~current_nmi_pin & system_ptr->cpu->nmi_pin)
+        system_ptr->cpu->nmi_pending = true;
+    system_ptr->cpu->nmi_pin = current_nmi_pin;
+    //if (system_ptr->cpu->nmi_pending)
+    //    printf("NMI at ppu cycle: %d scanline:%d\n", system_ptr->ppu->cycle_counter, system_ptr->ppu->scanline);
 }
 
 void SystemTick(void)

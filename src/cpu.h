@@ -53,6 +53,7 @@ typedef struct
     uint8_t y;
     uint8_t sp;
     Flags status;
+    uint8_t nmi_pin;
     bool nmi_pending;
     bool irq_pending;
 } Cpu;

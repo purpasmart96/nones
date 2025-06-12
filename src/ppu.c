@@ -859,16 +859,9 @@ void PPU_Tick(Ppu *ppu)
         if (ppu->scanline == 241 && ppu->cycle_counter == 1)
         {
             //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
-            //assert(ppu->v.raw != 0);
-            ppu->v.raw = ppu->v.raw & 0x3FFF;
-            // VBlank starts at scanline 241
+            ppu->bus_addr = ppu->v.raw & 0x3FFF;
+            // Vblank starts at scanline 241
             ppu->status.vblank = !ppu->ignore_vblank;
-            // If NMI is enabled
-            if (ppu->ctrl.vblank_nmi)
-            {
-                SystemSendNmiToCpu();
-                //ppu->finish_early = true;
-            }
             // Copy the finished image in the back buffer to the front buffer
             memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
         }
