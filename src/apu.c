@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 
 #include "apu.h"
+#include "ppu.h"
 #include "system.h"
 #include "nones.h"
 
@@ -595,6 +596,10 @@ static void ApuUpdateDmcSample(Apu *apu)
 {
     apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
     SystemAddCpuCycles(4);
+    PPU_Tick(SystemGetPpu());
+    PPU_Tick(SystemGetPpu());
+    PPU_Tick(SystemGetPpu());
+    PPU_Tick(SystemGetPpu());
 
     apu->dmc.empty = false;
     apu->dmc.addr_counter = MAX(0x8000, (apu->dmc.addr_counter + 1) & 0xFFFF);

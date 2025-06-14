@@ -65,6 +65,11 @@ static inline void CpuPollIRQ(Cpu *cpu)
 
 static void HandleIRQ(Cpu *cpu)
 {
+#ifndef DISABLE_DUMMY_READ_WRITES
+    // Dummy read of next instruction
+    CpuRead8(cpu->pc);
+#endif
+    //printf("IRQ at PC: 0x%X\n", cpu->pc);
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     StackPush(cpu, cpu->pc & 0xFF);
     // Push Processor Status (clear Break flag)
@@ -74,6 +79,9 @@ static void HandleIRQ(Cpu *cpu)
     StackPush(cpu, status.raw);
     cpu->status.i = 1;
     cpu->pc = CpuReadVector(0xFFFE);
+#ifndef DISABLE_CYCLE_ACCURACY
+    SystemTick();
+#endif
     // NMI and IRQ have a 7 cycle cost
     cpu->cycles += 7;
 }
@@ -89,32 +97,41 @@ static inline uint16_t GetAbsoluteAddr(Cpu *cpu)
 // PC += 2 
 static inline uint16_t GetAbsoluteXAddr(Cpu *cpu, bool add_cycle, bool dummy_read)
 {
-    uint16_t base_addr = GetAbsoluteAddr(cpu);
-    uint16_t final_addr = base_addr + cpu->x;
+    uint8_t addr_low = CpuRead8(++cpu->pc);
+    uint8_t addr_high = CpuRead8(++cpu->pc);
+    uint16_t addr_low_final = addr_low + cpu->x;
+    bool page_cross = addr_low_final > 255;
+    uint16_t final_addr = (uint16_t)addr_high << 8 | (uint8_t)(addr_low_final);
 
-    bool page_cross = !InsidePage(base_addr, final_addr);
+#ifndef DISABLE_DUMMY_READ_WRITES
+    if (dummy_read & (page_cross || !add_cycle))
+        CpuRead8(final_addr);
+#endif
+
+    final_addr += page_cross * PAGE_SIZE;
     // Apply extra cycle only if required
     cpu->cycles += (page_cross & add_cycle);
-#ifndef DISABLE_DUMMY_READ_WRITES
-    if (page_cross & dummy_read)
-        CpuRead8(final_addr - PAGE_SIZE);
-#endif
+
     return final_addr;
 }
 
 static inline uint16_t GetAbsoluteYAddr(Cpu *cpu, bool add_cycle, bool dummy_read)
 {
-    uint16_t base_addr = GetAbsoluteAddr(cpu);
-    uint16_t final_addr = base_addr + cpu->y;
+    uint8_t addr_low = CpuRead8(++cpu->pc);
+    uint8_t addr_high = CpuRead8(++cpu->pc);
+    uint16_t addr_low_final = addr_low + cpu->y;
+    bool page_cross = addr_low_final > 255;
+    uint16_t final_addr = (uint16_t)addr_high << 8 | (uint8_t)(addr_low_final);
 
-    bool page_cross = !InsidePage(base_addr, final_addr);
+#ifndef DISABLE_DUMMY_READ_WRITES
+    if (dummy_read & (page_cross || !add_cycle))
+        CpuRead8(final_addr);
+#endif
 
+    final_addr += page_cross * PAGE_SIZE;
     // Apply extra cycle only if required
     cpu->cycles += (page_cross & add_cycle);
-#ifndef DISABLE_DUMMY_READ_WRITES
-    if (page_cross & dummy_read)
-        CpuRead8(final_addr - PAGE_SIZE);
-#endif
+
     return final_addr;
 }
 
@@ -128,6 +145,9 @@ static inline uint8_t GetZPAddr(Cpu *cpu)
 static inline uint16_t GetZPIndexedAddr(Cpu *cpu, uint8_t reg)
 {
     uint8_t zp_addr = CpuRead8(++cpu->pc);
+#ifndef DISABLE_DUMMY_READ_WRITES
+    CpuRead8(zp_addr);
+#endif
 
     return (zp_addr + reg) & PAGE_MASK;
 }
@@ -169,7 +189,7 @@ static inline uint16_t GetIndirectYAddr(Cpu *cpu, bool page_cycle, bool dummy_re
     // Apply extra cycle only if required
     cpu->cycles += (page_cross & page_cycle);
 #ifndef DISABLE_DUMMY_READ_WRITES
-    if (page_cross & dummy_read)
+    if (dummy_read & (page_cross || !page_cycle))
         CpuRead8(final_addr - PAGE_SIZE);
 #endif
     return final_addr;
@@ -179,6 +199,9 @@ static inline uint16_t GetIndirectYAddr(Cpu *cpu, bool page_cycle, bool dummy_re
 static inline uint16_t GetIndirectXAddr(Cpu *cpu, uint8_t reg)
 {
     uint8_t zp_addr = GetZPAddr(cpu);
+#ifndef DISABLE_DUMMY_READ_WRITES
+    CpuRead8(zp_addr);
+#endif
     // Wrap in zero-page
     uint8_t effective_ptr = (zp_addr + reg) & PAGE_MASK;
     uint8_t addr_low = CpuRead8(effective_ptr);
@@ -340,7 +363,6 @@ static inline uint8_t GetOperandFromMem(Cpu *cpu, AddressingMode addr_mode, bool
     {
         case Accumulator:
             return cpu->a;
-        case Relative:
         case Immediate:
             return CpuRead8(++cpu->pc);
         case ZeroPage:
@@ -359,12 +381,12 @@ static inline uint8_t GetOperandFromMem(Cpu *cpu, AddressingMode addr_mode, bool
             return CpuRead8(GetIndirectXAddr(cpu, cpu->x));
         case IndirectY:
             return CpuRead8(GetIndirectYAddr(cpu, page_cycle, dummy_read));
-        case Implied:
-        case Indirect:
+        default:
+            printf("At PC: 0x%X Unknown or invalid adddress mode!: %d\n", cpu->pc, addr_mode);
             break;
     }
 
-    return -1;
+    return 0;
 }
 
 // Used by STA/STY/STX instrs
@@ -373,7 +395,6 @@ static inline void SetOperandToMem(Cpu *cpu, AddressingMode addr_mode, uint8_t o
     switch (addr_mode)
     {
         case Accumulator:
-        case Relative:
         case Immediate:
             CpuWrite8(++cpu->pc,  operand);
             break;
@@ -401,11 +422,8 @@ static inline void SetOperandToMem(Cpu *cpu, AddressingMode addr_mode, uint8_t o
         case IndirectY:
             CpuWrite8(GetIndirectYAddr(cpu, false, dummy_read),  operand);
             break;
-        case Implied:
-        case Indirect:
-            break;
         default:
-            printf("Unknown or invalid adddress mode!: %d\n", addr_mode);
+            printf("At PC: 0x%X Unknown or invalid adddress mode!: %d\n", cpu->pc, addr_mode);
             break;
     }
 }
@@ -414,7 +432,6 @@ static inline uint16_t GetOperandAddrFromMem(Cpu *cpu, AddressingMode addr_mode,
 {
     switch (addr_mode)
     {
-        case Relative:
         case Immediate:
             return ++cpu->pc;
         case ZeroPage:
@@ -434,8 +451,11 @@ static inline uint16_t GetOperandAddrFromMem(Cpu *cpu, AddressingMode addr_mode,
         case IndirectY:
             return GetIndirectYAddr(cpu, page_cycle, dummy_read);
         default:
-            return 0;
+            printf("At PC: 0x%X Unknown or invalid adddress mode!: %d\n", cpu->pc, addr_mode);
+            break;
     }
+
+    return 0;
 }
 
 static inline void ADC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -693,7 +713,7 @@ static inline void BVC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+            CpuRead8(cpu->pc - PAGE_SIZE);
 #endif
         cpu->pc += offset;
         cpu->cycles += 1 + page_cross;
@@ -1107,6 +1127,8 @@ static inline void PLA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 #ifndef DISABLE_DUMMY_READ_WRITES
     // Dummy read of next instruction byte
     CpuRead8(++cpu->pc);
+    // Read for incrementing the SP
+    CpuRead8(STACK_START + cpu->sp);
 #else
     ++cpu->pc;
 #endif
@@ -1124,6 +1146,8 @@ static inline void PLP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 #ifndef DISABLE_DUMMY_READ_WRITES
     // Dummy read of next instruction byte
     CpuRead8(++cpu->pc);
+    // Read for incrementing the SP
+    CpuRead8(STACK_START + cpu->sp);
 #else
     ++cpu->pc;
 #endif
@@ -1189,6 +1213,8 @@ static inline void RTI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 #ifndef DISABLE_DUMMY_READ_WRITES
     // Dummy read of next instruction byte
     CpuRead8(++cpu->pc);
+    // Read for incrementing the SP
+    CpuRead8(STACK_START + cpu->sp);
 #else
     ++cpu->pc;
 #endif
@@ -1218,6 +1244,8 @@ static inline void RTS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 #ifndef DISABLE_DUMMY_READ_WRITES
     // Dummy read of next instruction byte
     CpuRead8(++cpu->pc);
+    // Read for incrementing the SP
+    CpuRead8(STACK_START + cpu->sp);
 #else
     ++cpu->pc;
 #endif
@@ -1225,8 +1253,12 @@ static inline void RTS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     uint8_t pc_low = StackPull(cpu);
     uint8_t pc_high = StackPull(cpu);
 
+#ifndef DISABLE_DUMMY_READ_WRITES
+    cpu->pc = ((uint16_t)pc_high << 8 | pc_low);
+    CpuRead8(cpu->pc++);
+#else
     cpu->pc = ((uint16_t)pc_high << 8 | pc_low) + 1;
-
+#endif
     CpuPollIRQ(cpu);
 }
 
@@ -1639,7 +1671,7 @@ static void ExecuteOpcode(Cpu *cpu)
 
     if (handler->InstrFn)
     {
-        CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, cpu->pc);
+        CPU_LOG("Executing %s (Opcode: 0x%02X cycles: %d) at PC: 0x%04X\n", handler->name, opcode, handler->cycles, cpu->pc);
         snprintf(cpu->debug_msg, sizeof(cpu->debug_msg), "PC:%04X %s", cpu->pc, handler->name);
 
         SystemSync(cpu->cycles);
@@ -1686,6 +1718,11 @@ void CPU_Init(Cpu *cpu)
 
 void CPU_TriggerNMI(Cpu *cpu)
 {
+#ifndef DISABLE_DUMMY_READ_WRITES
+    // Dummy read of next instruction byte
+    CpuRead8(cpu->pc);
+#endif
+    //printf("Nmi at PC: 0x%X\n", cpu->pc);
     // Push high first
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     // Push low next
@@ -1695,10 +1732,13 @@ void CPU_TriggerNMI(Cpu *cpu)
 
     cpu->pc = CpuReadVector(0xFFFA);
     cpu->status.i = 1;
+    cpu->nmi_pending = 0;
+
+#ifndef DISABLE_CYCLE_ACCURACY
+    SystemTick();
+#endif
     // NMI and IRQ have a 7 cycle cost
     cpu->cycles += 7;
-
-    cpu->nmi_pending = false;
 }
 
 void CPU_Update(Cpu *cpu)
