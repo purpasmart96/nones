@@ -63,10 +63,11 @@ static inline void CpuPollIRQ(Cpu *cpu)
     cpu->irq_pending = !cpu->status.i && SystemPollAllIrqs();
 }
 
-static void HandleIRQ(Cpu *cpu)
+static void CpuIrqHandler(Cpu *cpu)
 {
 #ifndef DISABLE_DUMMY_READ_WRITES
     // Dummy read of next instruction
+    CpuRead8(cpu->pc);
     CpuRead8(cpu->pc);
 #endif
     //printf("IRQ at PC: 0x%X\n", cpu->pc);
@@ -78,10 +79,43 @@ static void HandleIRQ(Cpu *cpu)
     status.unused = 1;
     StackPush(cpu, status.raw);
     cpu->status.i = 1;
-    cpu->pc = CpuReadVector(0xFFFE);
-#ifndef DISABLE_CYCLE_ACCURACY
-    SystemTick();
+    if (!cpu->nmi_pending)
+    {
+        // Load IRQ vector ($FFFE-$FFFF) into PC
+        cpu->pc = CpuReadVector(0xFFFE);
+        CPU_LOG("Jumping to IRQ vector at 0x%X\n", cpu->pc);
+    }
+    else
+    {
+        // NMI vector hijacking
+        cpu->pc = CpuReadVector(0xFFFA);
+        cpu->nmi_pending = false;
+        CPU_LOG("Jumping to NMI vector at 0x%X from hijacked IRQ\n", cpu->pc);
+    }
+
+    // NMI and IRQ have a 7 cycle cost
+    cpu->cycles += 7;
+}
+
+static void CpuNmiHandler(Cpu *cpu)
+{
+#ifndef DISABLE_DUMMY_READ_WRITES
+    // Dummy read of next instruction byte
+    CpuRead8(cpu->pc);
+    CpuRead8(cpu->pc);
 #endif
+    //printf("Nmi at PC: 0x%X\n", cpu->pc);
+    // Push high first
+    StackPush(cpu, (cpu->pc >> 8) & 0xFF);
+    // Push low next
+    StackPush(cpu, cpu->pc & 0xFF);
+    // Push status with bit 5 set
+    StackPush(cpu, cpu->status.raw | 0x20);
+
+    cpu->pc = CpuReadVector(0xFFFA);
+    cpu->status.i = 1;
+    cpu->nmi_pending = 0;
+
     // NMI and IRQ have a 7 cycle cost
     cpu->cycles += 7;
 }
@@ -506,21 +540,25 @@ static inline void BCC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (!cpu->status.c)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BCC pc offset: %d\n", offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -531,21 +569,25 @@ static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (cpu->status.c)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BCS pc offset: %d\n", offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -556,21 +598,25 @@ static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (cpu->status.z)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BEQ pc offset: %d\n", offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void BIT_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -591,21 +637,25 @@ static inline void BMI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (cpu->status.n)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BMI pc offset: %d\n", offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -616,21 +666,25 @@ static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (!cpu->status.z)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BNE pc offset: %d\n", offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -641,22 +695,26 @@ static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (!cpu->status.n)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BPL pc offset: %d\n", offset);
         //printf("BPL cross page triggered 0x%X --> 0x%X\n", cpu->pc, cpu->pc + offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void BRK_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -693,6 +751,7 @@ static inline void BRK_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     {
         // NMI vector hijacking
         cpu->pc = CpuReadVector(0xFFFA);
+        cpu->nmi_pending = false;
         CPU_LOG("Jumping to NMI vector at 0x%X from hijacked BRK\n", cpu->pc);
     }
 }
@@ -705,21 +764,25 @@ static inline void BVC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (!cpu->status.v)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - PAGE_SIZE);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BVC pc offset: %d\n", offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void BVS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -729,21 +792,25 @@ static inline void BVS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (cpu->status.v)
     {
+        uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
-        bool page_cross = !InsidePage(cpu->pc, cpu->pc + offset);
+        bool page_cross = !InsidePage(cpu->pc, final_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
         // Opcode of next instruction
         CpuRead8(cpu->pc);
         if (page_cross)
-            CpuRead8(cpu->pc - 0x100);
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
 #endif
-        cpu->pc += offset;
+        cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("PC Offset %d\n", offset);
     }
-    CpuPollIRQ(cpu);
 }
 
 static inline void CLC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1230,9 +1297,9 @@ static inline void RTI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     cpu->status.z = status.z;
 
     uint8_t pc_low = StackPull(cpu);
+    CpuPollIRQ(cpu);
     uint8_t pc_high = StackPull(cpu);
     cpu->pc = (uint16_t)pc_high << 8 | pc_low;
-    CpuPollIRQ(cpu);
 }
 
 static inline void RTS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -1679,16 +1746,15 @@ static void ExecuteOpcode(Cpu *cpu)
 
         // Execute instruction
         handler->InstrFn(cpu, handler->addr_mode, handler->page_cross_penalty);
-
         cpu->cycles += handler->cycles;
 
         if (cpu->nmi_pending)
         {
-            CPU_TriggerNMI(cpu);
+            CpuNmiHandler(cpu);
         }
         else if (cpu->irq_pending)
         {
-            HandleIRQ(cpu);
+            CpuIrqHandler(cpu);
         }
     }
     else
@@ -1714,31 +1780,7 @@ void CPU_Init(Cpu *cpu)
     cpu->sp -= 3;
 
     cpu->status.i = 1;
-}
-
-void CPU_TriggerNMI(Cpu *cpu)
-{
-#ifndef DISABLE_DUMMY_READ_WRITES
-    // Dummy read of next instruction byte
-    CpuRead8(cpu->pc);
-#endif
-    //printf("Nmi at PC: 0x%X\n", cpu->pc);
-    // Push high first
-    StackPush(cpu, (cpu->pc >> 8) & 0xFF);
-    // Push low next
-    StackPush(cpu, cpu->pc & 0xFF);
-    // Push status with bit 5 set
-    StackPush(cpu, cpu->status.raw | 0x20);
-
-    cpu->pc = CpuReadVector(0xFFFA);
-    cpu->status.i = 1;
-    cpu->nmi_pending = 0;
-
-#ifndef DISABLE_CYCLE_ACCURACY
-    SystemTick();
-#endif
-    // NMI and IRQ have a 7 cycle cost
-    cpu->cycles += 7;
+    cpu->cycles = 3;
 }
 
 void CPU_Update(Cpu *cpu)

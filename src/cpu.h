@@ -88,6 +88,5 @@ typedef struct
 void CPU_Init(Cpu *cpu);
 void CPU_Update(Cpu *cpu);
 void CPU_Reset(Cpu *cpu);
-void CPU_TriggerNMI(Cpu *cpu);
 
 #endif
