@@ -592,27 +592,40 @@ static void ApuDmcWriteSampleAddr(Apu *apu, const uint8_t data)
     //printf("Dmc sample addr: 0x%0X data: %X length: %d\n", apu->dmc.sample_addr, apu->dmc.sample_buffer, apu->dmc.sample_length);
 }
 
+// DMC DMA
 static void ApuUpdateDmcSample(Apu *apu)
 {
+#ifndef DISABLE_CYCLE_ACCURACY
+    // Halt and dummy cycle
+    SystemAddCpuCycles(2);
+    apu->cycles_to_run += 2;
+    PPU_Tick(SystemGetPpu());
+    PPU_Tick(SystemGetPpu());
+
+    // Optional alignment cycle
+    if (!(apu->cycles & 1))
+    {
+        SystemAddCpuCycles(1);
+        ++apu->cycles_to_run;
+        PPU_Tick(SystemGetPpu());
+    }
+
+    apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
+    SystemAddCpuCycles(1);
+    ++apu->cycles_to_run;
+    PPU_Tick(SystemGetPpu());
+#else
     apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
     SystemAddCpuCycles(4);
-    PPU_Tick(SystemGetPpu());
-    PPU_Tick(SystemGetPpu());
-    PPU_Tick(SystemGetPpu());
-    PPU_Tick(SystemGetPpu());
+#endif
 
     apu->dmc.empty = false;
     apu->dmc.addr_counter = MAX(0x8000, (apu->dmc.addr_counter + 1) & 0xFFFF);
 
-    apu->dmc.bytes_remaining--;
-    if (!apu->dmc.bytes_remaining && apu->dmc.control.loop)
+    if (!(--apu->dmc.bytes_remaining))
     {
-        apu->dmc.restart = true;
-    }
-    else if (!apu->dmc.bytes_remaining && apu->dmc.control.irq)
-    {
-        apu->status.dmc_interrupt = 1;
-        apu->finish_early = true;
+        apu->dmc.restart = apu->dmc.control.loop;
+        apu->status.dmc_interrupt = ~apu->dmc.control.loop & apu->dmc.control.irq;
     }
 }
 
