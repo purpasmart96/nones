@@ -5,7 +5,7 @@ uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr);
 uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr);
 void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data);
 
-bool Mmc3ClockIrqCounter(Cart *cart);
+void Mmc3ClockIrqCounter(Cart *cart);
 bool PollMapperIrq(void);
 void MapperInit(Cart *cart);
 

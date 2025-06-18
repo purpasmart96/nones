@@ -373,7 +373,7 @@ void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
         cart->WriteFn(cart, addr, data);
 }
 
-bool Mmc3ClockIrqCounter(Cart *cart)
+void Mmc3ClockIrqCounter(Cart *cart)
 {
     if (!mmc3.irq_counter || mmc3.irq_reload)
     {
@@ -393,8 +393,6 @@ bool Mmc3ClockIrqCounter(Cart *cart)
     {
         mmc3.irq_reload = false;
     }
-
-    return mmc3.irq_pending;
 }
 
 bool PollMapperIrq(void)

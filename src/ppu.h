@@ -210,13 +210,43 @@ typedef struct
     uint8_t b;
 } Color;
 
+typedef union
+{
+    uint8_t raw;
+    struct {
+        uint8_t palette : 2;
+        uint8_t padding : 3;
+        uint8_t priority : 1;
+        uint8_t horz_flip : 1;
+        uint8_t vert_flip : 1;
+    };
+} Attribs;
+
+typedef union
+{
+    uint8_t raw[4];
+    struct
+    {
+        uint8_t y;
+        uint8_t tile_id;
+        Attribs attribs;
+        uint8_t x;
+    };
+} Sprite;
+
 typedef struct
 {
-    uint64_t cycles;
+    Sprite sprites[64];
+    int64_t cycles;
     uint64_t frames;
     int32_t cycles_to_run;
-    uint32_t cycle_counter;
+    int32_t cycle_counter;
     int scanline;
+
+    // Double buffer for SDL
+    // buffer 0 is the backbuffer
+    // buffer 1 is the frontbuffer
+    uint32_t *buffers[2];
 
     // PPU internel regs
     struct {
@@ -243,55 +273,28 @@ typedef struct
     ShiftReg attrib_shift_high;
     uint8_t sprite_lsb;
     uint8_t sprite_msb;
+    //ShiftReg sprite_shift_low;
+    //ShiftReg sprite_shift_high;
 
-    bool sprite0_loaded;
     // Per scanline
     int found_sprites;
-
+    bool sprite0_loaded;
+    
     uint32_t bus_addr;
-    uint8_t bus_latch;
     bool rendering;
-    bool prev_rendering;
-    bool ignore_vblank;
+    bool clear_vblank;
     bool frame_finished;
-    bool finish_early;
 
-    // Double buffer for SDL
-    // buffer 0 is the backbuffer
-    // buffer 1 is the frontbuffer
-    uint32_t *buffers[2];
-    // External regs for cpu
+    // External io regs for cpu
     PpuCtrl ctrl;
     PpuMask mask;
     PpuStatus status;
     uint8_t oam_addr;
     // Read buffer for $2007
     uint8_t buffered_data;
+    // io data bus
+    uint8_t io_bus;
 } Ppu;
-
-typedef union
-{
-    uint8_t raw;
-    struct {
-        uint8_t palette : 2;
-        uint8_t padding : 3;
-        uint8_t priority : 1;
-        uint8_t horz_flip : 1;
-        uint8_t vert_flip : 1;
-    };
-} Attribs;
-
-typedef union
-{
-    uint8_t raw[4];
-    struct
-    {
-        uint8_t y;
-        uint8_t tile_id;
-        Attribs attribs;
-        uint8_t x;
-    };
-} Sprite;
 
 void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
 void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);

@@ -39,8 +39,8 @@ int SystemLoadCart(Arena *arena, System *system, const char *path)
 void SystemInit(System *system, uint32_t **buffers)
 {
     PPU_Init(system->ppu, system->cart->mirroring, buffers);
-    CPU_Init(system->cpu);
     APU_Init(system->apu);
+    CPU_Init(system->cpu);
 }
 
 uint8_t SystemReadOpenBus(void)
@@ -74,13 +74,18 @@ static void SystemStartOamDma(const uint8_t page_num)
 
     // Older faster version
     //uint8_t *data_ptr = SystemGetPtr(base_addr);
-    //memcpy(sprites, data_ptr, sizeof(Sprite) * 64);
+    //memcpy(system_ptr->ppu->sprites, data_ptr, sizeof(Sprite) * 64);
     //SystemAddCpuCycles(513);
 
     // Add cpu halt cycle
     SystemAddCpuCycles(1);
 #ifndef DISABLE_CYCLE_ACCURACY
     SystemTick();
+    if (system_ptr->apu->cycles & 1)
+    {
+        SystemAddCpuCycles(1);
+        SystemTick();
+    }
 #endif
     for (int i = 0; i < 256; i++)
     {
@@ -292,8 +297,7 @@ void PpuClockMMC3(void)
     if (system_ptr->cart->mapper_num != 4)
         return;
 
-    if (Mmc3ClockIrqCounter(system_ptr->cart))
-        system_ptr->ppu->finish_early = true;
+    Mmc3ClockIrqCounter(system_ptr->cart);
 }
 
 void SystemRun(System *system, bool paused, bool step_instr, bool step_frame)
@@ -337,7 +341,7 @@ void SystemPollNmi(void)
         system_ptr->cpu->nmi_pending = true;
     system_ptr->cpu->nmi_pin = current_nmi_pin;
     //if (system_ptr->cpu->nmi_pending)
-    //    printf("NMI at ppu cycle: %d scanline:%d\n", system_ptr->ppu->cycle_counter, system_ptr->ppu->scanline);
+    //    printf("NMI falling edge at ppu cycle: %d scanline:%d\n", system_ptr->ppu->cycle_counter, system_ptr->ppu->scanline);
 }
 
 void SystemTick(void)

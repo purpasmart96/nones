@@ -2,6 +2,7 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <assert.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
 
@@ -20,8 +21,6 @@
 static uint8_t vram[0x800];
 // Pointers to handle mirroring
 static uint8_t *nametables[4];
-// OAM
-static Sprite sprites[64];
 // OAM Secondary
 static Sprite sprites_secondary[8];
 static uint8_t palette_table[32];
@@ -133,8 +132,8 @@ static void PpuSetSprite0Pixel(const int x, const int y, const uint8_t pixel)
 
 static bool PpuSprite0Hit(Ppu *ppu, int cycle)
 {
-    return (ppu->scanline >= sprites[0].y + 1 &&
-            cycle <= (sprites[0].x + 8) && cycle >= sprites[0].x);
+    return (ppu->scanline >= ppu->sprites[0].y + 1 &&
+            cycle <= (ppu->sprites[0].x + 8) && cycle >= ppu->sprites[0].x);
 }
 
 static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
@@ -264,10 +263,7 @@ static void PPU_WriteCtrl(Ppu *ppu, const uint8_t data)
 {
     ppu->ctrl.raw = data;
     ppu->t.scrolling.name_table_sel = data & 0x3;
-
-    // TODO: Delay by one instruction
-    //if (ppu->ctrl.vblank_nmi & ppu->status.vblank)
-    //    SystemSendNmiToCpu();
+    //printf("PPU_WriteCtrl: NMI: %d scanline:%d cycle: %d\n", ppu->ctrl.vblank_nmi, ppu->scanline, ppu->cycle_counter);
 }
 
 void PPU_WriteData(Ppu *ppu, const uint8_t data)
@@ -317,9 +313,9 @@ static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
 {
     if (!ppu->w)
     {
-        // First write: x scroll (fine X + coarse X)
+        // First write: X scroll (fine X + coarse X)
         ppu->t.scrolling.coarse_x = value >> 3;
-        ppu->x = value & 0x7; // Fine X scroll
+        ppu->x = value & 0x7;
     }
     else
     {
@@ -332,20 +328,16 @@ static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
 
 uint8_t PPU_ReadStatus(Ppu *ppu)
 {
-    PpuStatus status_value = ppu->status;
-    status_value.open_bus = ppu->bus_latch & 0x1F;
+    PpuStatus ret_status = ppu->status;
+    ret_status.open_bus = ppu->io_bus & 0x1F;
 
-    //printf("PPU_ReadStatus : %d scanline:%d cycle: %d\n", ppu->ctrl.vblank_nmi, ppu->scanline, ppu->cycle_counter);
-    // I think this is a hack, prob shouldn't be done normally
-    // Allows the vblank timing tests to pass
-    if (ppu->scanline == 241 && ppu->cycle_counter == 1)
-        ppu->ignore_vblank = true;
+    //printf("PPU_ReadStatus : %d scanline:%d cycle: %d\n", ppu->status.vblank, ppu->scanline, ppu->cycle_counter);
 
     // Clear vblank and write toggle
-    ppu->status.vblank = 0;
+    ppu->clear_vblank = true;
     ppu->w = 0;
 
-    return status_value.raw;
+    return ret_status.raw;
 }
 
 static uint8_t PpuReadChr(Ppu *ppu, const uint16_t addr)
@@ -376,7 +368,7 @@ uint8_t PPU_ReadData(Ppu *ppu)
             // Grab the stale buffer value
             data = ppu->buffered_data;
             // Load new data into buffer
-            ppu->buffered_data = PpuReadChr(ppu, addr);
+            ppu->buffered_data = PpuBusReadChrRom(addr);
             break;
         }
 
@@ -391,7 +383,7 @@ uint8_t PPU_ReadData(Ppu *ppu)
             }
             else
             {
-                data = (palette_table[addr & 0x1F] & 0x3F) | (ppu->bus_latch & 0xC0);
+                data = (palette_table[addr & 0x1F] & 0x3F) | (ppu->io_bus & 0xC0);
             }
             break;
         }
@@ -418,18 +410,18 @@ uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr)
     switch (addr & 7)
     {
         case PPU_STATUS:
-            ppu->bus_latch = PPU_ReadStatus(ppu);
+            ppu->io_bus = PPU_ReadStatus(ppu);
             break;
         case OAM_DATA:
-            ppu->bus_latch = sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3];
+            ppu->io_bus = ppu->sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3];
             break;
         case PPU_DATA:
-            ppu->bus_latch = PPU_ReadData(ppu);
+            ppu->io_bus = PPU_ReadData(ppu);
             break;
     }
 
-    // Read value from the bus;
-    return ppu->bus_latch;
+    // Read value from the io bus
+    return ppu->io_bus;
 }
 
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
@@ -454,7 +446,7 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
         {
             if (!ppu->rendering || (ppu->scanline > 239 && ppu->scanline < 261))
             {
-                sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3] = data;
+                ppu->sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3] = data;
                 ++ppu->oam_addr;
             }
             else
@@ -473,7 +465,7 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             PPU_WriteData(ppu, data);
             break;
     }
-    ppu->bus_latch = data;
+    ppu->io_bus = data;
 }
 
 // Set the mirroring mode for the nametables
@@ -514,7 +506,6 @@ void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers)
     ppu->nt_mirror_mode = name_table_layout;
     PpuSetMirroring(ppu->nt_mirror_mode, 0);
     ppu->rendering = false;
-    ppu->prev_rendering = false;
     ppu->buffers[0] = buffers[0];
     ppu->buffers[1] = buffers[1];
     ppu->ext_input = 0;
@@ -530,8 +521,7 @@ static void DrawPixel(uint32_t *buffer, int x, int y, Color color)
 {
     if (x < 0 || y < 0 || x >= SCREEN_WIDTH || y >= SCREEN_HEIGHT)
         return;
-    //assert(x >= 0 && x <= SCREEN_WIDTH);
-    //assert(y >= 0 && y <= SCREEN_HEIGHT);
+
     buffer[y * SCREEN_WIDTH + x] = (uint32_t)((color.r << 24) | (color.g << 16) | (color.b << 8) | 255);
 }
 
@@ -661,7 +651,7 @@ static void PpuUpdateSprites(Ppu *ppu)
 
     for (int n = 0; n < 64; n++)
     {
-        Sprite curr_sprite = sprites[n];
+        Sprite curr_sprite = ppu->sprites[n];
         if (ppu->scanline >= curr_sprite.y + 1 && ppu->scanline < curr_sprite.y + (ppu->ctrl.sprite_size ? 16 : 8) + 1)
         {
             if (ppu->found_sprites == 8)
@@ -800,8 +790,14 @@ void PPU_Tick(Ppu *ppu)
 {
     ppu->cycles_to_run += 3;
 
-    while (ppu->cycles_to_run != 0)
+    while (ppu->cycles_to_run > 0)
     {
+        if (ppu->cycles_to_run == 2)
+        {
+            //printf("Nmi asserted: frame:%ld scanline:%d cycle:%d\n", ppu->frames, ppu->scanline, ppu->cycle_counter);
+            SystemPollNmi();
+        }
+
         if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
 
@@ -861,7 +857,7 @@ void PPU_Tick(Ppu *ppu)
             //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
             ppu->bus_addr = ppu->v.raw & 0x3FFF;
             // Vblank starts at scanline 241
-            ppu->status.vblank = !ppu->ignore_vblank;
+            ppu->status.vblank = 1;
             // Copy the finished image in the back buffer to the front buffer
             memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
         }
@@ -882,11 +878,6 @@ void PPU_Tick(Ppu *ppu)
             ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
         }
 
-        if (ppu->rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
-        {
-            ppu->cycle_counter = 340;
-        }
-
         ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
         ++ppu->cycles;
         --ppu->cycles_to_run;
@@ -895,16 +886,28 @@ void PPU_Tick(Ppu *ppu)
         {
             // 1 scanline = 341 PPU cycles
             ppu->scanline = (ppu->scanline + 1) % 262;
-            ppu->ignore_vblank = false;
         }
 
         if (!ppu->cycle_counter && !ppu->scanline)
         {
             ppu->frame_finished = true;
-            // Clear bus latch at the end of each frame
+            // Clear io bus at the end of each frame
             // (Actually random on real hardware and can be up to a 30 frame delay)
-            ppu->bus_latch = 0;
+            ppu->io_bus = 0;
             ++ppu->frames;
+        }
+
+        // Seems like the vblank flag side effect from reading PpuStatus is delayed by one dot/cycle
+        if (ppu->clear_vblank)
+        {
+            // Clear vblank
+            ppu->status.vblank = 0;
+            ppu->clear_vblank = false;
+        }
+
+        if (ppu->mask.bg_rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
+        {
+            ++ppu->cycle_counter;
         }
     }
     ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
@@ -920,7 +923,6 @@ void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
     //if (ppu->cycles_to_run > -3)
     //    printf("Syncing of %d Ppu cycles\n", ppu->cycles_to_run + 3);
     PPU_Tick(ppu);
-    ppu->finish_early = false;
 }
 
 void PPU_Reset(Ppu *ppu)
