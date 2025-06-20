@@ -195,10 +195,16 @@ void NonesRun(Nones *nones, const char *path)
     bool paused = false;
     bool step_frame = false;
     bool step_instr = false;
+    double previous_time = 0;
+    double current_time = 0;
+    double accumulator = 0;
     while (!quit)
     {
-        //memset(pixels, 0, SCREEN_WIDTH * SCREEN_HEIGHT * sizeof(uint32_t));
         uint64_t start_time = SDL_GetTicksNS();
+        previous_time = current_time;
+        current_time = start_time;
+        double delta_time = current_time - previous_time;
+        accumulator += delta_time;
 
         while (SDL_PollEvent(&event))
         {
@@ -265,11 +271,16 @@ void NonesRun(Nones *nones, const char *path)
         else if (kb_state[SDL_SCANCODE_5])
             NonesSetIntegerScale(nones, 5);
 
-        SystemRun(nones->system, paused, step_instr, step_frame);
-        if (step_instr | step_frame)
+        while (accumulator >= FRAME_TIME_NS)
         {
-            step_instr = step_frame = false;
-            paused = true;
+            SystemRun(nones->system, paused, step_instr, step_frame);
+            if (step_instr | step_frame)
+            {
+                step_instr = step_frame = false;
+                paused = true;
+            }
+
+            accumulator -= FRAME_TIME_NS;
         }
 
         SDL_LockTexture(nones->texture, NULL, &raw_pixels, &raw_pitch);
@@ -300,10 +311,10 @@ void NonesRun(Nones *nones, const char *path)
         //    timer += 1000;
         //}
 
-        double frame_time = (SDL_GetTicksNS() - start_time);
-        if (frame_time < FRAME_TIME_NS)
+        double frame_time = SDL_GetTicksNS() - start_time;
+        if (frame_time < FRAME_CAP_NS)
         {
-            SDL_DelayPrecise(FRAME_TIME_NS - frame_time);
+            SDL_DelayNS(FRAME_CAP_NS - frame_time);
         }
     }
 
