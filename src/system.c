@@ -123,11 +123,17 @@ uint8_t BusRead(const uint16_t addr)
             {
                 if (addr == 0x4016)
                 {
-                    system_ptr->bus_data |= ReadJoyPadReg(system_ptr->joy_pad1) & 0x1F;
+                    // Clear bits 0–4
+                    system_ptr->bus_data &= 0xE0;
+                    // Update bits 0–4
+                    system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad1) & 0x1F);
                 }
                 else if (addr == 0x4017)
                 {
-                    system_ptr->bus_data |= ReadJoyPadReg(system_ptr->joy_pad2) & 0x1F;
+                    // Clear bits 0–4
+                    system_ptr->bus_data &= 0xE0;
+                    // Update bits 0–4
+                    system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad2) & 0x1F);
                 }
                 else
                 {
