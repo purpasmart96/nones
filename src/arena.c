@@ -25,9 +25,9 @@ Arena *ArenaCreate(size_t bytes)
 void *ArenaPush(Arena *arena, size_t bytes)
 {
     size_t padded_size = (bytes + ALIGN - 1) & ~(ALIGN - 1);
-    assert((arena->size + padded_size) <= arena->capacity);
+    assert((arena->size + padded_size) < arena->capacity);
 
-    void *ptr = arena->heap + arena->size;
+    void *ptr = &arena->heap[arena->size];
     DEBUG_LOG("Adding a %zd byte block to the arena\n", padded_size);
 
     arena->size += padded_size;
