@@ -214,17 +214,18 @@ static inline uint16_t GetIndirectYAddr(Cpu *cpu, bool page_cycle, bool dummy_re
     // Fetch high (with zero-page wraparound)
     uint8_t addr_high = CpuRead8((zp_addr + 1) & PAGE_MASK);
 
-    uint16_t base_addr = (uint16_t)addr_high << 8 | addr_low;
-    uint16_t final_addr = base_addr + cpu->y;
+    uint16_t addr_low_final = addr_low + cpu->y;
+    bool page_cross = addr_low_final > 255;
+    uint16_t final_addr = (uint16_t)addr_high << 8 | (uint8_t)(addr_low_final);
 
-    bool page_cross = PageCross(base_addr, final_addr);
-
-    // Apply extra cycle only if required
-    cpu->cycles += (page_cross & page_cycle);
 #ifndef DISABLE_DUMMY_READ_WRITES
     if (dummy_read & (page_cross || !page_cycle))
-        CpuRead8(final_addr - PAGE_SIZE);
+        CpuRead8(final_addr);
 #endif
+
+    final_addr += page_cross * PAGE_SIZE;
+    // Apply extra cycle only if required
+    cpu->cycles += (page_cross & page_cycle);
     return final_addr;
 }
 
@@ -463,8 +464,6 @@ static inline uint16_t GetOperandAddrFromMem(Cpu *cpu, AddressingMode addr_mode,
 {
     switch (addr_mode)
     {
-        //case Immediate:
-        //    return ++cpu->pc;
         case ZeroPage:
             return GetZPAddr(cpu);
         case ZeroPageX:
@@ -542,6 +541,7 @@ static inline void BCC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (!cpu->status.c)
     {
         uint16_t final_addr = cpu->pc + offset;
@@ -560,10 +560,6 @@ static inline void BCC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BCC pc offset: %d\n", offset);
     }
-    else
-    {
-        CpuPollIRQ(cpu);
-    }
 }
 
 static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -574,6 +570,7 @@ static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (cpu->status.c)
     {
         uint16_t final_addr = cpu->pc + offset;
@@ -592,10 +589,6 @@ static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BCS pc offset: %d\n", offset);
     }
-    else
-    {
-        CpuPollIRQ(cpu);
-    }
 }
 
 static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -606,6 +599,7 @@ static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (cpu->status.z)
     {
         uint16_t final_addr = cpu->pc + offset;
@@ -623,10 +617,6 @@ static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->pc = final_addr;
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BEQ pc offset: %d\n", offset);
-    }
-    else
-    {
-        CpuPollIRQ(cpu);
     }
 }
 
@@ -648,6 +638,7 @@ static inline void BMI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (cpu->status.n)
     {
         uint16_t final_addr = cpu->pc + offset;
@@ -666,10 +657,6 @@ static inline void BMI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BMI pc offset: %d\n", offset);
     }
-    else
-    {
-        CpuPollIRQ(cpu);
-    }
 }
 
 static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -680,6 +667,7 @@ static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (!cpu->status.z)
     {
         uint16_t final_addr = cpu->pc + offset;
@@ -698,10 +686,6 @@ static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BNE pc offset: %d\n", offset);
     }
-    else
-    {
-        CpuPollIRQ(cpu);
-    }
 }
 
 static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
@@ -712,6 +696,7 @@ static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     int8_t offset = (int8_t)CpuRead8(++cpu->pc);
     ++cpu->pc;
+    CpuPollIRQ(cpu);
     if (!cpu->status.n)
     {
         uint16_t final_addr = cpu->pc + offset;
@@ -730,10 +715,6 @@ static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
         cpu->cycles += 1 + page_cross;
         CPU_LOG("BPL pc offset: %d\n", offset);
         //printf("BPL cross page triggered 0x%X --> 0x%X\n", cpu->pc, cpu->pc + offset);
-    }
-    else
-    {
-        CpuPollIRQ(cpu);
     }
 }
 
