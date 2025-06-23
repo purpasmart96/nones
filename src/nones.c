@@ -113,7 +113,8 @@ static void NonesHandleInput(Nones *nones)
 
 static void NonesInit(Nones *nones, const char *path)
 {
-    nones->arena = ArenaCreate(1024 * 1024 * 2);
+    memset(nones, 0, sizeof(*nones));
+    nones->arena = ArenaCreate(1024 * 1024 * 3);
     nones->system = SystemCreate(nones->arena);
 
     if (SystemLoadCart(nones->arena, nones->system, path))

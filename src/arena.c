@@ -14,8 +14,8 @@ static const size_t ALIGN = alignof(max_align_t);
 
 Arena *ArenaCreate(size_t bytes)
 {
-    Arena *arena = malloc(sizeof(*arena));
-    arena->heap = malloc(bytes);
+    Arena *arena = calloc(1, sizeof(*arena));
+    arena->heap = calloc(1, bytes);
     arena->size = 0;
     arena->capacity = bytes;
 
