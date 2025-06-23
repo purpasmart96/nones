@@ -6,7 +6,7 @@ A simple NTSC NES emulator written in C.
 
 NROM, UxROM, AxRom, CNROM, MMC1, are currently supported along with most MMC3 based games.
 
-Supports all of the origianl NES audio channels, which includes square, triangle, noise, and dmc audio channels.
+Supports all of the original NES audio channels, which includes square, triangle, noise, and dmc audio channels.
 
 Basic gamepad support, currently, button layout is fixed to how it was on the original joypad.
 
