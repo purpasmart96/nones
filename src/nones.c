@@ -42,9 +42,10 @@ static void upsample_to_44khz(const float *high_rate_buffer, int16_t *output_44k
 
 void NonesPutSoundData(Apu *apu)
 {
-    const int minimum_audio = (4096 * sizeof(int16_t)); // * 2) / 2; // Stereo samples
-    if (SDL_GetAudioStreamQueued(stream) < minimum_audio) {
-
+    // Buffer size of 4096 samples
+    const int minimum_audio = (4096 * sizeof(int16_t));
+    if (SDL_GetAudioStreamQueued(stream) < minimum_audio)
+    {
         upsample_to_44khz(apu->buffer, apu->outbuffer, apu->odd_frame);
 
         SDL_PutAudioStreamData(stream, apu->outbuffer, sizeof(apu->outbuffer));
@@ -55,6 +56,7 @@ static void NonesSetIntegerScale(Nones *nones, int scale)
 {
     SDL_SetWindowSize(nones->window, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
     SDL_SetRenderScale(nones->renderer, scale, scale);
+    // Doesn't work on Wayland...
     SDL_SetWindowPosition(nones->window,  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED);
 }
 
@@ -204,8 +206,9 @@ static void NonesShutdown(Nones *nones)
 {
     SystemShutdown(nones->system);
 
-    SDL_DestroyTexture(nones->texture);
+    // Handles textures as well, so no need to call SDL_DestroyTexture here
     SDL_DestroyRenderer(nones->renderer);
+
     SDL_free(nones->gamepads);
     if (nones->gamepad1)
         SDL_CloseGamepad(nones->gamepad1);
