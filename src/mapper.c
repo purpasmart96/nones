@@ -151,30 +151,17 @@ static uint8_t NromReadChrRom(Cart *cart, const uint16_t addr)
 
 static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
 {
-    uint16_t bank_size = mmc1.control.chr_rom_bank_mode ? 0x1000 : 0x2000;
-    
-    // Select chr bank (5-bit value, max 32 banks)
-    uint32_t bank;
-    if (mmc1.control.chr_rom_bank_mode)  
-    {
-        // 4 KB mode: separate banks for $0000-$0FFF and $1000-$1FFF
-        if (addr < 0x1000)
-            bank = mmc1.chr_bank0;
-        else
-            bank = mmc1.chr_bank1;
-    }
-    else
-    {
-        // 8 KB mode: only chr_bank0 is used, but low bit is ignored?
-        bank = (mmc1.chr_bank0 & 0x1E);
-    }
+    uint32_t bank_size = mmc1.control.chr_rom_bank_mode ? 0x1000 : 0x2000;
 
-    // If CHR is RAM and only 8 KB, the bank number is ANDed with 1
-    if (cart->chr_rom.is_ram && cart->chr_rom.size == CART_RAM_SIZE)
+    // Select chr bank (5-bit value, max 32 banks)
+    uint32_t bank = (addr < 0x1000 || !mmc1.control.chr_rom_bank_mode) ? mmc1.chr_bank0 : mmc1.chr_bank1;
+
+    // If CHR is only 8 KiB, the bank number is ANDed with 1
+    if (cart->chr_rom.size == 0x2000)
         bank &= 1;
 
     // Compute CHR-ROM address
-    uint32_t final_addr = (bank * 0x1000) + (addr & (bank_size - 1));
+    uint32_t final_addr = ((bank * 0x1000) + (addr & (bank_size - 1)));
 
     return cart->chr_rom.data[final_addr];
 }
