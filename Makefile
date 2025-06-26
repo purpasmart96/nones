@@ -2,18 +2,13 @@ CC := gcc
 CFLAGS := -std=c11 -Wall -Wextra -pedantic
 LDFLAGS := -lm -lSDL3
 REL_FLAGS := -O2 -D DISABLE_DEBUG -D DISABLE_CPU_LOG
-DBG_FLAGS := -ggdb -O0 -D DISABLE_CPU_LOG
+DBG_FLAGS := -ggdb -Og -D DISABLE_CPU_LOG
 # For profiling
-#DBG_FLAGS := -ggdb -O0
-#DBG_FLAGS := -O2 -fsanitize=address -D DISABLE_DEBUG
+#DBG_FLAGS := -ggdb -Og -D DISABLE_DEBUG -D DISABLE_CPU_LOG
+# For memory checks
+#DBG_FLAGS := -ggdb -O2 -fsanitize=address -D DISABLE_DEBUG -D DISABLE_CPU_LOG
 
 ARCH := $(shell uname -m)
-
-ifeq ($(ARCH), i686)
-    ARCH := x86
-else ifeq ($(ARCH), i386)
-    ARCH := x86
-endif
 
 BIN := nones
 VERSION ?= 0.1
