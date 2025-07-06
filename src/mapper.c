@@ -156,6 +156,9 @@ static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
     // Select chr bank (5-bit value, max 32 banks)
     uint32_t bank = (addr < 0x1000 || !mmc1.control.chr_rom_bank_mode) ? mmc1.chr_bank0 : mmc1.chr_bank1;
 
+    if (!mmc1.control.chr_rom_bank_mode)
+        bank &= 0x1E;
+
     // If CHR is only 8 KiB, the bank number is ANDed with 1
     if (cart->chr_rom.size == 0x2000)
         bank &= 1;
