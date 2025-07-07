@@ -11,7 +11,7 @@ DBG_FLAGS := -ggdb -Og -D DISABLE_CPU_LOG
 ARCH := $(shell uname -m)
 
 BIN := nones
-VERSION ?= 0.1
+VERSION ?= 0.2.0
 TARBALL_NAME := $(BIN)-$(VERSION)-linux-$(ARCH).tar.gz
 
 # Posix compatiable version of $(wildcard)
@@ -67,5 +67,5 @@ tarball:
 	else \
 		echo "Creating tarball $(TARBALL_NAME)..."; \
 		strip $(BIN); \
-		tar -czf $(TARBALL_NAME) $(BIN); \
+		tar -czf $(TARBALL_NAME) $(BIN) "LICENSE" "README.md"; \
 	fi
