@@ -8,11 +8,16 @@ DBG_FLAGS := -ggdb -Og -D DISABLE_CPU_LOG
 # For memory checks
 #DBG_FLAGS := -ggdb -O2 -fsanitize=address -D DISABLE_DEBUG -D DISABLE_CPU_LOG
 
+ifeq ($(OS), Windows_NT)
+$(error Windows makefile support is currently not ready yet.)
+endif
+
+OS := $(shell uname -s | tr '[:upper:]' '[:lower:]')
 ARCH := $(shell uname -m)
 
 BIN := nones
-VERSION ?= 0.2.0
-TARBALL_NAME := $(BIN)-$(VERSION)-linux-$(ARCH).tar.gz
+VERSION := 0.2.0
+TARBALL_NAME := $(BIN)-$(VERSION)-$(OS)-$(ARCH).tar.gz
 
 # Posix compatiable version of $(wildcard)
 SRCS := $(shell echo src/*.c)
@@ -57,15 +62,15 @@ run:
 	./$(BIN)
 
 clean:
-	@rm -rf $(BUILD_DIR)
+	@if [ -d "$(BUILD_DIR)" ]; then rm -r $(BUILD_DIR); else echo 'Nothing to clean up'; fi
 	@if [ -f "$(BIN)" ]; then rm $(BIN); fi
 	@if [ -f "$(TARBALL_NAME)" ]; then rm $(TARBALL_NAME); fi
 
 tarball:
-	@if [ ! -f "$(BIN)" ]; then \
-		echo "Please run make before creating a tarball."; \
-	else \
-		echo "Creating tarball $(TARBALL_NAME)..."; \
+	@if [ -f "$(BIN)" ]; then \
 		strip $(BIN); \
 		tar -czf $(TARBALL_NAME) $(BIN) "LICENSE" "README.md"; \
+		echo "Created tarball $(TARBALL_NAME)..."; \
+	else \
+		echo "Please run 'make' before creating a tarball."; \
 	fi
