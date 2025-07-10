@@ -1,24 +1,6 @@
 #ifndef APU_H
 #define APU_H
 
-typedef union
-{
-    uint16_t raw;
-    struct
-    {
-        uint16_t low : 8;
-        uint16_t high : 3;
-    };
-} ApuTimerReg;
-
-typedef struct
-{
-    // Period reload value
-    uint16_t period;
-    // Counter
-    uint16_t counter;
-} ApuSequencer;
-
 typedef struct
 {
     uint16_t counter;
@@ -80,15 +62,6 @@ typedef union
 typedef union
 {
     uint8_t raw;
-
-    //struct
-    //{
-    //    uint8_t pulse1 : 1;
-    //    uint8_t pulse2 : 1;
-    //    uint8_t triangle : 1;
-    //    uint8_t noise : 1;
-    //    uint8_t dmc : 1;
-    //} write;
     struct
     {
         uint8_t pulse1 : 1;
@@ -97,8 +70,8 @@ typedef union
         uint8_t noise : 1;
         uint8_t dmc : 1;
         uint8_t : 1;
-        uint8_t frame_interrupt : 1;
-        uint8_t dmc_interrupt : 1;
+        uint8_t frame_irq : 1;
+        uint8_t dmc_irq : 1;
     };
 } ApuStatus;
 
@@ -109,8 +82,8 @@ typedef union
     struct
     {
         uint8_t padding : 6;
-        uint8_t interrupt_inhibit : 1;
-        uint8_t sequencer_mode : 1;
+        uint8_t irq_inhibit : 1;
+        uint8_t seq_mode : 1;
     };
 } ApuFrameCounterControl;
 
@@ -124,9 +97,10 @@ typedef union
 typedef struct
 {
     ApuFrameCounterControl control;
-    uint16_t counter;
+    int timer;
+    int16_t step;
     bool interrupt;
-    bool clock_all;
+    bool reset;
 } ApuFrameCounter;
 
 // When the timer clocks the shift register, the following actions occur in order:
@@ -183,10 +157,12 @@ typedef union
 
 typedef struct
 {
+    float buffer[29781];
+    int16_t outbuffer[735];
+
     uint64_t cycles;
     int64_t prev_cpu_cycles;
     int32_t cycles_to_run;
-    int cycle_counter;
 
     struct {
         ApuPulseReg reg;
@@ -269,28 +245,32 @@ typedef struct
         uint8_t output_level : 7;
     } dmc;
 
-    ApuStatus status;
     ApuFrameCounter frame_counter;
+    ApuStatus status;
 
-    int current_sample;
-    float buffer[29781];
-    int16_t outbuffer[735];
-
-    bool odd_frame;
-    bool finish_early;
     float mixed_sample;
-    float sample_left;
-    float sample_right;
-    int sequence_step;
+    int alignment;
+    int delay;
+    //int clear_frame_irq_delay;
+    int current_sample;
+    //bool clear_frame_irq;
+    bool frame;
+    bool odd_frame;
 } Apu;
+
+typedef enum 
+{
+    SEQ_CLOCK_NONE,
+    // Envelopes & triangle's linear counter
+    SEQ_CLOCK_QUARTER_FRAME,
+    // Length counters & sweep units
+    SEQ_CLOCK_HALF_FRAME,
+} SequencerClockEvent;
 
 typedef struct
 {
     int cycles;
-    // Envelopes & triangle's linear counter
-    bool quarter_frame_clock;
-    // Length counters & sweep units
-    bool half_frame_clock;
+    SequencerClockEvent event;
     // Frame interrupt flag 
     bool frame_interrupt;
 } SequenceStep;
@@ -325,7 +305,6 @@ uint8_t ReadAPURegister(Apu *apu, const uint16_t addr);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
 void APU_Init(Apu *apu);
-//void APU_Update(Apu *apu, uint32_t cycles_delta);
 void APU_Update(Apu *apu, uint64_t cpu_cycles);
 void APU_Tick(Apu *apu);
 void APU_Reset(Apu *apu);
