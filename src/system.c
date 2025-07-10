@@ -89,11 +89,14 @@ static void SystemStartOamDma(const uint8_t page_num)
 #endif
     for (int i = 0; i < 256; i++)
     {
-        // OAM DMA uses Ppu reg $2004 (OAM_DATA) internally
-        WritePPURegister(system_ptr->ppu,OAM_DATA_REG, BusRead(base_addr++));
         SystemAddCpuCycles(2);
+        // OAM DMA uses Ppu reg $2004 (OAM_DATA) internally
+        const uint8_t data = BusRead(base_addr++);
 #ifndef DISABLE_CYCLE_ACCURACY
         SystemTick();
+#endif
+        BusWrite(OAM_DATA_REG, data);
+#ifndef DISABLE_CYCLE_ACCURACY
         SystemTick();
 #endif
     }
@@ -135,9 +138,9 @@ uint8_t BusRead(const uint16_t addr)
                     // Update bits 0–4
                     system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad2) & 0x1F);
                 }
-                else
+                else if (addr == 0x4015)
                 {
-                    system_ptr->bus_data = ReadAPURegister(system_ptr->apu, addr);
+                    return ReadAPURegister(system_ptr->apu, addr);
                 }
                 break;
             }
