@@ -70,6 +70,9 @@ static void CpuIrqHandler(Cpu *cpu)
     //printf("IRQ at PC: 0x%X\n", cpu->pc);
     StackPush(cpu, (cpu->pc >> 8) & 0xFF);
     StackPush(cpu, cpu->pc & 0xFF);
+
+    //const bool nmi_hijack = cpu->nmi_pending;
+
     // Push Processor Status (clear Break flag)
     Flags status = cpu->status;
     status.b = 0;
@@ -354,7 +357,7 @@ static inline void ShiftOneLeft(Cpu *cpu, uint8_t *operand)
     UPDATE_FLAGS_NZ(*operand);
 }
 
-static inline void ShiftOneLeftFromMem(Cpu *cpu, const uint16_t operand_addr)
+static inline uint8_t ShiftOneLeftFromMem(Cpu *cpu, const uint16_t operand_addr)
 {
     uint8_t operand = CpuRead8(operand_addr);
 #ifndef DISABLE_DUMMY_READ_WRITES
@@ -369,6 +372,7 @@ static inline void ShiftOneLeftFromMem(Cpu *cpu, const uint16_t operand_addr)
     CpuWrite8(operand_addr, operand);
     // Update status flags
     UPDATE_FLAGS_NZ(operand);
+    return operand;
 }
 
 // ADC/SBC only uses the A register (Accumulator)
@@ -529,6 +533,13 @@ static inline void ASL_A_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cyc
 static inline void ASL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     ShiftOneLeftFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+    ++cpu->pc;
+    CpuPollIRQ(cpu);
+}
+
+static inline void SLO_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    cpu->a |= ShiftOneLeftFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
     ++cpu->pc;
     CpuPollIRQ(cpu);
 }
@@ -736,6 +747,7 @@ static inline void BRK_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     StackPush(cpu, cpu->pc & 0xFF);
 
     //const bool nmi_hijack = cpu->nmi_pending;
+
     // Push status status regs with the b(bit4) and bit5 flag set
     Flags status = cpu->status;
     status.b = 1;
@@ -1555,27 +1567,34 @@ static const OpcodeHandler opcodes[256] =
 {
     [0x00] = { BRK_Instr, "BRK", 1, 7, false, Implied  },
     [0x01] = { ORA_Instr, "ORA (ind,X)", 2, 6, false, IndirectX },
+    [0x03] = { SLO_Instr, "SLO (ind,X)", 2, 8, false, IndirectX },
     [0x04] = { NOP_Instr, "NOP", 2, 3, false, ZeroPage },
     [0x05] = { ORA_Instr, "ORA zp", 2, 3, false, ZeroPage },
     [0x06] = { ASL_Instr, "ASL zp", 2, 5, false, ZeroPage },
+    [0x07] = { SLO_Instr, "SLO zp", 2, 5, false, ZeroPage },
     [0x08] = { PHP_Instr, "PHP", 1, 3, false, Implied },
     [0x09] = { ORA_Instr, "ORA #imm", 2, 2, false, Immediate },
     [0x0A] = { ASL_A_Instr, "ASL A", 1, 2, false, Accumulator },
     [0x0C] = { NOP_Instr, "NOP", 3, 4, false, Absolute },
     [0x0D] = { ORA_Instr, "ORA abs", 3, 4, false, Absolute },
     [0x0E] = { ASL_Instr, "ASL abs", 3, 6, false, Absolute },
+    [0x0F] = { SLO_Instr, "SLO abs", 3, 6, false, Absolute },
 
     [0x10] = { BPL_Instr, "BPL rel", 2, 2, true, Relative },
     [0x11] = { ORA_Instr, "ORA (ind),Y", 2, 5, true, IndirectY},
+    [0x13] = { SLO_Instr, "SLO (ind),Y", 2, 8, false, IndirectY},
     [0x14] = { NOP_Instr, "NOP zp,X", 2, 4, false, ZeroPageX },
     [0x15] = { ORA_Instr, "ORA zp,X", 2, 4, false, ZeroPageX },
     [0x16] = { ASL_Instr, "ASL zp,X", 2, 6, false, ZeroPageX },
+    [0x17] = { SLO_Instr, "SLO zp,X", 2, 6, false, ZeroPageX },
     [0x18] = { CLC_Instr, "CLC", 1, 2, false, Implied },
     [0x19] = { ORA_Instr, "ORA abs,Y", 3, 4, true, AbsoluteY},
     [0x1A] = { NOP_Instr, "NOP", 1, 2, false, Implied },
+    [0x1B] = { SLO_Instr, "SLO abs,Y", 3, 7, false, AbsoluteY },
     [0x1C] = { NOP_Instr, "NOP abs,X", 3, 4, true, AbsoluteX },
     [0x1D] = { ORA_Instr, "ORA abs,X", 3, 4, true, AbsoluteX },
     [0x1E] = { ASL_Instr, "ASL abs,X", 3, 7, false, AbsoluteX },
+    [0x1F] = { SLO_Instr, "SLO abs,X", 3, 7, false, AbsoluteX },
 
     [0x20] = { JSR_Instr, "JSR abs", 3, 6, false, Absolute },
     [0x21] = { AND_Instr, "AND (ind,X)", 2, 6, false, IndirectX },
