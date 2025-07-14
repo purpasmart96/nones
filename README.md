@@ -14,9 +14,9 @@ Basic gamepad support, currently, button layout is fixed to how it was on the or
 
 1. Install the required dependencies using your system's package manager
 
-- ##### Debian
+- ##### Debian (13/trixie+ only)
 
-    `sudo apt install gcc make libsdl3-dev` 
+    `sudo apt install gcc make libsdl3-dev`
 
 - ##### Fedora
 
