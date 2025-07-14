@@ -241,8 +241,10 @@ void NonesRun(Nones *nones, const char *path)
     void *raw_pixels;
     int raw_pitch;
 
-    //uint64_t frames = 0, updates = 0;
-    //uint64_t timer = SDL_GetTicks();
+    uint64_t frames = 0, updates = 0;
+    uint64_t timer = SDL_GetTicks();
+    char fps_buffer[8];
+    char ups_buffer[8];
 
     char debug_cpu[128] = {'\0'};
     bool debug_stats = false;
@@ -302,6 +304,7 @@ void NonesRun(Nones *nones, const char *path)
             }
 
             accumulator -= FRAME_TIME_NS;
+            ++updates;
         }
 
         SDL_LockTexture(nones->texture, NULL, &raw_pixels, &raw_pitch);
@@ -319,18 +322,21 @@ void NonesRun(Nones *nones, const char *path)
 
             SDL_RenderDebugText(nones->renderer, 2, 1, debug_cpu);
             SDL_RenderDebugText(nones->renderer, 2, 9, nones->system->cpu->debug_msg);
+            ++frames;
+
+            if (SDL_GetTicks() - timer >= 1000)
+            {
+                snprintf(fps_buffer, sizeof(fps_buffer), "FPS:%lu", frames);
+                snprintf(ups_buffer, sizeof(ups_buffer), "UPS:%lu", updates);
+                updates = frames = 0;
+                timer += 1000;
+            }
+            SDL_SetRenderDrawColor(nones->renderer, 255, 255, 84, SDL_ALPHA_OPAQUE);
+            SDL_RenderDebugText(nones->renderer, 200, 1, fps_buffer);
+            SDL_RenderDebugText(nones->renderer, 200, 9, ups_buffer);
         }
 
         SDL_RenderPresent(nones->renderer);
-        //frames++;
-
-        //if (SDL_GetTicks() - timer >= 1000)
-        //{
-        //    printf("UPS: %lu, FPS: %lu\r", updates, frames);
-        //    fflush(stdout);
-        //    updates = frames = 0;
-        //    timer += 1000;
-        //}
 
         double frame_time = SDL_GetTicksNS() - start_time;
         if (frame_time < FRAME_CAP_NS)
