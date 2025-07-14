@@ -75,7 +75,7 @@ run:
 clean:
 	@if [ -d "$(BUILD_DIR)" ]; then rm -r $(BUILD_DIR); else echo 'Nothing to clean up'; fi
 	@if [ -f "$(BIN)" ]; then rm $(BIN); fi
-	@if [ -f "$(ARCHIVE_NAME)" ]; then rm $(ARCHIVE_NAME); fi
+	@if [ -f "$(ARCHIVE)" ]; then rm $(ARCHIVE); fi
 	@if [ -f "SDL3.dll" ]; then rm "SDL3.dll"; fi
 
 tarball:
