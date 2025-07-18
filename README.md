@@ -4,11 +4,11 @@ A simple NTSC NES emulator written in C.
 
 ### Current State
 
-NROM, UxROM, AxRom, CNROM, MMC1, are currently supported along with most MMC3 based games.
+NROM, UxROM, AxRom, CNROM, MMC1, Color Dreams, are currently supported along with most MMC3 based games.
 
 Supports all of the original NES audio channels, which includes square, triangle, noise, and dmc audio channels.
 
-Basic gamepad support, currently, button layout is fixed to how it was on the original joypad.
+Basic gamepad support for up to two players, currently, button layout is fixed to how it was on the original joypad.
 
 ### Building on Linux
 
@@ -50,6 +50,10 @@ Basic gamepad support, currently, button layout is fixed to how it was on the or
 After building you should be able run the program via `./nones "game.nes"`
 
 ### Commands/Hotkeys:
+
+* `1 -> 5`
+
+Set window size integer scale (1x, 2x, 3x ect. 5x max)
 
 * `Esc`
 
