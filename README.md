@@ -4,7 +4,34 @@ A simple NTSC NES emulator written in C.
 
 ### Current State
 
-NROM, UxROM, AxRom, CNROM, MMC1, Color Dreams, are currently supported along with most MMC3 based games.
+Games that use the following mapper chips are supported:
+<table>
+    <tr>
+        <td align="center">Mapper name</td>
+        <td align="center">Mapper number</td>
+    </tr>
+    <tr>
+        <td align="center">NROM</td><td align="center">0</td>
+    </tr>
+    <tr>
+        <td align="center">MMC1</td><td align="center">1</td>
+    </tr>
+    <tr>
+        <td align="center">UxROM</td><td align="center">2</td>
+    </tr>
+    <tr>
+        <td align="center">CNROM</td><td align="center">3</td>
+    </tr>
+    <tr>
+        <td align="center">MMC3</td><td align="center">4</td>
+    </tr>
+    <tr>
+        <td align="center">AxROM</td><td align="center">7</td>
+    </tr>
+    <tr>
+        <td align="center">Color Dreams</td><td align="center">11</td>
+    </tr>
+</table>
 
 Supports all of the original NES audio channels, which includes square, triangle, noise, and dmc audio channels.
 
