@@ -60,6 +60,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         case 3:
         case 4:
         case 7:
+        case 11:
             break;
         default:
             printf("Mapper %d is not supported yet!\n", hdr.mapper_number_d3d0);

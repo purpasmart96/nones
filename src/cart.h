@@ -194,55 +194,61 @@ typedef struct
     uint8_t bank;
 } UxRom;
 
-typedef struct
+typedef union
 {
-    union
+    uint8_t raw;
+    struct
     {
-        uint8_t raw;
-        struct
-        {
-            // CHR A14..A13 (8 KiB bank)
-            uint8_t chr_bank : 2;
-            uint8_t : 2;
-            uint8_t diode2 : 1;
-            uint8_t diode1 : 1;
-        };
-    } reg;
+        // CHR A14..A13 (8 KiB bank)
+        uint8_t chr_bank : 2;
+        uint8_t : 2;
+        uint8_t diode2 : 1;
+        uint8_t diode1 : 1;
+    };
 
 } CnRom;
 
-typedef struct
+typedef union
 {
-    union
+    uint8_t raw;
+    struct
     {
-        uint8_t raw;
-        struct
-        {
-            // Select 32 KB PRG ROM bank for CPU $8000-$FFFF
-            uint8_t bank : 3;
-            uint8_t : 1;
-            // Select 1 KB VRAM page for all 4 nametables
-            uint8_t page : 1;
-        };
-    } reg;
+        // Select 32 KB PRG ROM bank for CPU $8000-$FFFF
+        uint8_t bank : 3;
+        uint8_t : 1;
+        // Select 1 KB VRAM page for all 4 nametables
+        uint8_t page : 1;
+    };
 
 } AxRom;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        // Select 32 KB PRG ROM bank for CPU $8000-$FFFF
+        uint8_t prg_bank : 2;
+        // Used for lockout defeat
+        uint8_t lockout : 2;
+        // Select 8 KB CHR ROM bank for PPU $0000-$1FFF
+        uint8_t chr_bank : 4;
+    };
+
+} ColorDreams;
 
 typedef struct Cart {
     PrgRom prg_rom;
     ChrRom chr_rom;
     // WRAM or SRAM
     uint8_t *ram;
-    //Mmc1 mmc1;
-    //Mmc3 mmc3;
-    //UxRom ux_rom;
     int mapper_num;
     int mirroring;
     const char *name;
     bool battery;
-    uint8_t (*ReadPrgFn)(struct Cart *cart, const uint16_t addr);
-    uint8_t (*ReadChrFn)(struct Cart *cart, const uint16_t addr);
-    void (*WriteFn)(struct Cart *cart, const uint16_t addr, const uint8_t data);
+    uint8_t (*PrgReadFn)(struct Cart *cart, const uint16_t addr);
+    uint8_t (*ChrReadFn)(struct Cart *cart, const uint16_t addr);
+    void (*RegWriteFn)(const uint16_t addr, const uint8_t data);
 } Cart;
 
 #define CART_RAM_SIZE 0x2000
