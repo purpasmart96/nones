@@ -34,7 +34,7 @@ static inline int GetNumPrgRomBanks(const uint32_t prg_rom_size, const uint16_t 
     return prg_rom_size / bank_size;
 }
 
-static inline uint32_t GetBankAddr(const int bank, const uint16_t addr, const uint16_t bank_size, const uint32_t prg_rom_mask)
+static inline uint32_t GetPrgBankAddr(const int bank, const uint16_t addr, const uint16_t bank_size, const uint32_t prg_rom_mask)
 {
     return ((bank * bank_size) + (addr & (bank_size - 1))) & prg_rom_mask;
 }
@@ -46,14 +46,14 @@ static uint8_t Read16kBank(Cart *cart, int bank, const uint16_t addr)
         case 0:
         case 1:
         {
-            uint32_t final_addr = GetBankAddr(bank, addr, 0x4000, cart->prg_rom.mask);
+            uint32_t final_addr = GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
             //printf("Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
         case 2:
         case 3:
         {
-            uint32_t final_addr = GetBankAddr(cart->prg_rom.num_banks - 1, addr, 0x4000, cart->prg_rom.mask); 
+            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask); 
             //printf("3, Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
@@ -71,27 +71,27 @@ static uint8_t Mmc3ReadPrgRom(Cart *cart, const uint16_t addr)
             case 0:
             {
                 // Read from second to last bank
-                uint32_t final_addr = GetBankAddr(cart->prg_rom.num_banks - 2, addr, 0x2000, cart->prg_rom.mask);
+                uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 2, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
                 //printf("0i, Reading from addr: 0x%X\n", final_addr);
                 return cart->prg_rom.data[final_addr];
             }
             case 1:
             {
-                uint32_t final_addr = GetBankAddr(mmc3.regs[7], addr, 0x2000, cart->prg_rom.mask);
+                uint32_t final_addr = GetPrgBankAddr(mmc3.regs[7], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
                 //printf("1i, Reading from addr: 0x%X\n", final_addr);
                 return cart->prg_rom.data[final_addr];
             }
 
             case 2:
             {
-                uint32_t final_addr = GetBankAddr(mmc3.regs[6], addr, 0x2000, cart->prg_rom.mask);
+                uint32_t final_addr = GetPrgBankAddr(mmc3.regs[6], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
                 //printf("2i, Reading from addr: 0x%X\n", final_addr);
                 return cart->prg_rom.data[final_addr];
             }
             case 3:
             {
                 // Read from the last bank
-                uint32_t final_addr = GetBankAddr(cart->prg_rom.num_banks - 1, addr, 0x2000, cart->prg_rom.mask);
+                uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
                 //printf("3i, Reading from addr: 0x%X\n", final_addr);
                 return cart->prg_rom.data[final_addr];
             }
@@ -102,26 +102,26 @@ static uint8_t Mmc3ReadPrgRom(Cart *cart, const uint16_t addr)
     {
         case 0:
         {
-            uint32_t final_addr = GetBankAddr(mmc3.regs[6], addr, 0x2000, cart->prg_rom.mask);
+            uint32_t final_addr = GetPrgBankAddr(mmc3.regs[6], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
             //printf("0, Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
         case 1:
         {
-            uint32_t final_addr = GetBankAddr(mmc3.regs[7], addr, 0x2000, cart->prg_rom.mask);
+            uint32_t final_addr = GetPrgBankAddr(mmc3.regs[7], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
             //printf("1, Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
 
         case 2:
         {
-            uint32_t final_addr = GetBankAddr(cart->prg_rom.num_banks - 2, addr, 0x2000, cart->prg_rom.mask);
+            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 2, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
             //printf("2, Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
         case 3:
         {
-            uint32_t final_addr = GetBankAddr(cart->prg_rom.num_banks - 1, addr, 0x2000, cart->prg_rom.mask);
+            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
             //printf("3, Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
@@ -142,13 +142,13 @@ static uint8_t UxRomReadPrgRom(Cart *cart, const uint16_t addr)
 
 static uint8_t AxRomReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    const uint32_t final_addr = GetBankAddr(ax_rom.bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
+    const uint32_t final_addr = GetPrgBankAddr(ax_rom.bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
     return cart->prg_rom.data[final_addr];
 }
 
 static uint8_t ColorDreamsReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    const uint32_t final_addr = GetBankAddr(color_dreams.prg_bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
+    const uint32_t final_addr = GetPrgBankAddr(color_dreams.prg_bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
     return cart->prg_rom.data[final_addr];
 }
 
