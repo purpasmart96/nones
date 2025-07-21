@@ -13,6 +13,16 @@
 #define FRAME_TIME_NS (1000000000.0 / FRAMERATE)
 #define FRAME_CAP_NS (1000000000.0 / FRAMECAP)
 
+typedef struct
+{
+    char cpu_msg[128];
+    char fps_msg[8];
+    char ups_msg[8];
+    uint64_t frames;
+    uint64_t updates;
+    uint64_t timer;
+} NonesInfo;
+
 typedef struct {
     Arena *arena;
     System *system;
@@ -24,6 +34,7 @@ typedef struct {
     SDL_Gamepad *gamepad1;
     SDL_Gamepad *gamepad2;
     SDL_JoystickID *gamepads;
+    bool debug_info;
     bool quit;
 } Nones;
 

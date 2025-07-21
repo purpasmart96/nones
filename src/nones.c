@@ -52,6 +52,32 @@ void NonesPutSoundData(Apu *apu)
     }
 }
 
+static void NonesDrawDebugInfo(Nones *nones, NonesInfo *info)
+{
+    if (!nones->debug_info)
+        return;
+
+    SDL_SetRenderDrawColor(nones->renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
+    snprintf(info->cpu_msg, sizeof(info->cpu_msg), "A:%02X X:%02X Y:%02X S:%02X P:%02X", nones->system->cpu->a,
+             nones->system->cpu->x, nones->system->cpu->y, nones->system->cpu->sp, nones->system->cpu->status.raw);
+
+    SDL_RenderDebugText(nones->renderer, 2, 1, info->cpu_msg);
+    SDL_RenderDebugText(nones->renderer, 2, 9, nones->system->cpu->debug_msg);
+
+    ++info->frames;
+    if (SDL_GetTicks() - info->timer >= 1000)
+    {
+        snprintf(info->fps_msg, sizeof(info->fps_msg), "FPS:%lu", info->frames);
+        snprintf(info->ups_msg, sizeof(info->ups_msg), "UPS:%lu", info->updates);
+        info->updates = info->frames = 0;
+        info->timer += 1000;
+    }
+
+    SDL_SetRenderDrawColor(nones->renderer, 255, 255, 84, SDL_ALPHA_OPAQUE);
+    SDL_RenderDebugText(nones->renderer, 200, 1, info->fps_msg);
+    SDL_RenderDebugText(nones->renderer, 200, 9, info->ups_msg);
+}
+
 static void NonesSetIntegerScale(Nones *nones, int scale)
 {
     SDL_SetWindowSize(nones->window, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
@@ -62,55 +88,56 @@ static void NonesSetIntegerScale(Nones *nones, int scale)
 
 static void NonesHandleInput(Nones *nones)
 {
-        const bool *kb_state  = SDL_GetKeyboardState(NULL);
+    const bool *kb_state  = SDL_GetKeyboardState(NULL);
 
-        nones->buttons[0] = kb_state[SDL_SCANCODE_SPACE];
-        nones->buttons[1] = kb_state[SDL_SCANCODE_LSHIFT];
-        nones->buttons[2] = kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W];
-        nones->buttons[3] = kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S];
-        nones->buttons[4] = kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A];
-        nones->buttons[5] = kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D];
-        nones->buttons[6] = kb_state[SDL_SCANCODE_RETURN];
-        nones->buttons[7] = kb_state[SDL_SCANCODE_TAB];
+    nones->buttons[0] = kb_state[SDL_SCANCODE_SPACE];
+    nones->buttons[1] = kb_state[SDL_SCANCODE_LSHIFT];
+    nones->buttons[2] = kb_state[SDL_SCANCODE_UP] || kb_state[SDL_SCANCODE_W];
+    nones->buttons[3] = kb_state[SDL_SCANCODE_DOWN] || kb_state[SDL_SCANCODE_S];
+    nones->buttons[4] = kb_state[SDL_SCANCODE_LEFT] || kb_state[SDL_SCANCODE_A];
+    nones->buttons[5] = kb_state[SDL_SCANCODE_RIGHT] || kb_state[SDL_SCANCODE_D];
+    nones->buttons[6] = kb_state[SDL_SCANCODE_RETURN];
+    nones->buttons[7] = kb_state[SDL_SCANCODE_TAB];
 
-        if (nones->gamepad1)
-        {
-            nones->buttons[0] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_EAST);
-            nones->buttons[1] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_SOUTH);
-            nones->buttons[2] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_UP);
-            nones->buttons[3] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
-            nones->buttons[4] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
-            nones->buttons[5] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
-            nones->buttons[6] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_START);
-            nones->buttons[7] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_BACK);
-        }
+    if (nones->gamepad1)
+    {
+        nones->buttons[0] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_EAST);
+        nones->buttons[1] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_SOUTH);
+        nones->buttons[2] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_UP);
+        nones->buttons[3] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        nones->buttons[4] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        nones->buttons[5] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        nones->buttons[6] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_START);
+        nones->buttons[7] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_BACK);
+    }
 
-        if (nones->gamepad2)
-        {
-            nones->buttons[8]  = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_EAST);
-            nones->buttons[9]  = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_SOUTH);
-            nones->buttons[10] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_UP);
-            nones->buttons[11] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
-            nones->buttons[12] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
-            nones->buttons[13] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
-            nones->buttons[14] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_START);
-            nones->buttons[15] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_BACK);
-        }
+    if (nones->gamepad2)
+    {
+        nones->buttons[8]  = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_EAST);
+        nones->buttons[9]  = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_SOUTH);
+        nones->buttons[10] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_UP);
+        nones->buttons[11] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_DOWN);
+        nones->buttons[12] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_LEFT);
+        nones->buttons[13] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
+        nones->buttons[14] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_START);
+        nones->buttons[15] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_BACK);
+    }
 
-        SystemUpdateJPButtons(nones->system, nones->buttons);
+    SystemUpdateJPButtons(nones->system, nones->buttons);
 
-        if (kb_state[SDL_SCANCODE_ESCAPE])
-            nones->quit = true;
-        else if (kb_state[SDL_SCANCODE_1])
-            NonesSetIntegerScale(nones, 1);
-        else if (kb_state[SDL_SCANCODE_2])
-            NonesSetIntegerScale(nones, 2);
-        else if (kb_state[SDL_SCANCODE_3])
-            NonesSetIntegerScale(nones, 3);
-        else if (kb_state[SDL_SCANCODE_4])
-            NonesSetIntegerScale(nones, 4);
-        else if (kb_state[SDL_SCANCODE_5])
-            NonesSetIntegerScale(nones, 5);
+    nones->quit |= kb_state[SDL_SCANCODE_ESCAPE];
+
+    // TODO: This could be just done when polling for events
+    if (kb_state[SDL_SCANCODE_1])
+        NonesSetIntegerScale(nones, 1);
+    else if (kb_state[SDL_SCANCODE_2])
+        NonesSetIntegerScale(nones, 2);
+    else if (kb_state[SDL_SCANCODE_3])
+        NonesSetIntegerScale(nones, 3);
+    else if (kb_state[SDL_SCANCODE_4])
+        NonesSetIntegerScale(nones, 4);
+    else if (kb_state[SDL_SCANCODE_5])
+        NonesSetIntegerScale(nones, 5);
 }
 
 static void NonesInit(Nones *nones, const char *path)
@@ -241,19 +268,22 @@ void NonesRun(Nones *nones, const char *path)
     void *raw_pixels;
     int raw_pitch;
 
-    uint64_t frames = 0, updates = 0;
-    uint64_t timer = SDL_GetTicks();
-    char fps_buffer[8];
-    char ups_buffer[8];
+    NonesInfo info = {
+        .cpu_msg = {'\0'},
+        .fps_msg = {'\0'},
+        .ups_msg = {'\0'},
+        .frames = 0,
+        .updates = 0,
+        .timer = SDL_GetTicks(),
+    };
 
-    char debug_cpu[128] = {'\0'};
-    bool debug_stats = false;
     bool paused = false;
     bool step_frame = false;
     bool step_instr = false;
     double previous_time = 0;
     double current_time = 0;
     double accumulator = 0;
+
     while (!nones->quit)
     {
         uint64_t start_time = SDL_GetTicksNS();
@@ -273,7 +303,7 @@ void NonesRun(Nones *nones, const char *path)
                     switch (event.key.key)
                     {
                         case SDLK_F1:
-                            debug_stats = !debug_stats;
+                            nones->debug_info = !nones->debug_info;
                             break;
                         case SDLK_F2:
                             NonesReset(nones);
@@ -304,7 +334,7 @@ void NonesRun(Nones *nones, const char *path)
             }
 
             accumulator -= FRAME_TIME_NS;
-            ++updates;
+            ++info.updates;
         }
 
         SDL_LockTexture(nones->texture, NULL, &raw_pixels, &raw_pitch);
@@ -314,27 +344,7 @@ void NonesRun(Nones *nones, const char *path)
         SDL_RenderClear(nones->renderer);
         SDL_RenderTexture(nones->renderer, nones->texture, NULL, NULL);
 
-        if (debug_stats)
-        {
-            SDL_SetRenderDrawColor(nones->renderer, 255, 255, 255, SDL_ALPHA_OPAQUE);
-            snprintf(debug_cpu, sizeof(debug_cpu), "A:%02X X:%02X Y:%02X S:%02X P:%02X", nones->system->cpu->a,
-                     nones->system->cpu->x, nones->system->cpu->y, nones->system->cpu->sp, nones->system->cpu->status.raw);
-
-            SDL_RenderDebugText(nones->renderer, 2, 1, debug_cpu);
-            SDL_RenderDebugText(nones->renderer, 2, 9, nones->system->cpu->debug_msg);
-            ++frames;
-
-            if (SDL_GetTicks() - timer >= 1000)
-            {
-                snprintf(fps_buffer, sizeof(fps_buffer), "FPS:%lu", frames);
-                snprintf(ups_buffer, sizeof(ups_buffer), "UPS:%lu", updates);
-                updates = frames = 0;
-                timer += 1000;
-            }
-            SDL_SetRenderDrawColor(nones->renderer, 255, 255, 84, SDL_ALPHA_OPAQUE);
-            SDL_RenderDebugText(nones->renderer, 200, 1, fps_buffer);
-            SDL_RenderDebugText(nones->renderer, 200, 9, ups_buffer);
-        }
+        NonesDrawDebugInfo(nones, &info);
 
         SDL_RenderPresent(nones->renderer);
 
