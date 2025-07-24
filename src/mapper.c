@@ -309,8 +309,7 @@ static void Mmc1RegWrite(const uint16_t addr, const uint8_t data)
             break;
         case 3:
             mmc1.prg_bank.raw = reg;
-            DEBUG_LOG("Set prg rom bank index to %d\n", mmc1.prg_bank.mmc1a.select);
-            //DEBUG_LOG("Bypass 16k logic? %d\n", mmc1->prg_bank.mmc1a.bypass_16k_logic);
+            DEBUG_LOG("Set prg rom bank index to %d\n", mmc1.prg_bank.select);
             break;
     }
     mmc1.shift.raw = 0x10;
