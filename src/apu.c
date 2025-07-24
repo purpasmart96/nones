@@ -918,6 +918,9 @@ void APU_Reset(Apu *apu)
 {
     ApuWriteStatus(apu, 0x0);
     ApuResetFrameCounter(apu);
+    apu->cycles = 0;
+    apu->cycles_to_run = 0;
+    apu->odd_frame = false;
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
