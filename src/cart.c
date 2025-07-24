@@ -54,13 +54,13 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
 
     switch (hdr.mapper_number_d3d0)
     {
-        case 0:
-        case 1:
-        case 2:
-        case 3:
-        case 4:
-        case 7:
-        case 11:
+        case MAPPER_NROM:
+        case MAPPER_MMC1:
+        case MAPPER_UXROM:
+        case MAPPER_CNROM:
+        case MAPPER_MMC3:
+        case MAPPER_AXROM:
+        case MAPPER_COLORDREAMS:
             break;
         default:
             printf("Mapper %d is not supported yet!\n", hdr.mapper_number_d3d0);

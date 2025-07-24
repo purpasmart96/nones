@@ -108,16 +108,7 @@ typedef union
         uint8_t select : 4;
         // PRG-RAM chip enable (0: enabled; 1: disabled; ignored on MMC1A)
         uint8_t ram_enable : 1;
-    } mmc1b;
-
-    struct
-    {
-        // Select 16 KB PRG-ROM bank (low bit ignored in 32 KB mode)
-        uint8_t select : 4;
-        // Bit 3 bypasses fixed bank logic in 16K mode (0: fixed bank affects A17-A14;
-        // 1: fixed bank affects A16-A14 and bit 3 directly controls A17)
-        uint8_t bypass_16k_logic : 1;
-    } mmc1a;
+    };
 
 } Mmc1PrgBankReg;
 
@@ -128,6 +119,7 @@ typedef struct
     Mmc1LoadReg load;
     Mmc1ControlReg control;
     Mmc1PrgBankReg prg_bank;
+    bool consec_write;
     // Select 4 KB or 8 KB CHR bank at PPU $0000 (low bit ignored in 8 KB mode)
     uint8_t chr_bank0 : 5;
     // Select 4 KB CHR bank at PPU $1000 (ignored in 8 KB mode)

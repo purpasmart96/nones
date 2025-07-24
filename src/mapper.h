@@ -8,6 +8,17 @@ typedef enum
     PRG_BANK_SIZE_32KIB = 0x8000,
 } PrgBankSize;
 
+typedef enum
+{
+    MAPPER_NROM,
+    MAPPER_MMC1,
+    MAPPER_UXROM,
+    MAPPER_CNROM,
+    MAPPER_MMC3,
+    MAPPER_AXROM = 7,
+    MAPPER_COLORDREAMS = 11
+} MapperType;
+
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr);
 uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr);
 void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data);

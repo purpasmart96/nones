@@ -39,7 +39,40 @@ static inline uint32_t GetPrgBankAddr(const int bank, const uint16_t addr, const
     return ((bank * bank_size) + (addr & (bank_size - 1))) & prg_rom_mask;
 }
 
-static uint8_t Read16kBank(Cart *cart, int bank, const uint16_t addr)
+// Prg bank mode 0 & 1: switch 32 KB at $8000, ignoring low bit of bank number;
+static uint8_t Mmc1PrgReadMode01(Cart *cart, int bank, const uint16_t addr)
+{
+    uint32_t final_addr = GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
+    //printf("0, 1, Reading from addr: 0x%X\n", final_addr);
+    return cart->prg_rom.data[final_addr];
+}
+
+// Prg bank mode 2: fix first bank at $8000 and switch 16 KB bank at $C000;
+static uint8_t Mmc1PrgReadMode2(Cart *cart, int bank, const uint16_t addr)
+{
+    switch ((addr >> 13) & 0x3)
+    {
+        case 0:
+        case 1:
+        {
+            uint32_t final_addr = GetPrgBankAddr(0, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            //printf("Mmc1 mode 2: 0, 1, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+        case 2:
+        case 3:
+        {
+            uint32_t final_addr = GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            //printf("Mmc1 mode 2: 2, 3, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+    }
+
+    return 0;
+}
+
+// Prg bank mode 3: fix last bank at $C000 and switch 16 KB bank at $8000);
+static uint8_t Mmc1PrgReadMode3(Cart *cart, int bank, const uint16_t addr)
 {
     switch ((addr >> 13) & 0x3)
     {
@@ -47,14 +80,14 @@ static uint8_t Read16kBank(Cart *cart, int bank, const uint16_t addr)
         case 1:
         {
             uint32_t final_addr = GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
-            //printf("Reading from addr: 0x%X\n", final_addr);
+            //printf("0, 1, Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
         case 2:
         case 3:
         {
             uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask); 
-            //printf("3, Reading from addr: 0x%X\n", final_addr);
+            //printf("2, 3, Reading from addr: 0x%X\n", final_addr);
             return cart->prg_rom.data[final_addr];
         }
     }
@@ -132,12 +165,30 @@ static uint8_t Mmc3ReadPrgRom(Cart *cart, const uint16_t addr)
 
 static uint8_t Mmc1ReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    return Read16kBank(cart, mmc1.prg_bank.mmc1a.select, addr);
+    // Should this be in BusRead instead?
+    mmc1.consec_write = false;
+
+    switch (mmc1.control.prg_rom_bank_mode)
+    {
+        case 0:
+        case 1:
+            return Mmc1PrgReadMode01(cart, mmc1.prg_bank.select >> 1, addr);
+        case 2:
+            return Mmc1PrgReadMode2(cart, mmc1.prg_bank.select, addr);
+        case 3:
+            return Mmc1PrgReadMode3(cart, mmc1.prg_bank.select, addr);
+        default:
+            printf("Mmc1 prg bank mode: %d not implemented yet!\n", mmc1.control.prg_rom_bank_mode);
+            break;
+    }
+
+    return 0;
 }
 
 static uint8_t UxRomReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    return Read16kBank(cart, ux_rom.bank & 0x7, addr);
+    // UxROM prg reads are just like mmc1's prg mode 3
+    return Mmc1PrgReadMode3(cart, ux_rom.bank & 0x7, addr);
 }
 
 static uint8_t AxRomReadPrgRom(Cart *cart, const uint16_t addr)
@@ -164,15 +215,15 @@ static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
     // Select chr bank (5-bit value, max 32 banks)
     uint32_t bank = (addr < 0x1000 || !mmc1.control.chr_rom_bank_mode) ? mmc1.chr_bank0 : mmc1.chr_bank1;
 
-    if (!mmc1.control.chr_rom_bank_mode)
-        bank &= 0x1E;
+    // Ignore low bit in 8 Kib mode
+    bank >>= !mmc1.control.chr_rom_bank_mode;
 
     // If CHR is only 8 KiB, the bank number is ANDed with 1
     if (cart->chr_rom.size == 0x2000)
         bank &= 1;
 
     // Compute CHR-ROM address
-    uint32_t final_addr = ((bank * 0x1000) + (addr & (bank_size - 1)));
+    uint32_t final_addr = ((bank * bank_size) + (addr & (bank_size - 1)));
 
     return cart->chr_rom.data[final_addr];
 }
@@ -223,9 +274,14 @@ static void Mmc1RegWrite(const uint16_t addr, const uint8_t data)
         mmc1.shift_count = 0;
         // Set last bank at $C000 and switch 16 KB bank at $8000
         mmc1.control.prg_rom_bank_mode = 0x3;
+        mmc1.consec_write = true;
         return;
     }
 
+    if (mmc1.consec_write)
+        return;
+
+    mmc1.consec_write = true;
     mmc1.shift.raw >>= 1;
     mmc1.shift.bit4 = data & 1;
     mmc1.shift_count++;
@@ -388,7 +444,7 @@ uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr)
 
 void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
 {
-    if (cart->mapper_num != 0)
+    if (cart->mapper_num != MAPPER_NROM)
         cart->RegWriteFn(addr, data);
 }
 
@@ -425,41 +481,41 @@ void MapperInit(Cart *cart)
 {
     switch (cart->mapper_num)
     {
-        case 0:
+        case MAPPER_NROM:
             cart->PrgReadFn = NromReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             break;
-        case 1:
+        case MAPPER_MMC1:
             mmc1.control.prg_rom_bank_mode = 3;
             cart->PrgReadFn = Mmc1ReadPrgRom;
             cart->ChrReadFn = Mmc1ReadChrRom;
             cart->RegWriteFn = Mmc1RegWrite;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
-        case 2:
+        case MAPPER_UXROM:
             cart->PrgReadFn = UxRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             cart->RegWriteFn = UxRomRegWrite;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
-        case 3:
+        case MAPPER_CNROM:
             cart->PrgReadFn = NromReadPrgRom;
             cart->ChrReadFn = CnromReadChrRom;
             cart->RegWriteFn = CnRomRegWrite;
             break;
-        case 4:
+        case MAPPER_MMC3:
             cart->PrgReadFn = Mmc3ReadPrgRom;
             cart->ChrReadFn = Mmc3ReadChrRom;
             cart->RegWriteFn = Mmc3RegWrite;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_8KIB);
             break;
-        case 7:
+        case MAPPER_AXROM:
             cart->PrgReadFn = AxRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             cart->RegWriteFn = AxRomRegWrite;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
-        case 11:
+        case MAPPER_COLORDREAMS:
             cart->PrgReadFn = ColorDreamsReadPrgRom;
             cart->ChrReadFn = ColorDreamsReadChrRom;
             cart->RegWriteFn = ColorDreamsRegWrite;
