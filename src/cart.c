@@ -83,7 +83,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     cart->chr_rom.size = hdr.chr_rom_size_lsb * 0x2000;
     cart->mirroring = hdr.name_table_layout;
     cart->battery = hdr.battery;
-    cart->mapper_num = hdr.mapper_number_d3d0;
+    cart->mapper_num = mapper_number;
 
     cart->prg_rom.data = ArenaPush(arena, cart->prg_rom.size);
 
