@@ -42,6 +42,8 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         return -1;
     }
 
+    const int mapper_number = hdr.mapper_number_d7d4 << 4 | hdr.mapper_number_d3d0;
+
     printf("Loading %s\n", path);
     printf("ID String: %s\n", hdr.id_string);
     printf("PRG Rom Size in 16 KiB units: %d\n", hdr.prg_rom_size_lsb);
@@ -50,9 +52,9 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     printf("Battery: %d\n", hdr.battery);
     printf("Trainer: %d\n", hdr.trainer_area_512);
     printf("Alt nametable layout: %d\n", hdr.alt_name_tables);
-    printf("Mapper: %d\n", hdr.mapper_number_d3d0);
+    printf("Mapper: %d\n", mapper_number);
 
-    switch (hdr.mapper_number_d3d0)
+    switch (mapper_number)
     {
         case MAPPER_NROM:
         case MAPPER_MMC1:
@@ -63,7 +65,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         case MAPPER_COLORDREAMS:
             break;
         default:
-            printf("Mapper %d is not supported yet!\n", hdr.mapper_number_d3d0);
+            printf("Mapper %d is not supported yet!\n", mapper_number);
             return -1;
     }
 
