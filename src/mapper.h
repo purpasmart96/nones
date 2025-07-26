@@ -16,8 +16,15 @@ typedef enum
     MAPPER_CNROM,
     MAPPER_MMC3,
     MAPPER_AXROM = 7,
-    MAPPER_COLORDREAMS = 11
+    MAPPER_COLORDREAMS = 11,
+    MAPPER_BNROM_NINJA = 34
 } MapperType;
+
+typedef enum
+{
+    MEM_MAP_NORMAL,
+    MEM_MAP_NINJA
+} MemMapType;
 
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr);
 uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr);
@@ -33,5 +40,7 @@ extern UxRom ux_rom;
 extern AxRom ax_rom;
 extern CnRom cn_rom;
 extern ColorDreams color_dreams;
+extern Ninja ninja;
+extern BnRom bn_rom;
 
 #endif

@@ -53,6 +53,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     printf("Trainer: %d\n", hdr.trainer_area_512);
     printf("Alt nametable layout: %d\n", hdr.alt_name_tables);
     printf("Mapper: %d\n", mapper_number);
+    printf("Sub mapper: %d\n", hdr.submapper_number);
 
     switch (mapper_number)
     {
@@ -63,6 +64,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         case MAPPER_MMC3:
         case MAPPER_AXROM:
         case MAPPER_COLORDREAMS:
+        case MAPPER_BNROM_NINJA:
             break;
         default:
             printf("Mapper %d is not supported yet!\n", mapper_number);

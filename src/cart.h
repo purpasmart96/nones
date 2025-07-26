@@ -229,12 +229,29 @@ typedef union
 
 } ColorDreams;
 
+typedef struct
+{
+    // Using a full byte to represent the prg bank rather than two bits
+    uint8_t prg_bank;
+    // CHR A15..A12 (4 KiB bank) at PPU $0000
+    uint8_t chr_bank0 : 4;
+    // CHR A15..A12 (4 KiB bank) at PPU $1000
+    uint8_t chr_bank1 : 4;
+} Ninja;
+
+typedef struct
+{
+    // Using a full byte to represent the prg bank rather than two bits
+    uint8_t bank;
+} BnRom;
+
 typedef struct Cart {
     PrgRom prg_rom;
     ChrRom chr_rom;
     // WRAM or SRAM
     uint8_t *ram;
     int mapper_num;
+    int mem_map;
     int mirroring;
     const char *name;
     bool battery;

@@ -18,6 +18,8 @@ UxRom ux_rom;
 AxRom ax_rom;
 CnRom cn_rom;
 ColorDreams color_dreams;
+Ninja ninja;
+BnRom bn_rom;
 
 static const uint16_t mmc1_chr_bank_sizes[2] = 
 {
@@ -203,6 +205,18 @@ static uint8_t ColorDreamsReadPrgRom(Cart *cart, const uint16_t addr)
     return cart->prg_rom.data[final_addr];
 }
 
+static uint8_t NinjaReadPrgRom(Cart *cart, const uint16_t addr)
+{
+    const uint32_t final_addr = GetPrgBankAddr(ninja.prg_bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
+    return cart->prg_rom.data[final_addr];
+}
+
+static uint8_t BnRomReadPrgRom(Cart *cart, const uint16_t addr)
+{
+    const uint32_t final_addr = GetPrgBankAddr(bn_rom.bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
+    return cart->prg_rom.data[final_addr];
+}
+
 static uint8_t NromReadChrRom(Cart *cart, const uint16_t addr)
 {
     return cart->chr_rom.data[addr & (cart->chr_rom.size - 1)];
@@ -253,6 +267,13 @@ static uint8_t CnromReadChrRom(Cart *cart, const uint16_t addr)
 static uint8_t ColorDreamsReadChrRom(Cart *cart, const uint16_t addr)
 {
     return cart->chr_rom.data[(color_dreams.chr_bank * 0x2000) + (addr & 0x1FFF)];
+}
+
+static uint8_t NinjaReadChrRom(Cart *cart, const uint16_t addr)
+{
+    const int bank = addr < 0x1000 ? ninja.chr_bank0 : ninja.chr_bank1;
+    //printf("BANK: %d ADDR: 0x%X\n", bank, addr);
+    return cart->chr_rom.data[(bank * 0x1000) + (addr & 0xFFF)];
 }
 
 static const int mmc1_mirror_map[4] =
@@ -431,6 +452,37 @@ static void ColorDreamsRegWrite(const uint16_t addr, const uint8_t data)
     color_dreams.raw = data;
 }
 
+static void NinjaRegWrite(const uint16_t addr, const uint8_t data)
+{
+    switch (addr)
+    {
+        // PRG Bank Select ($7FFD, write);
+        case 0x7FFD:
+            //printf("PRG BANK addr: 0x%X data: 0x%X\n", addr, data);
+            ninja.prg_bank = data;
+            break;
+        // CHR Bank Select 0 ($7FFE, write)
+        case 0x7FFE:
+            ninja.chr_bank0 = data;
+            break;
+        // CHR Bank Select 1 ($7FFF, write)
+        case 0x7FFF:
+            ninja.chr_bank1 = data;
+            break;
+        default:
+            //printf("UNK addr: 0x%X\n", addr);
+            break;
+    }
+}
+
+static void BnRomRegWrite(const uint16_t addr, const uint8_t data)
+{
+    UNUSED(addr);
+    // TODO: Bus conflict like this?
+    // data &= cart->prg_rom.data[addr];
+    bn_rom.bank = data;
+}
+
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr)
 {
     return cart->PrgReadFn(cart, addr);
@@ -483,41 +535,64 @@ void MapperInit(Cart *cart)
         case MAPPER_NROM:
             cart->PrgReadFn = NromReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
+            cart->mem_map = MEM_MAP_NORMAL;
             break;
         case MAPPER_MMC1:
             mmc1.control.prg_rom_bank_mode = 3;
             cart->PrgReadFn = Mmc1ReadPrgRom;
             cart->ChrReadFn = Mmc1ReadChrRom;
             cart->RegWriteFn = Mmc1RegWrite;
+            cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
         case MAPPER_UXROM:
             cart->PrgReadFn = UxRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             cart->RegWriteFn = UxRomRegWrite;
+            cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
         case MAPPER_CNROM:
             cart->PrgReadFn = NromReadPrgRom;
             cart->ChrReadFn = CnromReadChrRom;
             cart->RegWriteFn = CnRomRegWrite;
+            cart->mem_map = MEM_MAP_NORMAL;
             break;
         case MAPPER_MMC3:
             cart->PrgReadFn = Mmc3ReadPrgRom;
             cart->ChrReadFn = Mmc3ReadChrRom;
             cart->RegWriteFn = Mmc3RegWrite;
+            cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_8KIB);
             break;
         case MAPPER_AXROM:
             cart->PrgReadFn = AxRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             cart->RegWriteFn = AxRomRegWrite;
+            cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
         case MAPPER_COLORDREAMS:
             cart->PrgReadFn = ColorDreamsReadPrgRom;
             cart->ChrReadFn = ColorDreamsReadChrRom;
             cart->RegWriteFn = ColorDreamsRegWrite;
+            cart->mem_map = MEM_MAP_NORMAL;
+            cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
+            break;
+        case MAPPER_BNROM_NINJA:
+            if (cart->chr_rom.size > 0x2000)
+            {
+                cart->PrgReadFn = NinjaReadPrgRom;
+                cart->ChrReadFn = NinjaReadChrRom;
+                cart->RegWriteFn = NinjaRegWrite;
+                cart->mem_map = MEM_MAP_NINJA;
+                cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
+                break;
+            }
+            cart->PrgReadFn = BnRomReadPrgRom;
+            cart->ChrReadFn = NromReadChrRom;
+            cart->RegWriteFn = BnRomRegWrite;
+            cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
         default:

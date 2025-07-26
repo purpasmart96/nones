@@ -75,7 +75,6 @@ typedef union
     };
 } ApuStatus;
 
-
 typedef union
 {
     uint8_t raw;

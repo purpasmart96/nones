@@ -44,7 +44,6 @@ void SystemShutdown(System *system);
 uint8_t SystemReadOpenBus(void);
 uint8_t BusRead(const uint16_t addr);
 void BusWrite(const uint16_t addr, const uint8_t data);
-uint8_t *SystemGetPtr(const uint16_t addr);
 int SystemLoadCart(Arena *arena, System *System, const char *path);
 
 uint8_t PpuBusReadChrRom(const uint16_t addr);
