@@ -31,6 +31,9 @@ Games that use the following mapper chips are supported:
     <tr>
         <td align="center">Color Dreams</td><td align="center">11</td>
     </tr>
+    <tr>
+        <td align="center">Ninja + BNROM</td><td align="center">34</td>
+    </tr>
 </table>
 
 Supports all of the original NES audio channels, which includes square, triangle, noise, and dmc audio channels.
