@@ -84,21 +84,6 @@ static const uint16_t dmc_table[16] =
     190, 160, 142, 128, 106,  84,  72,  54
 };
 
-static inline float CreateSquareSample(int input, float volume)
-{
-    return input * volume;
-}
-
-static inline float CreateTriangleSample(int input)
-{
-    return 0.00851 * input;
-}
-
-static inline float CreateNoiseSample(int input)
-{
-    return 0.00494 * input;
-}
-
 bool PollApuIrqs(Apu *apu)
 {
     return apu->status.dmc_irq | apu->status.frame_irq;
@@ -498,6 +483,7 @@ static void ApuClockDmc(Apu *apu)
 
 static void ApuResetFrameCounter(Apu *apu)
 {
+    apu->frame_counter.reload = apu->frame_counter.control.seq_mode ? 37282 : 29830;
     apu->frame_counter.step = 0;
     apu->frame_counter.timer = 0;
     apu->frame_counter.reset = false;
@@ -776,14 +762,12 @@ static void ApuClockTimers(Apu *apu)
 
 static void ApuMixSample(Apu *apu)
 {
-    float square1 = CreateSquareSample(apu->pulse1.output, apu->pulse1.volume);
-    float square2 = CreateSquareSample(apu->pulse2.output, apu->pulse2.volume);
+    float square1 = apu->pulse1.output * apu->pulse1.volume;
+    float square2 = apu->pulse2.output * apu->pulse2.volume;
 
 #ifdef APU_FAST_MIXER
-    float triangle = CreateTriangleSample(apu->triangle.output);
-    float noise = CreateNoiseSample(apu->noise.output);
-    float pulse = 0.00752 * (square1 + square2);
-    float tnd_out =  triangle + noise + 0.00335 * apu->dmc.output_level;
+    float pulse = 0.00752f * (square1 + square2);
+    float tnd_out = 0.00851f * apu->triangle.output + 0.00494f * apu->noise.output + 0.00335f * apu->dmc.output_level;
 #else
     float pulse = 95.88 / ((8128.0 / (square1 + square2)) + 100);
     float tnd_out = 159.79 / (1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0)) + 100);
@@ -794,12 +778,11 @@ static void ApuMixSample(Apu *apu)
 void APU_Init(Apu *apu)
 {
     memset(apu, 0, sizeof(*apu));
+    ApuResetFrameCounter(apu);
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
     apu->alignment = 0;
-    apu->frame_counter.step = 0;
-    apu->frame_counter.timer = 0;
 }
 
 static void ApuGetClock(Apu *apu)
@@ -818,15 +801,29 @@ static void ApuPutClock(Apu *apu)
     {
         ApuUpdateDmcSample(apu);
     }
+
     ApuClockTimers(apu);
     ApuMixSample(apu);
+
+    if (apu->current_sample == 14890 && !apu->odd_frame)
+    {
+        NonesPutSoundData(apu);
+        apu->current_sample = 0;
+        apu->odd_frame = true;
+    }
+    else if (apu->current_sample >= 14891 && apu->odd_frame)
+    {
+        NonesPutSoundData(apu);
+        apu->current_sample = 0;
+        apu->odd_frame = false;
+    }
+
+    apu->buffer[apu->current_sample++] = apu->mixed_sample;
 }
 
 void APU_Tick(Apu *apu)
 {
     ++apu->cycles_to_run;
-
-    const int timer_reload = apu->frame_counter.control.seq_mode ? 37282 : 29830;
 
     while (apu->cycles_to_run != 0)
     {
@@ -883,20 +880,7 @@ void APU_Tick(Apu *apu)
             ApuPutClock(apu);
         }
 
-        if (apu->current_sample == 29780 && !apu->odd_frame)
-        {
-            NonesPutSoundData(apu);
-            apu->current_sample = 0;
-            apu->odd_frame = true;
-        }
-        else if (apu->current_sample >= 29781 && apu->odd_frame)
-        {
-            NonesPutSoundData(apu);
-            apu->current_sample = 0;
-            apu->odd_frame = false;
-        }
-        apu->buffer[apu->current_sample++] = apu->mixed_sample;
-        apu->frame_counter.timer %= timer_reload;
+        apu->frame_counter.timer %= apu->frame_counter.reload;
         ++apu->frame_counter.timer;
         ++apu->cycles;
         --apu->cycles_to_run;

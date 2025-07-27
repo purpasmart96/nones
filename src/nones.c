@@ -12,7 +12,7 @@
 #include "cart.h"
 #include "nones.h"
 
-#define HIGH_RATE_SAMPLES 29780
+#define HIGH_RATE_SAMPLES 14890
 #define LOW_RATE_SAMPLES 735
 //#define LOW_RATE_SAMPLES 800
 

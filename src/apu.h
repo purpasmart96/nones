@@ -97,6 +97,7 @@ typedef struct
 {
     ApuFrameCounterControl control;
     int timer;
+    int reload;
     int16_t step;
     bool interrupt;
     bool reset;
@@ -156,7 +157,7 @@ typedef union
 
 typedef struct
 {
-    float buffer[29781];
+    float buffer[14891];
     int16_t outbuffer[735];
 
     uint64_t cycles;
