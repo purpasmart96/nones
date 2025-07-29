@@ -1768,7 +1768,7 @@ static const OpcodeHandler opcodes[256] =
     [0xFE] = { INC_Instr, "INC abs,X", 3, 7, false, AbsoluteX },
 };
 
-static void ExecuteOpcode(Cpu *cpu)
+static void ExecuteOpcode(Cpu *cpu, bool debug_info)
 {
     const uint8_t opcode = CpuRead8(cpu->pc);
     const OpcodeHandler *handler = &opcodes[opcode];
@@ -1776,7 +1776,8 @@ static void ExecuteOpcode(Cpu *cpu)
     if (handler->InstrFn)
     {
         CPU_LOG("Executing %s (Opcode: 0x%02X cycles: %d) at PC: 0x%04X\n", handler->name, opcode, handler->cycles, cpu->pc);
-        snprintf(cpu->debug_msg, sizeof(cpu->debug_msg), "PC:%04X %s", cpu->pc, handler->name);
+        if (debug_info)
+            snprintf(cpu->debug_msg, sizeof(cpu->debug_msg), "PC:%04X %s", cpu->pc, handler->name);
 
         SystemSync(cpu->cycles);
 
@@ -1819,9 +1820,9 @@ void CPU_Init(Cpu *cpu)
     cpu->cycles = 7;
 }
 
-void CPU_Update(Cpu *cpu)
+void CPU_Update(Cpu *cpu, bool debug_info)
 {
-    ExecuteOpcode(cpu);
+    ExecuteOpcode(cpu, debug_info);
 }
 
 void CPU_Reset(Cpu *cpu)

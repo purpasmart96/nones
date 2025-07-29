@@ -266,18 +266,18 @@ void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data)
 
 void PpuClockMMC3(void)
 {
-    if (system_ptr->cart->mapper_num != 4)
+    if (system_ptr->cart->mapper_num != MAPPER_MMC3)
         return;
 
     Mmc3ClockIrqCounter(system_ptr->cart);
 }
 
-void SystemRun(System *system, bool paused, bool step_instr, bool step_frame)
+void SystemRun(System *system, SystemState state, bool debug_info)
 {
-    if (paused && !step_instr && !step_frame)
+    if (state == PAUSED)
         return;
 
-    if (step_frame && system->ppu->frame_finished)
+    if (state == STEP_FRAME && system->ppu->frame_finished)
     {
         system->ppu->frame_finished = false;
         return;
@@ -286,8 +286,8 @@ void SystemRun(System *system, bool paused, bool step_instr, bool step_frame)
     system->ppu->frame_finished = false;
 
     do {
-        CPU_Update(system->cpu);
-    } while (!system->ppu->frame_finished && !step_instr);
+        CPU_Update(system->cpu, debug_info);
+    } while (!system->ppu->frame_finished && state != STEP_INSTR);
 }
 
 bool SystemPollAllIrqs(void)

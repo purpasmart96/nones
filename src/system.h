@@ -13,6 +13,14 @@
 #include "cart.h"
 #include "mapper.h"
 
+typedef enum
+{
+    RUNNING,
+    PAUSED,
+    STEP_INSTR,
+    STEP_FRAME
+} SystemState;
+
 typedef struct System
 {
     Cpu *cpu;
@@ -31,7 +39,7 @@ typedef struct System
 
 System *SystemCreate(Arena *arena);
 void SystemInit(System *system, uint32_t **buffers);
-void SystemRun(System *system, bool paused, bool step_instr, bool step_frame);
+void SystemRun(System *system, SystemState state, bool debug_info);
 void SystemSync(uint64_t cycles);
 void SystemTick(void);
 void SystemSetNmiPin(void);

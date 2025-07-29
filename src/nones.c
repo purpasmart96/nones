@@ -277,19 +277,16 @@ void NonesRun(Nones *nones, const char *path)
         .timer = SDL_GetTicks(),
     };
 
-    bool paused = false;
-    bool step_frame = false;
-    bool step_instr = false;
-    double previous_time = 0;
-    double current_time = 0;
-    double accumulator = 0;
+    uint64_t previous_time = 0;
+    uint64_t current_time = 0;
+    uint64_t accumulator = 0;
 
     while (!nones->quit)
     {
         uint64_t start_time = SDL_GetTicksNS();
         previous_time = current_time;
         current_time = start_time;
-        double delta_time = current_time - previous_time;
+        uint64_t delta_time = current_time - previous_time;
         accumulator += delta_time;
 
         while (SDL_PollEvent(&event))
@@ -309,13 +306,13 @@ void NonesRun(Nones *nones, const char *path)
                             NonesReset(nones);
                             break;
                         case SDLK_F6:
-                            paused = !paused;
+                            nones->state ^= PAUSED;
                             break;
                         case SDLK_F10:
-                            step_frame = true;
+                            nones->state = STEP_FRAME;
                             break;
                         case SDLK_F11:
-                            step_instr = true;
+                            nones->state = STEP_INSTR;
                             break;
                     }
                     break;
@@ -326,12 +323,10 @@ void NonesRun(Nones *nones, const char *path)
 
         while (accumulator >= FRAME_TIME_NS)
         {
-            SystemRun(nones->system, paused, step_instr, step_frame);
-            if (step_instr | step_frame)
-            {
-                step_instr = step_frame = false;
-                paused = true;
-            }
+            SystemRun(nones->system, nones->state, nones->debug_info);
+
+            if (nones->state > PAUSED)
+                nones->state = PAUSED;
 
             accumulator -= FRAME_TIME_NS;
             ++info.updates;
@@ -348,7 +343,7 @@ void NonesRun(Nones *nones, const char *path)
 
         SDL_RenderPresent(nones->renderer);
 
-        double frame_time = SDL_GetTicksNS() - start_time;
+        uint64_t frame_time = SDL_GetTicksNS() - start_time;
         if (frame_time < FRAME_CAP_NS)
         {
             SDL_DelayNS(FRAME_CAP_NS - frame_time);

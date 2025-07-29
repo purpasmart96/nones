@@ -24,16 +24,17 @@ typedef struct
 } NonesInfo;
 
 typedef struct {
+    bool buttons[16];
     Arena *arena;
     System *system;
     SDL_Window *window;
     SDL_Renderer *renderer;
     SDL_Texture *texture;
-    bool buttons[16];
-    int num_gamepads;
     SDL_Gamepad *gamepad1;
     SDL_Gamepad *gamepad2;
     SDL_JoystickID *gamepads;
+    int num_gamepads;
+    SystemState state;
     bool debug_info;
     bool quit;
 } Nones;
