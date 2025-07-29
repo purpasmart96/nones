@@ -18,9 +18,9 @@
 
 static SDL_AudioStream *stream = NULL;
 
-static void upsample_to_44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer, bool odd_frame)
+static void UpSampleTo44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer)
 {
-    const double step = (double)(HIGH_RATE_SAMPLES + odd_frame) / LOW_RATE_SAMPLES;
+    const double step = (double)(HIGH_RATE_SAMPLES) / LOW_RATE_SAMPLES;
 
     double pos = 0.0;
     for (int i = 0; i < LOW_RATE_SAMPLES; i++)
@@ -30,7 +30,7 @@ static void upsample_to_44khz(const float *high_rate_buffer, int16_t *output_44k
 
         // Simple linear interpolation
         float a = high_rate_buffer[index];
-        float b = (index + 1 < (HIGH_RATE_SAMPLES + odd_frame)) ? high_rate_buffer[index + 1] : a;
+        float b = (index + 1 < (HIGH_RATE_SAMPLES)) ? high_rate_buffer[index + 1] : a;
 
         float sample = (float)((1.0 - frac) * a + frac * b);
         // convert to s16
@@ -46,7 +46,7 @@ void NonesPutSoundData(Apu *apu)
     const int minimum_audio = (4096 * sizeof(int16_t));
     if (SDL_GetAudioStreamQueued(stream) < minimum_audio)
     {
-        upsample_to_44khz(apu->buffer, apu->outbuffer, apu->odd_frame);
+        UpSampleTo44khz(apu->buffer, apu->outbuffer);
 
         SDL_PutAudioStreamData(stream, apu->outbuffer, sizeof(apu->outbuffer));
     }

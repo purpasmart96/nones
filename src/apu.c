@@ -805,17 +805,10 @@ static void ApuPutClock(Apu *apu)
     ApuClockTimers(apu);
     ApuMixSample(apu);
 
-    if (apu->current_sample == 14890 && !apu->odd_frame)
+    if (apu->current_sample == 14890)
     {
         NonesPutSoundData(apu);
         apu->current_sample = 0;
-        apu->odd_frame = true;
-    }
-    else if (apu->current_sample >= 14891 && apu->odd_frame)
-    {
-        NonesPutSoundData(apu);
-        apu->current_sample = 0;
-        apu->odd_frame = false;
     }
 
     apu->buffer[apu->current_sample++] = apu->mixed_sample;
@@ -904,7 +897,6 @@ void APU_Reset(Apu *apu)
     ApuResetFrameCounter(apu);
     apu->cycles = 0;
     apu->cycles_to_run = 0;
-    apu->odd_frame = false;
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
