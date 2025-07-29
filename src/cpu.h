@@ -18,6 +18,13 @@ typedef enum
     IndirectY
 } AddressingMode;
 
+typedef enum
+{
+    NMI_VECTOR   = 0xFFFA,
+    RESET_VECTOR = 0xFFFC,
+    IRQ_VECTOR   = 0xFFFE
+} Vectors;
+
 typedef union
 {
     uint8_t raw;
