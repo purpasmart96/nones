@@ -18,7 +18,7 @@
 
 static SDL_AudioStream *stream = NULL;
 
-static void UpSampleTo44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer)
+static void SampleTo44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer)
 {
     const double step = (double)(HIGH_RATE_SAMPLES) / LOW_RATE_SAMPLES;
 
@@ -46,7 +46,7 @@ void NonesPutSoundData(Apu *apu)
     const int minimum_audio = (4096 * sizeof(int16_t));
     if (SDL_GetAudioStreamQueued(stream) < minimum_audio)
     {
-        UpSampleTo44khz(apu->buffer, apu->outbuffer);
+        SampleTo44khz(apu->buffer, apu->outbuffer);
 
         SDL_PutAudioStreamData(stream, apu->outbuffer, sizeof(apu->outbuffer));
     }
