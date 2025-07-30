@@ -2,7 +2,6 @@
 #include <stdint.h>
 #include "joypad.h"
 
-//static JoyPad joy_pad;
 
 void WriteJoyPadReg(JoyPad *joy_pad, uint8_t data)
 {

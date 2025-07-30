@@ -8,7 +8,7 @@
 #include "cart.h"
 #include "mapper.h"
 
-static void CartLoadSRAM(Cart *cart)
+static void CartLoadSram(Cart *cart)
 {
     char save_path[256];
     snprintf(save_path, sizeof(save_path), "%s.sav", cart->name);
@@ -116,7 +116,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     // Load Sram
     if (cart->battery)
     {
-        CartLoadSRAM(cart);
+        CartLoadSram(cart);
     }
 
     fclose(fp);

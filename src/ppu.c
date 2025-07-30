@@ -97,8 +97,6 @@ static Color sys_palette[64] =
     {0x00, 0x00, 0x00}
 };
 
-static Ppu *ppu_ptr = NULL;
-
 static uint8_t PpuGetBgPixel(const int x, const int y)
 {
     if (x < SCREEN_WIDTH && y < SCREEN_HEIGHT)
@@ -303,7 +301,7 @@ void PPU_WriteData(Ppu *ppu, const uint8_t data)
     }
     else
     {
-        ppu->v.raw += ppu_ptr->ctrl.vram_addr_inc ? 32 : 1;
+        ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
     }
     if (~prev_a12 & ppu->v.raw_bits.bit12)
         PpuClockMMC3();
@@ -510,7 +508,6 @@ void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers)
     ppu->buffers[1] = buffers[1];
     ppu->ext_input = 0;
     //ppu->status.open_bus = 0x1c;
-    ppu_ptr = ppu;
 }
 
 const uint32_t dots_per_frame_odd = 341 * 261 + 340;
