@@ -541,7 +541,7 @@ static void PpuRenderSpritePixel(Ppu *ppu, const uint8_t bg_pixel)
             if (ppu->mask.bg_rendering && !ppu->status.sprite_hit && cycle != 256 && 
                 (cycle - 1 > 7 || (ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner)))
             {
-                if (PpuSprite0Hit(ppu, cycle - 1) && bg_pixel && sprite_pixel)
+                if (PpuSprite0Hit(ppu, cycle - 1) && bg_pixel && sprite_pixel && ppu->sprite0_loaded && i == 0)
                 {
                     ppu->status.sprite_hit = 1;
                 }
