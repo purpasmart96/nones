@@ -236,12 +236,21 @@ typedef union
 
 typedef struct
 {
+    ShiftReg shift;
+    Attribs attribs;
+    uint8_t x;
+} SpriteFifo;
+
+typedef struct
+{
     Sprite sprites[64];
+    SpriteFifo fifo[8];
     int64_t cycles;
     uint64_t frames;
     int32_t cycles_to_run;
     int32_t cycle_counter;
     int scanline;
+    uint32_t bus_addr;
 
     // Double buffer for SDL
     // buffer 0 is the backbuffer
@@ -263,24 +272,16 @@ typedef struct
 
     NameTableMirror nt_mirror_mode;
     int ext_input;
-    uint8_t attrib_data;
-    uint8_t tile_id;
-    uint8_t bg_lsb;
-    uint8_t bg_msb;
+
     ShiftReg bg_shift_low;
     ShiftReg bg_shift_high;
     ShiftReg attrib_shift_low;
     ShiftReg attrib_shift_high;
-    uint8_t sprite_lsb;
-    uint8_t sprite_msb;
-    //ShiftReg sprite_shift_low;
-    //ShiftReg sprite_shift_high;
 
     // Per scanline
     int found_sprites;
     bool sprite0_loaded;
     
-    uint32_t bus_addr;
     bool rendering;
     bool clear_vblank;
     bool frame_finished;
@@ -292,6 +293,12 @@ typedef struct
     uint8_t oam_addr;
     // Read buffer for $2007
     uint8_t buffered_data;
+
+    uint8_t attrib_data;
+    uint8_t tile_id;
+    uint8_t bg_lsb;
+    uint8_t bg_msb;
+
     // io data bus
     uint8_t io_bus;
 } Ppu;
