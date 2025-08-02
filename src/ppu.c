@@ -538,8 +538,11 @@ static void PpuRenderSpritePixel(Ppu *ppu, const uint8_t bg_pixel)
             uint8_t spixel_high = (fifo_lane->shift.high >> bit) & 1;
             uint8_t sprite_pixel = (spixel_high << 1) | spixel_low;
 
-            if (ppu->mask.bg_rendering && !ppu->status.sprite_hit && cycle != 256 && 
-                (cycle - 1 > 7 || (ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner)))
+            const bool sprite_inrange = (ppu->mask.show_sprites_left_corner || (cycle - 1) > 7);
+            const bool corner_renderering = ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner;
+            const bool sprite_0_hit_inrange = cycle != 256 && ((cycle - 1) > 7 || corner_renderering);
+
+            if (ppu->mask.bg_rendering && !ppu->status.sprite_hit && sprite_0_hit_inrange)
             {
                 if (PpuSprite0Hit(ppu, cycle - 1) && bg_pixel && sprite_pixel && ppu->sprite0_loaded && i == 0)
                 {
@@ -547,9 +550,9 @@ static void PpuRenderSpritePixel(Ppu *ppu, const uint8_t bg_pixel)
                 }
             }
 
-            if (scanline && (ppu->mask.show_sprites_left_corner || cycle - 1 > 7))
+            if (scanline && sprite_inrange)
             {
-                if (!(!sprite_pixel || (bg_pixel && fifo_lane->attribs.priority)))
+                if (sprite_pixel && (!fifo_lane->attribs.priority || !bg_pixel))
                 {
                     Color color = GetSpriteColor(ppu, fifo_lane->attribs.palette, sprite_pixel);
                     DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
@@ -655,7 +658,9 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         const uint8_t bg_pixel = (bg_pixel_high << 1) | bg_pixel_low;
         const uint8_t bg_palette = (bg_palette_high << 1) | bg_palette_low;
 
-        if (ppu->mask.bg_rendering && (ppu->mask.show_bg_left_corner || cycle - 1 > 7))
+        const bool draw_bg = ppu->mask.bg_rendering && (ppu->mask.show_bg_left_corner || (cycle - 1) > 7);
+
+        if (draw_bg)
         {
             Color color = GetBGColor(ppu, bg_palette, bg_pixel);
             DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
