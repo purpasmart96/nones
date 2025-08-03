@@ -495,6 +495,8 @@ static inline void ASL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 static inline void SLO_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     cpu->a |= ShiftOneLeftFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+    // Update status flags
+    UPDATE_FLAGS_NZ(cpu->a);
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
 }
@@ -919,6 +921,30 @@ static inline void DEX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     --cpu->x;
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->x);
+
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void SBX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+    UNUSED(page_cycle);
+
+    CpuPollIRQ(cpu);
+
+    // Always immediate addr mode
+    uint8_t operand = CpuRead8(++cpu->pc);
+    cpu->x = (cpu->a & cpu->x) - operand;
+
+    // Negative flag (bit 7)
+    cpu->status.n = GET_NEG_BIT(cpu->x);
+    // Zero flag (is result zero?)
+    cpu->status.z = !cpu->x;
+    // Update the Carry Flag (C)
+    cpu->status.c = (cpu->a >= cpu->x);
+
+    ++cpu->pc;
 
     CpuHandleInterrupts(cpu);
 }
@@ -1742,6 +1768,7 @@ static const OpcodeHandler opcodes[256] =
     [0xC8] = { INY_Instr, "INY", 1, 2, false, Implied },
     [0xC9] = { CMP_Instr, "CMP #imm", 2, 2, false, Immediate },
     [0xCA] = { DEX_Instr, "DEX", 1, 2, false, Implied },
+    [0xCB] = { SBX_Instr, "SBX", 2, 2, false, Immediate },
     [0xCC] = { CPY_Instr, "CPY abs", 3, 4, false, Absolute },
     [0xCD] = { CMP_Instr, "CMP abs", 3, 4, false, Absolute },
     [0xCE] = { DEC_Instr, "DEC abs", 3, 6, false, Absolute },
@@ -1804,7 +1831,8 @@ static void ExecuteOpcode(Cpu *cpu, bool debug_info)
     }
     else
     {
-        printf("Unhandled opcode: 0x%02X at PC: 0x%04X\n\n", opcode, cpu->pc);
+        printf("\nUnhandled opcode: 0x%02X at PC: 0x%04X\n", opcode, cpu->pc);
+        printf("A: 0x%X\nX: 0x%X\nY: 0x%X\nSP: 0x%X\nSR: 0x%X\n", cpu->a, cpu->x, cpu->y, cpu->sp, cpu->status.raw);
         printf("Cycles done: %lu\n", cpu->cycles);
         exit(EXIT_FAILURE);
     }
