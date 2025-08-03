@@ -93,12 +93,6 @@ static Color sys_palette[64] =
     {0x00, 0x00, 0x00}
 };
 
-static bool PpuSprite0Hit(Ppu *ppu, int cycle)
-{
-    return (ppu->scanline >= ppu->sprites[0].y &&
-            cycle <= (ppu->sprites[0].x + 7) && cycle >= ppu->sprites[0].x);
-}
-
 static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
 {
     // Compute palette memory address
@@ -517,13 +511,35 @@ static void PpuUpdateSprites(Ppu *ppu)
     }
 }
 
-static void PpuRenderSpritePixel(Ppu *ppu, const uint8_t bg_pixel)
+static void PpuHandleSprite0Hit(Ppu *ppu, const int xpos, const int fifo_lane, const uint8_t bg_pixel, const uint8_t sprite_pixel)
+{
+    if (!bg_pixel || !sprite_pixel)
+        return;
+
+    if (fifo_lane != 0 || !ppu->sprite0_loaded)
+        return;
+
+    if (!ppu->mask.bg_rendering || ppu->status.sprite_hit)
+        return;
+
+    const bool corner_renderering = ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner;
+    const bool sprite_0_hit_inrange = xpos != 255 && (xpos > 7 || corner_renderering);
+
+    // Check if we are currently inside of sprite 0
+    const bool inside_sprite0 = ppu->scanline >= ppu->sprites[0].y &&
+                                xpos <= (ppu->sprites[0].x + 7) &&
+                                xpos >= ppu->sprites[0].x;
+
+    ppu->status.sprite_hit = inside_sprite0 && sprite_0_hit_inrange;
+}
+
+static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const uint8_t bg_pixel)
 {
     if (!ppu->mask.sprites_rendering)
         return;
 
-    const int cycle = ppu->cycle_counter;
     const int scanline = ppu->scanline;
+    const bool sprite_inrange = (ppu->mask.show_sprites_left_corner || xpos > 7);
 
     // Go through each fifo lane backwards so the sprite's pixels are drawn in the right order
     for (int i = ppu->found_sprites - 1; i >= 0; i--)
@@ -538,24 +554,14 @@ static void PpuRenderSpritePixel(Ppu *ppu, const uint8_t bg_pixel)
             uint8_t spixel_high = (fifo_lane->shift.high >> bit) & 1;
             uint8_t sprite_pixel = (spixel_high << 1) | spixel_low;
 
-            const bool sprite_inrange = (ppu->mask.show_sprites_left_corner || (cycle - 1) > 7);
-            const bool corner_renderering = ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner;
-            const bool sprite_0_hit_inrange = cycle != 256 && ((cycle - 1) > 7 || corner_renderering);
-
-            if (ppu->mask.bg_rendering && !ppu->status.sprite_hit && sprite_0_hit_inrange)
-            {
-                if (PpuSprite0Hit(ppu, cycle - 1) && bg_pixel && sprite_pixel && ppu->sprite0_loaded && i == 0)
-                {
-                    ppu->status.sprite_hit = 1;
-                }
-            }
+            PpuHandleSprite0Hit(ppu, xpos, i, bg_pixel, sprite_pixel);
 
             if (scanline && sprite_inrange)
             {
                 if (sprite_pixel && (!fifo_lane->attribs.priority || !bg_pixel))
                 {
                     Color color = GetSpriteColor(ppu, fifo_lane->attribs.palette, sprite_pixel);
-                    DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
+                    DrawPixel(ppu->buffers[0], xpos, scanline, color);
                 }
             }
 
@@ -649,7 +655,11 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
 
     if (scanline < 240 && cycle < 257)
     {
+        // The effective x positon is the current cycle - 1 since cycle 0 is a dummy cycle
+        const int xpos = ppu->cycle_counter - 1;
+        // Fine X tells us which bit from the shift regs we want to use
         const int bit = 15 - ppu->x;
+
         uint8_t bg_pixel_low  = (ppu->bg_shift_low.raw >> bit) & 1;
         uint8_t bg_pixel_high = (ppu->bg_shift_high.raw >> bit) & 1;
         uint8_t bg_palette_low  = (ppu->attrib_shift_low.raw >> bit) & 1;
@@ -658,20 +668,20 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         const uint8_t bg_pixel = (bg_pixel_high << 1) | bg_pixel_low;
         const uint8_t bg_palette = (bg_palette_high << 1) | bg_palette_low;
 
-        const bool draw_bg = ppu->mask.bg_rendering && (ppu->mask.show_bg_left_corner || (cycle - 1) > 7);
+        const bool draw_bg = ppu->mask.bg_rendering && (ppu->mask.show_bg_left_corner || xpos > 7);
 
         if (draw_bg)
         {
             Color color = GetBGColor(ppu, bg_palette, bg_pixel);
-            DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
+            DrawPixel(ppu->buffers[0], xpos, scanline, color);
         }
         else
         {
             Color color = GetBGColor(ppu, bg_palette, 0);
-            DrawPixel(ppu->buffers[0], cycle - 1, scanline, color);
+            DrawPixel(ppu->buffers[0], xpos, scanline, color);
         }
 
-        PpuRenderSpritePixel(ppu, bg_pixel);
+        PpuRenderSpritePixel(ppu, xpos, bg_pixel);
     }
 }
 
