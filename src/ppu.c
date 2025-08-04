@@ -112,7 +112,6 @@ static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pix
     }
 
     return sys_palette[color_index & 0x3F];
-
 }
 
 static Color GetSpriteColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
@@ -522,8 +521,7 @@ static void PpuHandleSprite0Hit(Ppu *ppu, const int xpos, const int fifo_lane, c
     if (!ppu->mask.bg_rendering || ppu->status.sprite_hit)
         return;
 
-    const bool corner_renderering = ppu->mask.show_bg_left_corner && ppu->mask.show_sprites_left_corner;
-    const bool sprite_0_hit_inrange = xpos != 255 && (xpos > 7 || corner_renderering);
+    const bool sprite_0_hit_inrange = xpos != 255 && (xpos > 7 || ppu->mask.show_bg_left_corner);
 
     // Check if we are currently inside of sprite 0
     const bool inside_sprite0 = ppu->scanline >= ppu->sprites[0].y &&
@@ -542,7 +540,6 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const uint8_t bg_pixe
     const bool sprite_inrange = (ppu->mask.show_sprites_left_corner || xpos > 7);
 
     uint8_t sprite_pixel = 0;
-    SpriteFifo *found_fifo_lane = NULL;
 
     for (int i = 0; i < ppu->found_sprites; i++)
     {
@@ -560,9 +557,10 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const uint8_t bg_pixe
 
                 PpuHandleSprite0Hit(ppu, xpos, i, bg_pixel, sprite_pixel);
 
-                if (sprite_pixel)
+                if (sprite_pixel && (!fifo_lane->attribs.priority || !bg_pixel))
                 {
-                    found_fifo_lane = fifo_lane;
+                    Color color = GetSpriteColor(ppu, fifo_lane->attribs.palette, sprite_pixel);
+                    DrawPixel(ppu->buffers[0], xpos, scanline, color);
                 }
             }
 
@@ -577,12 +575,6 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const uint8_t bg_pixe
                 fifo_lane->shift.high <<= 1;
             }
         }
-    }
-
-    if (sprite_pixel && (!found_fifo_lane->attribs.priority || !bg_pixel))
-    {
-        Color color = GetSpriteColor(ppu, found_fifo_lane->attribs.palette, sprite_pixel);
-        DrawPixel(ppu->buffers[0], xpos, scanline, color);
     }
 }
 
