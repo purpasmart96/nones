@@ -541,27 +541,28 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const uint8_t bg_pixe
     const int scanline = ppu->scanline;
     const bool sprite_inrange = (ppu->mask.show_sprites_left_corner || xpos > 7);
 
-    // Go through each fifo lane backwards so the sprite's pixels are drawn in the right order
-    for (int i = ppu->found_sprites - 1; i >= 0; i--)
+    uint8_t sprite_pixel = 0;
+    SpriteFifo *found_fifo_lane = NULL;
+
+    for (int i = 0; i < ppu->found_sprites; i++)
     {
         SpriteFifo *fifo_lane = &ppu->fifo[i];
         if (fifo_lane->x > 0)
             --fifo_lane->x;
         else
         {
-            const uint8_t bit = !fifo_lane->attribs.horz_flip * 7;
-            uint8_t spixel_low  = (fifo_lane->shift.low >> bit) & 1;
-            uint8_t spixel_high = (fifo_lane->shift.high >> bit) & 1;
-            uint8_t sprite_pixel = (spixel_high << 1) | spixel_low;
-
-            PpuHandleSprite0Hit(ppu, xpos, i, bg_pixel, sprite_pixel);
-
-            if (scanline && sprite_inrange)
+            if (!sprite_pixel && scanline && sprite_inrange)
             {
-                if (sprite_pixel && (!fifo_lane->attribs.priority || !bg_pixel))
+                const uint8_t bit = !fifo_lane->attribs.horz_flip * 7;
+                uint8_t spixel_low  = (fifo_lane->shift.low >> bit) & 1;
+                uint8_t spixel_high = (fifo_lane->shift.high >> bit) & 1;
+                sprite_pixel = (spixel_high << 1) | spixel_low;
+
+                PpuHandleSprite0Hit(ppu, xpos, i, bg_pixel, sprite_pixel);
+
+                if (sprite_pixel)
                 {
-                    Color color = GetSpriteColor(ppu, fifo_lane->attribs.palette, sprite_pixel);
-                    DrawPixel(ppu->buffers[0], xpos, scanline, color);
+                    found_fifo_lane = fifo_lane;
                 }
             }
 
@@ -576,6 +577,12 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const uint8_t bg_pixe
                 fifo_lane->shift.high <<= 1;
             }
         }
+    }
+
+    if (sprite_pixel && (!found_fifo_lane->attribs.priority || !bg_pixel))
+    {
+        Color color = GetSpriteColor(ppu, found_fifo_lane->attribs.palette, sprite_pixel);
+        DrawPixel(ppu->buffers[0], xpos, scanline, color);
     }
 }
 
