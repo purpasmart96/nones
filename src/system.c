@@ -229,6 +229,8 @@ void BusWrite(const uint16_t addr, const uint8_t data)
             MapperWrite(system_ptr->cart, addr, data);
             break;
     }
+
+    system_ptr->bus_data = data;
 }
 
 Cart *SystemGetCart(void)
