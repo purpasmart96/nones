@@ -20,7 +20,7 @@ uint8_t ReadJoyPadReg(JoyPad *joy_pad)
         return 1;
     }
 
-    uint8_t response = (joy_pad->button_status & (1 << joy_pad->button_index)) >> joy_pad->button_index;
+    uint8_t response = (joy_pad->button_status.raw & (1 << joy_pad->button_index)) >> joy_pad->button_index;
 
     if (!joy_pad->strobe && joy_pad->button_index <= 7)
     {
@@ -35,10 +35,16 @@ void JoyPadSetButton(JoyPad *joy_pad, JoypadButton button, bool pressed)
 {
     if (pressed)
     {
-        joy_pad->button_status |= button;
+        ButtonStatus prev_status = joy_pad->button_status;
+        joy_pad->button_status.raw |= button;
+
+        joy_pad->button_status.up &= ~prev_status.down;
+        joy_pad->button_status.down &= ~prev_status.up;
+        joy_pad->button_status.left &= ~prev_status.right;
+        joy_pad->button_status.right &= ~prev_status.left;
     }
     else
     {
-        joy_pad->button_status &= ~button;
+        joy_pad->button_status.raw &= ~button;
     }
 }

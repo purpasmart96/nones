@@ -13,11 +13,28 @@ typedef enum
     JOYPAD_RIGHT  = 1 << 7
 } JoypadButton;
 
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t a : 1;
+        uint8_t b : 1;
+        uint8_t select : 1;
+        uint8_t start : 1;
+        uint8_t up : 1;
+        uint8_t down : 1;
+        uint8_t left : 1;
+        uint8_t right : 1;
+    };
+
+} ButtonStatus;
+
 typedef struct
 {
     bool strobe;
     uint8_t button_index;
-    uint8_t button_status;
+    ButtonStatus button_status;
 } JoyPad;
 
 void JoyPadSetButton(JoyPad *joy_pad, JoypadButton button, bool pressed);
