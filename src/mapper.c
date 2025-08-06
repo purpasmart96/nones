@@ -179,9 +179,6 @@ static uint8_t Mmc1ReadPrgRom(Cart *cart, const uint16_t addr)
             return Mmc1PrgReadMode2(cart, mmc1.prg_bank.select, addr);
         case 3:
             return Mmc1PrgReadMode3(cart, mmc1.prg_bank.select, addr);
-        default:
-            printf("Mmc1 prg bank mode: %d not implemented yet!\n", mmc1.control.prg_rom_bank_mode);
-            break;
     }
 
     return 0;
@@ -246,12 +243,25 @@ static uint8_t Mmc3ReadChrRom(Cart *cart, const uint16_t addr)
 {
     const uint32_t effective_addr = addr ^ (mmc3.bank_sel.chr_a12_invert * 0x1000);
 
+    // Branch version
+    //uint32_t final_addr = 0;
+    //if (effective_addr < 0x1000)
+    //{
+    //    // Reg 0 or 1
+    //    final_addr = ((mmc3.regs[effective_addr >> 11] * 0x800) + (effective_addr & 0x7FF));
+    //}
+    //else
+    //{
+    //    // Reg 2–5
+    //    final_addr = ((mmc3.regs[(effective_addr >> 10) - 2] * 0x400) + (effective_addr & 0x3FF));
+    //}
+
     // Branchless
     uint32_t region = effective_addr >> 12;
     uint32_t shift = 10 + (region ^ 1);
     uint32_t offset = region * 2;
     uint32_t bank_size = 1 << shift;
-    
+
     uint32_t index = (effective_addr >> shift) - offset;
     uint32_t bank_base = mmc3.regs[index] << shift;
     uint32_t final_addr = bank_base | (effective_addr & (bank_size - 1));
@@ -580,20 +590,19 @@ void MapperInit(Cart *cart)
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
         case MAPPER_BNROM_NINJA:
+            cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             if (cart->chr_rom.size > 0x2000)
             {
                 cart->PrgReadFn = NinjaReadPrgRom;
                 cart->ChrReadFn = NinjaReadChrRom;
                 cart->RegWriteFn = NinjaRegWrite;
                 cart->mem_map = MEM_MAP_NINJA;
-                cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
                 break;
             }
             cart->PrgReadFn = BnRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             cart->RegWriteFn = BnRomRegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
-            cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
         default:
             printf("Bad Mapper type!: %d\n", cart->mapper_num);
