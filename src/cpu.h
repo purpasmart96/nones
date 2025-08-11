@@ -70,8 +70,6 @@ typedef struct
     const char *name;
     // Number of bytes the instruction takes
     uint8_t bytes;
-    // Base cycle count
-    uint8_t cycles;
     // Extra cycle(s) if page boundary is crossed
     bool page_cross_penalty;
     AddressingMode addr_mode;

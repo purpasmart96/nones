@@ -733,117 +733,96 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
     }
 }
 
-void PPU_Tick(Ppu *ppu)
+void PpuUpdateRenderingState(Ppu *ppu)
 {
-    ppu->cycles_to_run += 3;
-
-    while (ppu->cycles_to_run > 0)
-    {
-        if (ppu->cycles_to_run == 2)
-        {
-            //printf("Nmi polled: frame:%ld scanline:%d cycle:%d\n", ppu->frames, ppu->scanline, ppu->cycle_counter);
-            SystemPollNmi();
-        }
-
-        if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
-            PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
-
-        if (ppu->cycle_counter == 64 && ppu->scanline < 240)
-        {
-            ResetSecondaryOAMSprites();
-        }
-
-        if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240))
-        {
-            PpuUpdateSprites(ppu);
-        }
-
-        if ((ppu->cycle_counter <= 320 && ppu->cycle_counter >= 257) && (ppu->scanline < 240 || ppu->scanline == 261))
-        {
-            ppu->oam_addr *= !ppu->rendering;
-            PpuFetchSprite(ppu, (ppu->cycle_counter - 257) >> 3);
-        }
-
-        if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240 || ppu->scanline == 261))
-            IncY(ppu);
-
-        if (ppu->rendering && ppu->cycle_counter == 257 && (ppu->scanline < 240 || ppu->scanline == 261))
-        {
-            ppu->v.scrolling.coarse_x = ppu->t.scrolling.coarse_x;
-            ppu->v.raw_bits.bit10 = ppu->t.raw_bits.bit10;
-        }
-
-        if (ppu->scanline == 241 && ppu->cycle_counter == 1)
-        {
-            //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
-            ppu->bus_addr = ppu->v.raw & 0x3FFF;
-            // Vblank starts at scanline 241
-            ppu->status.vblank = 1;
-            // Copy the finished image in the back buffer to the front buffer
-            memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
-        }
-
-        // Clear VBlank flag at scanline 261, dot 1
-        if (ppu->scanline == 261 && ppu->cycle_counter == 1)
-        {
-            ppu->status.vblank = 0;
-            ppu->status.sprite_hit = 0;
-            ppu->status.sprite_overflow = 0;
-        }
-
-        if (ppu->rendering && ppu->scanline == 261 && (ppu->cycle_counter >= 280 && ppu->cycle_counter < 305))
-        {
-            // reset scroll
-            ppu->v.scrolling.coarse_y = ppu->t.scrolling.coarse_y;
-            ppu->v.scrolling.fine_y = ppu->t.scrolling.fine_y;
-            ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
-        }
-
-        ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
-        ++ppu->cycles;
-        --ppu->cycles_to_run;
-
-        if (!ppu->cycle_counter)
-        {
-            // 1 scanline = 341 PPU cycles
-            ppu->scanline = (ppu->scanline + 1) % 262;
-        }
-
-        if (!ppu->cycle_counter && !ppu->scanline)
-        {
-            ppu->frame_finished = true;
-            // Clear io bus at the end of each frame
-            // (Actually random on real hardware and can be up to a 30 frame delay)
-            ppu->io_bus = 0;
-            ++ppu->frames;
-        }
-
-        // Seems like the vblank flag side effect from reading PpuStatus is delayed by one dot/cycle
-        if (ppu->clear_vblank)
-        {
-            // Clear vblank
-            ppu->status.vblank = 0;
-            ppu->clear_vblank = false;
-        }
-
-        if (ppu->mask.bg_rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
-        {
-            ++ppu->cycle_counter;
-        }
-    }
-    ppu->rendering = ppu->mask.bg_rendering || ppu->mask.sprites_rendering;
+    ppu->rendering = ppu->mask.bg_rendering | ppu->mask.sprites_rendering;
 }
 
-// We need to catch up to the cpu
-void PPU_Update(Ppu *ppu, uint64_t cpu_cycles)
+void PPU_Tick(Ppu *ppu)
 {
-    // Get the delta of ppu cycles that need to be run to catch up
-    int64_t cycles_delta = (cpu_cycles * 3) - ppu->cycles;
-    // Calculate how many ppu ticks we need to run (1 CPU cycle = 3 PPU cycles)
-    ppu->cycles_to_run = MAX(-3, (cycles_delta + ppu->cycles_to_run) - 3);
-    //if (ppu->cycles_to_run > -3)
-    //    printf("Syncing of %d Ppu cycles\n", ppu->cycles_to_run + 3);
-    PPU_Tick(ppu);
+    if (ppu->cycle_counter && (ppu->scanline < 240 || ppu->scanline == 261) && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
+        PpuRender(ppu, ppu->scanline, ppu->cycle_counter);
+
+    if (ppu->cycle_counter == 64 && ppu->scanline < 240)
+    {
+        ResetSecondaryOAMSprites();
+    }
+
+    if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240))
+    {
+        PpuUpdateSprites(ppu);
+    }
+
+    if ((ppu->cycle_counter <= 320 && ppu->cycle_counter >= 257) && (ppu->scanline < 240 || ppu->scanline == 261))
+    {
+        ppu->oam_addr *= !ppu->rendering;
+        PpuFetchSprite(ppu, (ppu->cycle_counter - 257) >> 3);
+    }
+
+    if (ppu->rendering && ppu->cycle_counter == 256 && (ppu->scanline < 240 || ppu->scanline == 261))
+        IncY(ppu);
+    if (ppu->rendering && ppu->cycle_counter == 257 && (ppu->scanline < 240 || ppu->scanline == 261))
+    {
+        ppu->v.scrolling.coarse_x = ppu->t.scrolling.coarse_x;
+        ppu->v.raw_bits.bit10 = ppu->t.raw_bits.bit10;
+    }
+
+    if (ppu->scanline == 241 && ppu->cycle_counter == 1)
+    {
+        //printf("PPU v addr: 0x%04X\n", ppu->v.raw);
+        ppu->bus_addr = ppu->v.raw & 0x3FFF;
+        // Vblank starts at scanline 241
+        ppu->status.vblank = 1;
+        // Copy the finished image in the back buffer to the front buffer
+        memcpy(ppu->buffers[1], ppu->buffers[0], sizeof(uint32_t) * SCREEN_WIDTH * SCREEN_HEIGHT);
+    }
+
+    // Clear VBlank flag at scanline 261, dot 1
+    if (ppu->scanline == 261 && ppu->cycle_counter == 1)
+    {
+        ppu->status.vblank = 0;
+        ppu->status.sprite_hit = 0;
+        ppu->status.sprite_overflow = 0;
+    }
+
+    if (ppu->rendering && ppu->scanline == 261 && (ppu->cycle_counter >= 280 && ppu->cycle_counter < 305))
+    {
+        // reset scroll
+        ppu->v.scrolling.coarse_y = ppu->t.scrolling.coarse_y;
+        ppu->v.scrolling.fine_y = ppu->t.scrolling.fine_y;
+        ppu->v.raw_bits.bit11 = ppu->t.raw_bits.bit11;
+    }
+
+    ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
+    ++ppu->cycles;
+
+    if (!ppu->cycle_counter)
+    {
+        // 1 scanline = 341 PPU cycles
+        ppu->scanline = (ppu->scanline + 1) % 262;
+    }
+
+    if (!ppu->cycle_counter && !ppu->scanline)
+    {
+        ppu->frame_finished = true;
+        // Clear io bus at the end of each frame
+        // (Actually random on real hardware and can be up to a 30 frame delay)
+        ppu->io_bus = 0;
+        ++ppu->frames;
+    }
+
+    // Seems like the vblank flag side effect from reading PpuStatus is delayed by one dot/cycle
+    if (ppu->clear_vblank)
+    {
+        // Clear vblank
+        ppu->status.vblank = 0;
+        ppu->clear_vblank = false;
+    }
+
+    if (ppu->mask.bg_rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
+    {
+        ++ppu->cycle_counter;
+    }
 }
 
 void PPU_Reset(Ppu *ppu)

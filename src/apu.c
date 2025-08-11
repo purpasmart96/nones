@@ -550,7 +550,6 @@ static void ApuDmcWriteSampleAddr(Apu *apu, const uint8_t data)
 // DMC DMA
 static void ApuUpdateDmcSample(Apu *apu)
 {
-#ifndef DISABLE_CYCLE_ACCURACY
     // Halt and dummy cycle
     SystemAddCpuCycles(2);
     apu->cycles_to_run += 2;
@@ -569,10 +568,6 @@ static void ApuUpdateDmcSample(Apu *apu)
     SystemAddCpuCycles(1);
     ++apu->cycles_to_run;
     PPU_Tick(SystemGetPpu());
-#else
-    apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
-    SystemAddCpuCycles(4);
-#endif
 
     apu->dmc.empty = false;
     apu->dmc.addr_counter = MAX(0x8000, (apu->dmc.addr_counter + 1) & 0xFFFF);
@@ -878,17 +873,6 @@ void APU_Tick(Apu *apu)
         ++apu->cycles;
         --apu->cycles_to_run;
     }
-}
-
-void APU_Update(Apu *apu, uint64_t cpu_cycles)
-{
-    // Get the delta of cycles since the last the last tick
-    int64_t cpu_cycles_delta = cpu_cycles - apu->cycles;
-    // Calculate how many apu ticks we need to run
-    apu->cycles_to_run = MAX(-1, (cpu_cycles_delta + apu->cycles_to_run) - 1);
-    //if (apu->cycles_to_run > -1)
-    //    printf("Syncing of %d Apu cycles\n", apu->cycles_to_run + 1);
-    APU_Tick(apu);
 }
 
 void APU_Reset(Apu *apu)

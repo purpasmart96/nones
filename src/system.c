@@ -80,26 +80,19 @@ static void SystemStartOamDma(const uint8_t page_num)
 
     // Add cpu halt cycle
     SystemAddCpuCycles(1);
-#ifndef DISABLE_CYCLE_ACCURACY
     SystemTick();
-    if (system_ptr->apu->cycles & 1)
+    if (system_ptr->cpu->cycles & 1)
     {
         SystemAddCpuCycles(1);
         SystemTick();
     }
-#endif
     for (int i = 0; i < 256; i++)
     {
-        SystemAddCpuCycles(2);
+        SystemTick();
         // OAM DMA uses Ppu reg $2004 (OAM_DATA) internally
         const uint8_t data = BusRead(base_addr++);
-#ifndef DISABLE_CYCLE_ACCURACY
         SystemTick();
-#endif
         BusWrite(OAM_DATA_REG, data);
-#ifndef DISABLE_CYCLE_ACCURACY
-        SystemTick();
-#endif
     }
 }
 
@@ -171,6 +164,7 @@ uint8_t BusRead(const uint16_t addr)
         break;
     }
 
+    ++system_ptr->cpu->cycles;
     // Finally read the data from the bus
     return system_ptr->bus_data;
 }
@@ -231,6 +225,7 @@ void BusWrite(const uint16_t addr, const uint8_t data)
     }
 
     system_ptr->bus_data = data;
+    ++system_ptr->cpu->cycles;
 }
 
 Cart *SystemGetCart(void)
@@ -323,13 +318,12 @@ void SystemPollNmi(void)
 void SystemTick(void)
 {
     APU_Tick(system_ptr->apu);
-    PPU_Tick(system_ptr->ppu);
-}
 
-void SystemSync(uint64_t cycles)
-{
-    APU_Update(system_ptr->apu, cycles);
-    PPU_Update(system_ptr->ppu, cycles);
+    PPU_Tick(system_ptr->ppu);
+    SystemPollNmi();
+    PPU_Tick(system_ptr->ppu);
+    PPU_Tick(system_ptr->ppu);
+    PpuUpdateRenderingState(system_ptr->ppu);
 }
 
 void SystemAddCpuCycles(uint32_t cycles)
@@ -360,9 +354,9 @@ void SystemUpdateJPButtons(System *system, const bool *buttons)
 
 void SystemReset(System *system)
 {
-    CPU_Reset(system->cpu);
     APU_Reset(system->apu);
     PPU_Reset(system->ppu);
+    CPU_Reset(system->cpu);
 }
 
 void SystemShutdown(System *system)

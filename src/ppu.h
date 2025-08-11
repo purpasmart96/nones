@@ -304,9 +304,9 @@ typedef struct
 } Ppu;
 
 void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
-void PPU_Update(Ppu *ppu, uint64_t cpu_cycles);
 void PPU_Tick(Ppu *ppu);
 void PPU_Reset(Ppu *ppu);
+void PpuUpdateRenderingState(Ppu *ppu);
 uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr);
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data);
 void PpuSetMirroring(NameTableMirror mode, int page);

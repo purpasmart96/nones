@@ -304,7 +304,6 @@ uint8_t ReadAPURegister(Apu *apu, const uint16_t addr);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
 void APU_Init(Apu *apu);
-void APU_Update(Apu *apu, uint64_t cpu_cycles);
 void APU_Tick(Apu *apu);
 void APU_Reset(Apu *apu);
 

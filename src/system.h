@@ -35,7 +35,6 @@ typedef struct System
 } System;
 
 #define CPU_RAM_SIZE 0x800
-//#define DISABLE_CYCLE_ACCURACY
 
 System *SystemCreate(Arena *arena);
 void SystemInit(System *system, uint32_t **buffers);
