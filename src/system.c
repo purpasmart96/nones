@@ -142,6 +142,7 @@ uint8_t BusRead(const uint16_t addr)
                 }
                 else if (addr == 0x4015)
                 {
+                    ++system_ptr->cpu->cycles;
                     return ReadAPURegister(system_ptr->apu, addr);
                 }
                 break;
