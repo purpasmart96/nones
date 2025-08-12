@@ -1062,7 +1062,7 @@ static inline void NOP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
             ++cpu->pc;
             break;
         case Absolute:
-            GetAbsoluteAddr(cpu);
+            CpuRead8(GetAbsoluteAddr(cpu));
             ++cpu->pc;
             break;
         case AbsoluteX:
