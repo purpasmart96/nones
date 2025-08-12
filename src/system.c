@@ -79,12 +79,12 @@ static void SystemStartOamDma(const uint8_t page_num)
     uint16_t base_addr = (page_num * 0x100);
 
     // Add cpu halt cycle
-    SystemAddCpuCycles(1);
     SystemTick();
+    SystemAddCpuCycles(1);
     if (system_ptr->cpu->cycles & 1)
     {
-        SystemAddCpuCycles(1);
         SystemTick();
+        SystemAddCpuCycles(1);
     }
     for (int i = 0; i < 256; i++)
     {
