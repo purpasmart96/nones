@@ -1687,6 +1687,7 @@ void CPU_Update(Cpu *cpu, bool debug_info)
 
 void CPU_Reset(Cpu *cpu)
 {
+    cpu->cycles = 0;
     cpu->pc = 0xFF;
     // Dummy read
     CpuRead8(cpu->pc);
