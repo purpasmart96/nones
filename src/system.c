@@ -106,6 +106,7 @@ static const MemMap6k mem_map_6k[] =
 
 uint8_t BusRead(const uint16_t addr)
 {
+    ++system_ptr->cpu->cycles;
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
 
@@ -142,7 +143,6 @@ uint8_t BusRead(const uint16_t addr)
                 }
                 else if (addr == 0x4015)
                 {
-                    ++system_ptr->cpu->cycles;
                     return ReadAPURegister(system_ptr->apu, addr);
                 }
                 break;
@@ -165,13 +165,13 @@ uint8_t BusRead(const uint16_t addr)
         break;
     }
 
-    ++system_ptr->cpu->cycles;
     // Finally read the data from the bus
     return system_ptr->bus_data;
 }
 
 void BusWrite(const uint16_t addr, const uint8_t data)
 {
+    ++system_ptr->cpu->cycles;
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
 
@@ -226,7 +226,6 @@ void BusWrite(const uint16_t addr, const uint8_t data)
     }
 
     system_ptr->bus_data = data;
-    ++system_ptr->cpu->cycles;
 }
 
 Cart *SystemGetCart(void)

@@ -564,10 +564,9 @@ static void ApuUpdateDmcSample(Apu *apu)
         PPU_Tick(SystemGetPpu());
     }
 
-    apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
-    SystemAddCpuCycles(1);
     ++apu->cycles_to_run;
     PPU_Tick(SystemGetPpu());
+    apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
 
     apu->dmc.empty = false;
     apu->dmc.addr_counter = MAX(0x8000, (apu->dmc.addr_counter + 1) & 0xFFFF);
