@@ -484,6 +484,7 @@ static void ApuClockDmc(Apu *apu)
 static void ApuResetFrameCounter(Apu *apu)
 {
     apu->frame_counter.reload = apu->frame_counter.control.seq_mode ? 37282 : 29830;
+    apu->frame_counter.reset_delay = 2;
     apu->frame_counter.step = 0;
     apu->frame_counter.timer = 0;
     apu->frame_counter.reset = false;
@@ -506,10 +507,6 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
     apu->frame_counter.control.raw = data;
     apu->frame_counter.reset = true;
 
-    // "Put" cycles are odd, "Get" cycles are even
-    const bool put_cycle = apu->cycles & 1;
-    apu->delay = 3 + put_cycle;
-
     // Seems correct
     if (apu->frame_counter.control.irq_inhibit)
     {
@@ -520,7 +517,7 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
 static void ApuWritePulse1Sweep(Apu *apu, const uint8_t data)
 {
     apu->pulse1.sweep_reg.raw = data;
-    apu->pulse1.reload = 1;
+    apu->pulse1.reload = true;
     UpdateTargetPeriod1(apu);
 
     //printf("Set pulse 1 sweep enabled: %d\n", apu->pulse1.sweep_reg.enabled);
@@ -532,7 +529,7 @@ static void ApuWritePulse1Sweep(Apu *apu, const uint8_t data)
 static void ApuWritePulse2Sweep(Apu *apu, const uint8_t data)
 {
     apu->pulse2.sweep_reg.raw = data;
-    apu->pulse2.reload = 1;
+    apu->pulse2.reload = true;
     UpdateTargetPeriod2(apu);
 
     //printf("Set pulse 2 sweep enabled: %d\n", apu->pulse2.sweep.enabled);
@@ -665,7 +662,7 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
 static uint8_t ApuReadStatus(Apu *apu)
 {
     ApuStatus status = apu->status;
-    apu->status.frame_irq = 0;
+    apu->clear_frame_irq = true;
 
     status.pulse1 = apu->pulse1.length_counter != 0;
     status.pulse2 = apu->pulse2.length_counter != 0;
@@ -781,16 +778,26 @@ void APU_Init(Apu *apu)
 
 static void ApuGetClock(Apu *apu)
 {
-    //if (apu->clear_frame_irq && !(apu->clear_frame_irq_delay--))
-    //{
-    //    apu->status.frame_irq = 0;
-    //    apu->clear_frame_irq = false;
-    //    apu->clear_frame_irq_delay = 0;
-    //}
+    if (apu->dmc.restart)
+    {
+        ApuResetSample(apu);
+    }
+
+    apu->status.frame_irq &= !apu->clear_frame_irq;
+    apu->clear_frame_irq = false;
+
+    if (apu->frame_counter.reset)
+    {
+        if (!(--apu->frame_counter.reset_delay))
+        {
+            ApuResetFrameCounter(apu);
+        }
+    }
 }
 
 static void ApuPutClock(Apu *apu)
 {
+    // TODO: Dmc Dma can happen on put and get cycles depending on the type of Dmc Dma
     if (apu->dmc.empty && apu->dmc.bytes_remaining)
     {
         ApuUpdateDmcSample(apu);
@@ -816,19 +823,6 @@ void APU_Tick(Apu *apu)
     {
         SequenceStep step = sequence_table[apu->frame_counter.control.seq_mode][apu->frame_counter.step];
 
-        if (apu->dmc.restart)
-        {
-            ApuResetSample(apu);
-        }
-
-        if (apu->frame_counter.reset)
-        {
-            if (!(--apu->delay))
-            {
-                ApuResetFrameCounter(apu);
-            }
-        }
-
         if (apu->frame_counter.timer == step.cycles)
         {
             //printf("Sequencer: Framecounter called on cycle: %d cpu cycle: %ld\n", apu->frame_counter.timer, apu->cycles);
@@ -849,6 +843,8 @@ void APU_Tick(Apu *apu)
             if (step.frame_interrupt)
             {
                 apu->status.frame_irq |= ~apu->frame_counter.control.irq_inhibit;
+                // Don't overwrite the newly set frame irq flag
+                apu->clear_frame_irq = false;
             }
 
             apu->frame_counter.step = (apu->frame_counter.step + 1) % 6;

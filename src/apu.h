@@ -98,6 +98,7 @@ typedef struct
     ApuFrameCounterControl control;
     int timer;
     int reload;
+    int reset_delay;
     int16_t step;
     bool interrupt;
     bool reset;
@@ -250,10 +251,8 @@ typedef struct
 
     float mixed_sample;
     int alignment;
-    int delay;
-    //int clear_frame_irq_delay;
     int current_sample;
-    //bool clear_frame_irq;
+    bool clear_frame_irq;
     bool frame;
 } Apu;
 
