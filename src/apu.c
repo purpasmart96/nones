@@ -75,13 +75,11 @@ static const uint16_t noise_table[16] =
     101, 127, 190, 254, 381, 508, 1017, 2034
 };
 
-// 428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106,  84,  72,  54
-static const uint16_t dmc_table[16] =
+// 428, 380, 340, 320, 286, 254, 226, 214, 190, 160, 142, 128, 106, 84,  72,  54
+static const uint8_t dmc_table[16] =
 {
-    //214, 190, 170, 160, 143, 127, 113, 107,
-    //95,  80,  71,  64,  53,  42,  36,  27
-    428, 380, 340, 320, 286, 254, 226, 214,
-    190, 160, 142, 128, 106,  84,  72,  54
+    214, 190, 170, 160, 143, 127, 113, 107,
+    95,  80,  71,  64,  53,  42,  36,  27
 };
 
 bool PollApuIrqs(Apu *apu)
@@ -461,9 +459,9 @@ static void ApuClockDmc(Apu *apu)
         // The right shift register is clocked.
         apu->dmc.shift_reg >>= 1;
 
-        if (!(--apu->dmc.bits_remaining))
+        if (!(apu->dmc.bits_remaining--))
         {
-            apu->dmc.bits_remaining = 8;
+            apu->dmc.bits_remaining = 7;
             // Output cycle ending
             // If the sample buffer is empty, then the silence flag is set;
             // otherwise, the silence flag is cleared and the sample buffer is emptied into the shift register.
@@ -804,6 +802,7 @@ static void ApuPutClock(Apu *apu)
     }
 
     ApuClockTimers(apu);
+    ApuClockDmc(apu);
     ApuMixSample(apu);
 
     if (apu->current_sample == 14890)
@@ -851,8 +850,6 @@ void APU_Tick(Apu *apu)
         }
 
         ApuClockTriangle(apu);
-        // TODO: Dmc clocking is actually done once per apu cycle, not once per cpu cycle
-        ApuClockDmc(apu);
 
         if (!((apu->cycles & 1) + apu->alignment))
         {
