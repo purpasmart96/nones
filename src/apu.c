@@ -657,31 +657,24 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
     }
 }
 
-static uint8_t ApuReadStatus(Apu *apu)
+uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data)
 {
-    ApuStatus status = apu->status;
+    ApuStatus status = {
+        .pulse1 = apu->pulse1.length_counter != 0,
+        .pulse2 = apu->pulse2.length_counter != 0,
+        .triangle = apu->triangle.length_counter != 0,
+        .noise = apu->noise.length_counter != 0,
+        .dmc = apu->dmc.bytes_remaining != 0,
+        .open_bus = bus_data,
+        .frame_irq = apu->status.frame_irq,
+        .dmc_irq = apu->status.dmc_irq
+    };
+
     apu->clear_frame_irq = true;
 
-    status.pulse1 = apu->pulse1.length_counter != 0;
-    status.pulse2 = apu->pulse2.length_counter != 0;
-    status.triangle = apu->triangle.length_counter != 0;
-    status.noise = apu->noise.length_counter != 0;
-    status.dmc = apu->dmc.bytes_remaining != 0;
-
     //printf("Timer Period value: %d\n", apu->dmc.timer_period);
+    //printf("Dmc bytes remaining: %d\n", apu->dmc.bytes_remaining);
     return status.raw;
-}
-
-uint8_t ReadAPURegister(Apu *apu, const uint16_t addr)
-{
-    switch (addr)
-    {
-        case APU_STATUS:
-            return ApuReadStatus(apu);
-        default:
-            //printf("Reading from open bus at addr: 0x%04X\n", addr);
-            return SystemReadOpenBus();
-    }
 }
 
 static void ApuClockTimers(Apu *apu)

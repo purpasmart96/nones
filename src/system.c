@@ -143,7 +143,7 @@ uint8_t BusRead(const uint16_t addr)
                 }
                 else if (addr == 0x4015)
                 {
-                    return ReadAPURegister(system_ptr->apu, addr);
+                    return ApuReadStatus(system_ptr->apu, system_ptr->bus_data);
                 }
                 break;
             }

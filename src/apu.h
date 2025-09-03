@@ -69,7 +69,7 @@ typedef union
         uint8_t triangle : 1;
         uint8_t noise : 1;
         uint8_t dmc : 1;
-        uint8_t : 1;
+        uint8_t open_bus : 1;
         uint8_t frame_irq : 1;
         uint8_t dmc_irq : 1;
     };
@@ -299,7 +299,7 @@ typedef struct
 #define APU_STATUS 0x4015
 #define APU_FRAME_COUNTER 0x4017
 
-uint8_t ReadAPURegister(Apu *apu, const uint16_t addr);
+uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
 void APU_Init(Apu *apu);
