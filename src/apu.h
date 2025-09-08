@@ -302,6 +302,7 @@ typedef struct
 uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
+void ApuDmcDmaUpdate(Apu *apu);
 void APU_Init(Apu *apu);
 void APU_Tick(Apu *apu);
 void APU_Reset(Apu *apu);

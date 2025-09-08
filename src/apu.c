@@ -543,26 +543,9 @@ static void ApuDmcWriteSampleAddr(Apu *apu, const uint8_t data)
 }
 
 // DMC DMA
-static void ApuUpdateDmcSample(Apu *apu)
+void ApuDmcDmaUpdate(Apu *apu)
 {
-    // Halt and dummy cycle
-    SystemAddCpuCycles(2);
-    apu->cycles_to_run += 2;
-    PPU_Tick(SystemGetPpu());
-    PPU_Tick(SystemGetPpu());
-
-    // If DMA tries to get on a put cycle, it waits and tries again next cycle. This wait is called an alignment cycle.
-    if (apu->cycles & 1)
-    {
-        SystemAddCpuCycles(1);
-        ++apu->cycles_to_run;
-        PPU_Tick(SystemGetPpu());
-    }
-
-    ++apu->cycles_to_run;
-    PPU_Tick(SystemGetPpu());
     apu->dmc.sample_buffer = BusRead(apu->dmc.addr_counter);
-
     apu->dmc.empty = false;
     apu->dmc.addr_counter = MAX(0x8000, (apu->dmc.addr_counter + 1) & 0xFFFF);
 
@@ -788,12 +771,6 @@ static void ApuGetClock(Apu *apu)
 
 static void ApuPutClock(Apu *apu)
 {
-    // TODO: Dmc Dma can happen on put and get cycles depending on the type of Dmc Dma
-    if (apu->dmc.empty && apu->dmc.bytes_remaining)
-    {
-        ApuUpdateDmcSample(apu);
-    }
-
     ApuClockTimers(apu);
     ApuClockDmc(apu);
     ApuMixSample(apu);
@@ -814,6 +791,11 @@ void APU_Tick(Apu *apu)
     while (apu->cycles_to_run != 0)
     {
         SequenceStep step = sequence_table[apu->frame_counter.control.seq_mode][apu->frame_counter.step];
+
+        if (apu->dmc.empty && apu->dmc.bytes_remaining)
+        {
+            SystemSignalDmcDma();
+        }
 
         if (apu->frame_counter.timer == step.cycles)
         {

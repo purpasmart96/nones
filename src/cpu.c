@@ -18,14 +18,12 @@
 
 static uint8_t CpuRead8(const uint16_t addr)
 {
-    SystemTick();
-    return BusRead(addr);
+    return SystemRead(addr);
 }
 
 static void CpuWrite8(const uint16_t addr, const uint8_t data)
 {
-    SystemTick();
-    BusWrite(addr, data);
+    SystemWrite(addr, data);
 }
 
 static uint16_t CpuReadVector(uint16_t addr)

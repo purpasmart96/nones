@@ -74,26 +74,105 @@ static void NinjaWrite(System *system, const uint16_t addr, const uint8_t data)
     MapperWrite(system->cart, addr, data);
 }
 
-static void SystemStartOamDma(const uint8_t page_num)
+static bool ApuRegsActivated(System *system)
 {
-    uint16_t base_addr = (page_num * 0x100);
+    return system->cpu_addr >= 0x4000 && system->cpu_addr < 0x4020;
+}
 
+static void SystemStartOamDma(System *system, const uint8_t page_num, const uint16_t addr)
+{
+    system->oam_dma_triggered = false;
+    uint16_t base_addr = (page_num * 0x100);
     // Add cpu halt cycle
     SystemTick();
-    SystemAddCpuCycles(1);
+    BusRead(addr);
+
+    bool single_dma_cycle = false;
+    system->oam_dma_bytes_remaining = 256;
+    while (system->oam_dma_bytes_remaining > 0)
+    {
+        // OAM Alignment cycle if needed
+        if (system->cpu->cycles & 1)
+        {
+            SystemTick();
+            BusRead(addr);
+        }
+
+        SystemTick();
+        // OAM DMA uses Ppu reg $2004 (OAM_DATA) internally
+        // Get
+        const uint8_t data = BusRead(base_addr++);
+        SystemTick();
+        // Put
+        BusWrite(OAM_DATA_REG, data);
+        if (system->dmc_dma_triggered && system->oam_dma_bytes_remaining > 2)
+        {
+            SystemTick();
+            ApuDmcDmaUpdate(system->apu);
+            system->dmc_dma_triggered = false;
+
+        }
+        else if (system_ptr->dmc_dma_triggered && system_ptr->oam_dma_bytes_remaining == 2)
+        {
+            single_dma_cycle = true;
+        }
+        --system->oam_dma_bytes_remaining;
+    }
+
+    if (system->dmc_dma_triggered && !single_dma_cycle)
+    {
+        // DMC DMA dummy cycle
+        SystemTick();
+        BusRead(addr);
+
+        // DMC Dma Alignment cycle if needed
+        if (system->cpu->cycles & 1)
+        {
+            SystemTick();
+            BusRead(addr);
+        }
+
+        SystemTick();
+        ApuDmcDmaUpdate(system->apu);
+        system->dmc_dma_triggered = false;
+    }
+    else if (system->dmc_dma_triggered && single_dma_cycle)
+    {
+        SystemTick();
+        ApuDmcDmaUpdate(system->apu);
+        system->dmc_dma_triggered = false;
+    }
+}
+
+static void SystemStartDmcDma(const uint16_t addr)
+{
+    // Add cpu halt cycle
+    SystemTick();
+    BusRead(addr);
+
+    // Add cpu dummy cycle
+    SystemTick();
+    BusRead(addr);
+
+    // Alignment cycle if needed
     if (system_ptr->cpu->cycles & 1)
     {
         SystemTick();
-        SystemAddCpuCycles(1);
+        BusRead(addr);
     }
-    for (int i = 0; i < 256; i++)
-    {
-        SystemTick();
-        // OAM DMA uses Ppu reg $2004 (OAM_DATA) internally
-        const uint8_t data = BusRead(base_addr++);
-        SystemTick();
-        BusWrite(OAM_DATA_REG, data);
-    }
+
+    SystemTick();
+    ApuDmcDmaUpdate(system_ptr->apu);
+
+    system_ptr->dmc_dma_triggered = false;
+}
+
+void SystemSignalDmcDma(void)
+{
+    system_ptr->dma_pending = true;
+    system_ptr->dmc_dma_triggered = true;
+    // TODO
+    //system_ptr->dmc_dma_abort = !system_ptr->apu->status.dmc;
 }
 
 typedef void (*MemMap6k)(System *system, const uint16_t addr, const uint8_t data);
@@ -103,6 +182,26 @@ static const MemMap6k mem_map_6k[] =
     [0] = SWramWrite,
     [1] = NinjaWrite,
 };
+
+uint8_t SystemRead(const uint16_t addr)
+{
+    system_ptr->cpu_addr = addr;
+    if (system_ptr->dma_pending)
+    {
+        if (system_ptr->dmc_dma_triggered && !system_ptr->oam_dma_triggered)
+        {
+            SystemStartDmcDma(addr);
+        }
+        else if (system_ptr->oam_dma_triggered)
+        {
+            SystemStartOamDma(system_ptr, system_ptr->bus_data, addr);
+        }
+        system_ptr->dma_pending = false;
+    }
+
+    SystemTick();
+    return BusRead(addr);
+}
 
 uint8_t BusRead(const uint16_t addr)
 {
@@ -125,7 +224,7 @@ uint8_t BusRead(const uint16_t addr)
         }
         // $4000 - $5FFF
         case 0x2:
-            if (addr < 0x4018)
+            if (addr < 0x4018 && ApuRegsActivated(system_ptr))
             {
                 if (addr == 0x4016)
                 {
@@ -169,6 +268,13 @@ uint8_t BusRead(const uint16_t addr)
     return system_ptr->bus_data;
 }
 
+void SystemWrite(const uint16_t addr, const uint8_t data)
+{
+    system_ptr->cpu_addr = addr;
+    SystemTick();
+    BusWrite(addr, data);
+}
+
 void BusWrite(const uint16_t addr, const uint8_t data)
 {
     ++system_ptr->cpu->cycles;
@@ -194,7 +300,8 @@ void BusWrite(const uint16_t addr, const uint8_t data)
             if (addr == 0x4014)
             {
                 DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
-                SystemStartOamDma(data);
+                system_ptr->oam_dma_triggered = true;
+                system_ptr->dma_pending = true;
             }
             else if (addr == 0x4016)
             {
