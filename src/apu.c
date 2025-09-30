@@ -172,6 +172,7 @@ static void ApuWriteStatus(Apu *apu, const uint8_t data)
     else if (!apu->dmc.bytes_remaining)
     {
         apu->dmc.restart = true;
+        //apu->dmc.reload = false;
     }
 
     apu->status.dmc_irq = 0;
@@ -752,9 +753,10 @@ void APU_Init(Apu *apu)
 
 static void ApuGetClock(Apu *apu)
 {
-    if (apu->dmc.restart)
+    if (apu->dmc.restart /*&& !apu->dmc.reload*/)
     {
         ApuResetSample(apu);
+        //apu->dmc.reload = true;
     }
 
     apu->status.frame_irq &= !apu->clear_frame_irq;
@@ -771,6 +773,12 @@ static void ApuGetClock(Apu *apu)
 
 static void ApuPutClock(Apu *apu)
 {
+    // TODO: Dmc Dma reload's and load's have different timings
+    //if (apu->dmc.restart && apu->dmc.reload)
+    //{
+    //    ApuResetSample(apu);
+    //}
+
     ApuClockTimers(apu);
     ApuClockDmc(apu);
     ApuMixSample(apu);
@@ -792,7 +800,7 @@ void APU_Tick(Apu *apu)
     {
         SequenceStep step = sequence_table[apu->frame_counter.control.seq_mode][apu->frame_counter.step];
 
-        if (apu->dmc.empty && apu->dmc.bytes_remaining)
+        if (apu->dmc.empty && apu->dmc.bytes_remaining && apu->status.dmc)
         {
             SystemSignalDmcDma();
         }

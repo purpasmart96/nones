@@ -79,6 +79,11 @@ static bool ApuRegsActivated(System *system)
     return system->cpu_addr >= 0x4000 && system->cpu_addr < 0x4020;
 }
 
+static bool ExplicitAbortDmcDma(System *system)
+{
+    return !system->apu->status.dmc;
+}
+
 static void SystemStartOamDma(System *system, const uint8_t page_num, const uint16_t addr)
 {
     system->oam_dma_triggered = false;
@@ -150,6 +155,12 @@ static void SystemStartDmcDma(const uint16_t addr)
     SystemTick();
     BusRead(addr);
 
+    if (ExplicitAbortDmcDma(system_ptr))
+    {
+        system_ptr->dmc_dma_triggered = false;
+        return;
+    }
+
     // Add cpu dummy cycle
     SystemTick();
     BusRead(addr);
@@ -163,7 +174,6 @@ static void SystemStartDmcDma(const uint16_t addr)
 
     SystemTick();
     ApuDmcDmaUpdate(system_ptr->apu);
-
     system_ptr->dmc_dma_triggered = false;
 }
 
@@ -171,8 +181,6 @@ void SystemSignalDmcDma(void)
 {
     system_ptr->dma_pending = true;
     system_ptr->dmc_dma_triggered = true;
-    // TODO
-    //system_ptr->dmc_dma_abort = !system_ptr->apu->status.dmc;
 }
 
 typedef void (*MemMap6k)(System *system, const uint16_t addr, const uint8_t data);

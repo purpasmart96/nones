@@ -242,6 +242,7 @@ typedef struct
         bool empty;
         bool silence;
         bool restart;
+        //bool reload;
         bool looped;
         uint8_t output_level : 7;
     } dmc;
