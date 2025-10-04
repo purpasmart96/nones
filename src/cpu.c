@@ -182,20 +182,21 @@ static inline uint16_t GetIndirectAddr(Cpu *cpu)
 {
     uint8_t ptr_low = CpuRead8(++cpu->pc);
     uint8_t ptr_high = CpuRead8(++cpu->pc);
-    
     uint16_t ptr = (uint16_t)ptr_high << 8 | ptr_low;
-    uint16_t new_pc;
+
+    uint8_t pc_low = CpuRead8(ptr);
+    uint8_t pc_high;
     // 6502 Page Boundary Bug** (If ptr is at 0xXXFF, high byte comes from 0xXX00, not 0xXXFF+1)
     if ((ptr & 0xFF) == 0xFF)
     {
-        new_pc = (uint16_t)CpuRead8(ptr) | ((uint16_t)CpuRead8(ptr & 0xFF00) << 8);
+        pc_high = CpuRead8(ptr & 0xFF00);
     }
     else
     {
-        new_pc = (uint16_t)CpuRead8(ptr) | ((uint16_t)CpuRead8(ptr + 1) << 8);
+        pc_high = CpuRead8(ptr + 1);
     }
 
-    return new_pc;
+    return (uint16_t)pc_high << 8 | pc_low;
 }
 
 // PC += 1
@@ -253,7 +254,7 @@ static inline void RotateOneLeft(Cpu *cpu, uint8_t *operand)
     UPDATE_FLAGS_NZ(*operand);
 }
 
-static inline void RotateOneLeftFromMem(Cpu *cpu, const uint16_t operand_addr)
+static inline uint8_t RotateOneLeftFromMem(Cpu *cpu, const uint16_t operand_addr)
 {
     uint8_t operand = CpuRead8(operand_addr);
     // Dummy write
@@ -269,6 +270,7 @@ static inline void RotateOneLeftFromMem(Cpu *cpu, const uint16_t operand_addr)
     CpuWrite8(operand_addr, operand);
     // Update status flags
     UPDATE_FLAGS_NZ(operand);
+    return operand;
 }
 
 static inline void RotateOneRight(Cpu *cpu, uint8_t *operand)
@@ -282,7 +284,7 @@ static inline void RotateOneRight(Cpu *cpu, uint8_t *operand)
     UPDATE_FLAGS_NZ(*operand);
 }
 
-static inline void RotateOneRightFromMem(Cpu *cpu, const uint16_t operand_addr)
+static inline uint8_t RotateOneRightFromMem(Cpu *cpu, const uint16_t operand_addr)
 {
     uint8_t operand = CpuRead8(operand_addr);
     // Dummy write
@@ -298,6 +300,7 @@ static inline void RotateOneRightFromMem(Cpu *cpu, const uint16_t operand_addr)
     CpuWrite8(operand_addr, operand);
     // Update status flags
     UPDATE_FLAGS_NZ(operand);
+    return operand;
 }
 
 static inline void ShiftOneRight(Cpu *cpu, uint8_t *operand)
@@ -428,6 +431,30 @@ static inline void AND_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->a);
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void ASR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+    CpuPollIRQ(cpu);
+    cpu->a &= CpuRead8(operand_addr);
+    ShiftOneRight(cpu, &cpu->a);
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void ANC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+    CpuPollIRQ(cpu);
+    cpu->a &= CpuRead8(operand_addr);
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(cpu->a);
+    // Update carry bit like ASL
+    cpu->status.c = (cpu->a >> 7) & 1;
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
 }
@@ -1205,6 +1232,20 @@ static inline void ROR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
+static inline void RLA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    cpu->a &= RotateOneLeftFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void RRA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    AddWithCarry(cpu, RotateOneRightFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true)));
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
 static inline void RTI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
@@ -1456,6 +1497,7 @@ static const OpcodeHandler opcodes[256] =
     [0x08] = { PHP_Instr,   "PHP",         1, false, Implied     },
     [0x09] = { ORA_Instr,   "ORA #imm",    2, false, Immediate   },
     [0x0A] = { ASL_A_Instr, "ASL A",       1, false, Accumulator },
+    [0x0B] = { ANC_Instr,   "ANC #imm",    2, false, Immediate   },
     [0x0C] = { NOP_Instr,   "NOP",         3, false, Absolute    },
     [0x0D] = { ORA_Instr,   "ORA abs",     3, false, Absolute    },
     [0x0E] = { ASL_Instr,   "ASL abs",     3, false, Absolute    },
@@ -1479,175 +1521,193 @@ static const OpcodeHandler opcodes[256] =
 
     [0x20] = { JSR_Instr,   "JSR abs",     3, false, Absolute    },
     [0x21] = { AND_Instr,   "AND (ind,X)", 2, false, IndirectX   },
+    [0x23] = { RLA_Instr,   "RLA (ind,X)", 2, false, IndirectX   },
     [0x24] = { BIT_Instr,   "BIT zp",      2, false, ZeroPage    },
     [0x25] = { AND_Instr,   "AND zp",      2, false, ZeroPage    },
     [0x26] = { ROL_Instr,   "ROL zp",      2, false, ZeroPage    },
+    [0x27] = { RLA_Instr,   "RLA zp",      2, false, ZeroPage    },
     [0x28] = { PLP_Instr,   "PLP",         1, false, Implied     },
     [0x29] = { AND_Instr,   "AND #imm",    2, false, Immediate   },
     [0x2A] = { ROL_A_Instr, "ROL A",       1, false, Accumulator },
+    [0x2B] = { ANC_Instr,   "ANC2 #imm",   2, false, Immediate   },
     [0x2C] = { BIT_Instr,   "BIT abs",     3, false, Absolute    },
     [0x2D] = { AND_Instr,   "AND abs",     3, false, Absolute    },
     [0x2E] = { ROL_Instr,   "ROL abs",     3, false, Absolute    },
+    [0x2F] = { RLA_Instr,   "RLA abs",     3, false, Absolute    },
 
-    [0x30] = { BMI_Instr, "BMI rel", 2, true, Relative },
-    [0x31] = { AND_Instr, "AND (ind),Y", 2, true, IndirectY },
-    [0x34] = { NOP_Instr, "NOP", 2, false, ZeroPageX },
-    [0x35] = { AND_Instr, "AND zp,X", 2, false, ZeroPageX },
-    [0x36] = { ROL_Instr, "ROL zp,X", 2, false, ZeroPageX },
-    [0x38] = { SEC_Instr, "SEC", 1, false, Implied },
-    [0x39] = { AND_Instr, "AND abs,Y", 3, true, AbsoluteY },
-    [0x3A] = { NOP_Instr, "NOP", 1, false, Implied },
-    [0x3C] = { NOP_Instr, "NOP", 3, true, AbsoluteX },
-    [0x3D] = { AND_Instr, "AND abs,X", 3, true, AbsoluteX },
-    [0x3E] = { ROL_Instr, "ROL abs,X", 3, false, AbsoluteX },
+    [0x30] = { BMI_Instr,   "BMI rel",     2, true,  Relative    },
+    [0x31] = { AND_Instr,   "AND (ind),Y", 2, true,  IndirectY   },
+    [0x33] = { RLA_Instr,   "RLA (ind),Y", 2, false, IndirectY   },
+    [0x34] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
+    [0x35] = { AND_Instr,   "AND zp,X",    2, false, ZeroPageX   },
+    [0x36] = { ROL_Instr,   "ROL zp,X",    2, false, ZeroPageX   },
+    [0x37] = { RLA_Instr,   "RLA zp,X",    2, false, ZeroPageX   },
+    [0x38] = { SEC_Instr,   "SEC",         1, false, Implied     },
+    [0x39] = { AND_Instr,   "AND abs,Y",   3, true,  AbsoluteY   },
+    [0x3A] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0x3B] = { RLA_Instr,   "RLA abs,Y",   3, false, AbsoluteY   },
+    [0x3C] = { NOP_Instr,   "NOP",         3, true,  AbsoluteX   },
+    [0x3D] = { AND_Instr,   "AND abs,X",   3, true,  AbsoluteX   },
+    [0x3E] = { ROL_Instr,   "ROL abs,X",   3, false, AbsoluteX   },
+    [0x3F] = { RLA_Instr,   "RLA abs,X",   3, false, AbsoluteX   },
 
-    [0x40] = { RTI_Instr, "RTI", 1, false, Implied },
-    [0x41] = { EOR_Instr, "EOR (ind,X)", 2, false, IndirectX },
-    [0x44] = { NOP_Instr, "NOP", 2, false, ZeroPage },
-    [0x45] = { EOR_Instr, "EOR zp", 2, false, ZeroPage },
-    [0x46] = { LSR_Instr, "LSR zp", 2, false, ZeroPage },
-    [0x48] = { PHA_Instr, "PHA", 1, false, Implied },
-    [0x49] = { EOR_Instr, "EOR #imm", 2, false, Immediate },
-    [0x4A] = { LSR_A_Instr, "LSR A", 1, false, Accumulator },
-    [0x4C] = { JMP_Instr, "JMP abs", 3, false, Absolute},
-    [0x4D] = { EOR_Instr, "EOR abs", 3, false, Absolute},
-    [0x4E] = { LSR_Instr, "LSR abs", 3, false, Absolute},
+    [0x40] = { RTI_Instr,   "RTI",         1, false, Implied     },
+    [0x41] = { EOR_Instr,   "EOR (ind,X)", 2, false, IndirectX   },
+    [0x44] = { NOP_Instr,   "NOP",         2, false, ZeroPage    },
+    [0x45] = { EOR_Instr,   "EOR zp",      2, false, ZeroPage    },
+    [0x46] = { LSR_Instr,   "LSR zp",      2, false, ZeroPage    },
+    [0x48] = { PHA_Instr,   "PHA",         1, false, Implied     },
+    [0x49] = { EOR_Instr,   "EOR #imm",    2, false, Immediate   },
+    [0x4A] = { LSR_A_Instr, "LSR A",       1, false, Accumulator },
+    [0x4B] = { ASR_Instr,   "ASR",         2, false, Immediate   },
+    [0x4C] = { JMP_Instr,   "JMP abs",     3, false, Absolute    },
+    [0x4D] = { EOR_Instr,   "EOR abs",     3, false, Absolute    },
+    [0x4E] = { LSR_Instr,   "LSR abs",     3, false, Absolute    },
 
-    [0x50] = { BVC_Instr, "BVC rel", 2, true, Relative },
-    [0x51] = { EOR_Instr, "EOR (ind),Y", 2, true, IndirectY },
-    [0x54] = { NOP_Instr, "NOP", 2, false, ZeroPageX },
-    [0x55] = { EOR_Instr, "EOR zp,X", 2, false, ZeroPageX },
-    [0x56] = { LSR_Instr, "LSR zp,X", 2, false, ZeroPageX},
-    [0x58] = { CLI_Instr, "CLI", 1, false, Implied},
-    [0x59] = { EOR_Instr, "EOR abs,Y", 3, true, AbsoluteY},
-    [0x5A] = { NOP_Instr, "NOP", 1, false, Implied },
-    [0x5C] = { NOP_Instr, "NOP", 3, true, AbsoluteX },
-    [0x5D] = { EOR_Instr, "EOR abs,X", 3, true, AbsoluteX },
-    [0x5E] = { LSR_Instr, "LSR abs,X", 3, false, AbsoluteX },
+    [0x50] = { BVC_Instr,   "BVC rel",     2, true,  Relative    },
+    [0x51] = { EOR_Instr,   "EOR (ind),Y", 2, true,  IndirectY   },
+    [0x54] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
+    [0x55] = { EOR_Instr,   "EOR zp,X",    2, false, ZeroPageX   },
+    [0x56] = { LSR_Instr,   "LSR zp,X",    2, false, ZeroPageX   },
+    [0x58] = { CLI_Instr,   "CLI",         1, false, Implied     },
+    [0x59] = { EOR_Instr,   "EOR abs,Y",   3, true,  AbsoluteY   },
+    [0x5A] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0x5C] = { NOP_Instr,   "NOP",         3, true,  AbsoluteX   },
+    [0x5D] = { EOR_Instr,   "EOR abs,X",   3, true,  AbsoluteX   },
+    [0x5E] = { LSR_Instr,   "LSR abs,X",   3, false, AbsoluteX   },
 
-    [0x60] = { RTS_Instr, "RTS", 1, false, Implied },
-    [0x61] = { ADC_Instr, "ADC (ind,X)", 2, false, IndirectX },
-    [0x64] = { NOP_Instr, "NOP", 2, false, ZeroPage },
-    [0x65] = { ADC_Instr, "ADC zp", 2, false, ZeroPage },
-    [0x66] = { ROR_Instr, "ROR zp", 2, false, ZeroPage },
-    [0x68] = { PLA_Instr, "PLA", 1, false, Implied },
-    [0x69] = { ADC_Instr, "ADC #imm", 2, false, Immediate },
-    [0x6A] = { ROR_A_Instr, "ROR A", 1, false, Accumulator },
-    [0x6C] = { JMP_Instr, "JMP (ind)", 3, false, Indirect },
-    [0x6D] = { ADC_Instr, "ADC abs", 3, false, Absolute },
-    [0x6E] = { ROR_Instr, "ROR abs", 3, false, Absolute },
+    [0x60] = { RTS_Instr,   "RTS",         1, false, Implied     },
+    [0x61] = { ADC_Instr,   "ADC (ind,X)", 2, false, IndirectX   },
+    [0x63] = { RRA_Instr,   "RRA (ind,X)", 2, false, IndirectX   },
+    [0x64] = { NOP_Instr,   "NOP",         2, false, ZeroPage    },
+    [0x65] = { ADC_Instr,   "ADC zp",      2, false, ZeroPage    },
+    [0x66] = { ROR_Instr,   "ROR zp",      2, false, ZeroPage    },
+    [0x67] = { RRA_Instr,   "RRA zp",      2, false, ZeroPage    },
+    [0x68] = { PLA_Instr,   "PLA",         1, false, Implied     },
+    [0x69] = { ADC_Instr,   "ADC #imm",    2, false, Immediate   },
+    [0x6A] = { ROR_A_Instr, "ROR A",       1, false, Accumulator },
+    [0x6C] = { JMP_Instr,   "JMP (ind)",   3, false, Indirect    },
+    [0x6D] = { ADC_Instr,   "ADC abs",     3, false, Absolute    },
+    [0x6E] = { ROR_Instr,   "ROR abs",     3, false, Absolute    },
+    [0x6F] = { RRA_Instr,   "RRA abs",     3, false, Absolute    },
 
-    [0x70] = { BVS_Instr, "BVS rel", 2, true, Relative },
-    [0x71] = { ADC_Instr, "ADC (ind),Y", 2, true, IndirectY },
-    [0x74] = { NOP_Instr, "NOP", 2, false, ZeroPageX },
-    [0x75] = { ADC_Instr, "ADC zp,X", 2, false, ZeroPageX },
-    [0x76] = { ROR_Instr, "ROR zp,X", 2, false, ZeroPageX },
-    [0x78] = { SEI_Instr, "SEI", 1, false, Implied },
-    [0x79] = { ADC_Instr, "ADC abs,Y", 3, true, AbsoluteY },
-    [0x7A] = { NOP_Instr, "NOP", 1, false, Implied },
-    [0x7C] = { NOP_Instr, "NOP", 3, true, AbsoluteX },
-    [0x7D] = { ADC_Instr, "ADC abs,X", 3, true, AbsoluteX },
-    [0x7E] = { ROR_Instr, "ROR abs,X", 3, false, AbsoluteX },
+    [0x70] = { BVS_Instr,   "BVS rel",     2, true,  Relative    },
+    [0x71] = { ADC_Instr,   "ADC (ind),Y", 2, true,  IndirectY   },
+    [0x73] = { RRA_Instr,   "RRA (ind),Y", 2, false, IndirectY   },
+    [0x74] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
+    [0x75] = { ADC_Instr,   "ADC zp,X",    2, false, ZeroPageX   },
+    [0x76] = { ROR_Instr,   "ROR zp,X",    2, false, ZeroPageX   },
+    [0x77] = { RRA_Instr,   "RRA zp,X",    2, false, ZeroPageX   },
+    [0x78] = { SEI_Instr,   "SEI",         1, false, Implied     },
+    [0x79] = { ADC_Instr,   "ADC abs,Y",   3, true,  AbsoluteY   },
+    [0x7A] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0x7B] = { RRA_Instr,   "RRA abs,Y",   3, false, AbsoluteY   },
+    [0x7C] = { NOP_Instr,   "NOP",         3, true,  AbsoluteX   },
+    [0x7D] = { ADC_Instr,   "ADC abs,X",   3, true,  AbsoluteX   },
+    [0x7E] = { ROR_Instr,   "ROR abs,X",   3, false, AbsoluteX   },
+    [0x7F] = { RRA_Instr,   "RRA abs,X",   3, false, AbsoluteX   },
 
-    [0x80] = { NOP_Instr, "NOP", 2, false, Immediate },
-    [0x81] = { STA_Instr, "STA (ind,X)", 2, false, IndirectX },
-    [0x82] = { NOP_Instr, "NOP", 2, false, Immediate },
-    [0x84] = { STY_Instr, "STY zp", 2, false, ZeroPage },
-    [0x85] = { STA_Instr, "STA zp", 2, false, ZeroPage },
-    [0x86] = { STX_Instr, "STX zp", 2, false, ZeroPage },
-    [0x88] = { DEY_Instr, "DEY", 1, false, Implied },
-    [0x89] = { NOP_Instr, "NOP", 2, false, Immediate },
-    [0x8A] = { TXA_Instr, "TXA", 1, false, Implied },
-    [0x8C] = { STY_Instr, "STY abs", 3, false, Absolute },
-    [0x8D] = { STA_Instr, "STA abs", 3, false, Absolute },
-    [0x8E] = { STX_Instr, "STX abs", 3, false, Absolute },
+    [0x80] = { NOP_Instr,   "NOP",         2, false, Immediate   },
+    [0x81] = { STA_Instr,   "STA (ind,X)", 2, false, IndirectX   },
+    [0x82] = { NOP_Instr,   "NOP",         2, false, Immediate   },
+    [0x84] = { STY_Instr,   "STY zp",      2, false, ZeroPage    },
+    [0x85] = { STA_Instr,   "STA zp",      2, false, ZeroPage    },
+    [0x86] = { STX_Instr,   "STX zp",      2, false, ZeroPage    },
+    [0x88] = { DEY_Instr,   "DEY",         1, false, Implied     },
+    [0x89] = { NOP_Instr,   "NOP",         2, false, Immediate   },
+    [0x8A] = { TXA_Instr,   "TXA",         1, false, Implied     },
+    [0x8C] = { STY_Instr,   "STY abs",     3, false, Absolute    },
+    [0x8D] = { STA_Instr,   "STA abs",     3, false, Absolute    },
+    [0x8E] = { STX_Instr,   "STX abs",     3, false, Absolute    },
 
-    [0x90] = { BCC_Instr, "BCC rel", 2, true, Relative },
-    [0x91] = { STA_Instr, "STA (ind),Y", 2, false, IndirectY },
-    [0x94] = { STY_Instr, "STY zp,X", 2, false, ZeroPageX },
-    [0x95] = { STA_Instr, "STA zp,X", 2, false, ZeroPageX },
-    [0x96] = { STX_Instr, "STX zp,Y", 2, false, ZeroPageY },
-    [0x98] = { TYA_Instr, "TYA", 1, false, Implied },
-    [0x99] = { STA_Instr, "STA abs,Y", 3, false, AbsoluteY },
-    [0x9A] = { TXS_Instr, "TXS", 1, false, Implied },
-    [0x9D] = { STA_Instr, "STA abs,X", 3, false, AbsoluteX },
+    [0x90] = { BCC_Instr,   "BCC rel",     2, true,  Relative    },
+    [0x91] = { STA_Instr,   "STA (ind),Y", 2, false, IndirectY   },
+    //[0x93] = { SHA_Instr,   "SHA (ind),Y", 2, false, IndirectY   },
+    [0x94] = { STY_Instr,   "STY zp,X",    2, false, ZeroPageX   },
+    [0x95] = { STA_Instr,   "STA zp,X",    2, false, ZeroPageX   },
+    [0x96] = { STX_Instr,   "STX zp,Y",    2, false, ZeroPageY   },
+    [0x98] = { TYA_Instr,   "TYA",         1, false, Implied     },
+    [0x99] = { STA_Instr,   "STA abs,Y",   3, false, AbsoluteY   },
+    [0x9A] = { TXS_Instr,   "TXS",         1, false, Implied     },
+    [0x9D] = { STA_Instr,   "STA abs,X",   3, false, AbsoluteX   },
+    //[0x9F] = { SHA_Instr,   "SHA abs,Y",   3, false, AbsoluteY   },
 
-    [0xA0] = { LDY_Instr, "LDY #imm", 2, false, Immediate },
-    [0xA1] = { LDA_Instr, "LDA (ind,X)", 2, false, IndirectX },
-    [0xA2] = { LDX_Instr, "LDX #imm", 2, false, Immediate },
-    [0xA4] = { LDY_Instr, "LDY zp", 2, false, ZeroPage },
-    [0xA5] = { LDA_Instr, "LDA zp", 2, false, ZeroPage },
-    [0xA6] = { LDX_Instr, "LDX zp", 2, false, ZeroPage },
-    [0xA8] = { TAY_Instr, "TAY", 1, false, Implied },
-    [0xA9] = { LDA_Instr, "LDA #imm", 2, false, Immediate },
-    [0xAA] = { TAX_Instr, "TAX", 1, false, Implied },
-    [0xAC] = { LDY_Instr, "LDY abs", 3, false, Absolute },
-    [0xAD] = { LDA_Instr, "LDA abs", 3, false, Absolute },
-    [0xAE] = { LDX_Instr, "LDX abs", 3, false, Absolute },
+    [0xA0] = { LDY_Instr,   "LDY #imm",    2, false, Immediate   },
+    [0xA1] = { LDA_Instr,   "LDA (ind,X)", 2, false, IndirectX   },
+    [0xA2] = { LDX_Instr,   "LDX #imm",    2, false, Immediate   },
+    [0xA4] = { LDY_Instr,   "LDY zp",      2, false, ZeroPage    },
+    [0xA5] = { LDA_Instr,   "LDA zp",      2, false, ZeroPage    },
+    [0xA6] = { LDX_Instr,   "LDX zp",      2, false, ZeroPage    },
+    [0xA8] = { TAY_Instr,   "TAY",         1, false, Implied     },
+    [0xA9] = { LDA_Instr,   "LDA #imm",    2, false, Immediate   },
+    [0xAA] = { TAX_Instr,   "TAX",         1, false, Implied     },
+    [0xAC] = { LDY_Instr,   "LDY abs",     3, false, Absolute    },
+    [0xAD] = { LDA_Instr,   "LDA abs",     3, false, Absolute    },
+    [0xAE] = { LDX_Instr,   "LDX abs",     3, false, Absolute    },
 
-    [0xB0] = { BCS_Instr, "BCS rel", 2,true, Relative },
-    [0xB1] = { LDA_Instr, "LDA (ind),Y", 2, true, IndirectY },
-    [0xB4] = { LDY_Instr, "LDY zp,X", 2, false, ZeroPageX },
-    [0xB5] = { LDA_Instr, "LDA zp,X", 2, false, ZeroPageX },
-    [0xB6] = { LDX_Instr, "LDX zp,Y", 2, false, ZeroPageY },
-    [0xB8] = { CLV_Instr, "CLV", 1, false, Implied },
-    [0xB9] = { LDA_Instr, "LDA abs,Y", 3, true, AbsoluteY },
-    [0xBA] = { TSX_Instr, "TSX", 1, false, Implied },
-    [0xBC] = { LDY_Instr, "LDY abs,X", 3, true, AbsoluteX },
-    [0xBD] = { LDA_Instr, "LDA abs,X", 3, true, AbsoluteX },
-    [0xBE] = { LDX_Instr, "LDX abs,Y", 3, true, AbsoluteY },
+    [0xB0] = { BCS_Instr,   "BCS rel",     2, true,  Relative    },
+    [0xB1] = { LDA_Instr,   "LDA (ind),Y", 2, true,  IndirectY   },
+    [0xB4] = { LDY_Instr,   "LDY zp,X",    2, false, ZeroPageX   },
+    [0xB5] = { LDA_Instr,   "LDA zp,X",    2, false, ZeroPageX   },
+    [0xB6] = { LDX_Instr,   "LDX zp,Y",    2, false, ZeroPageY   },
+    [0xB8] = { CLV_Instr,   "CLV",         1, false, Implied     },
+    [0xB9] = { LDA_Instr,   "LDA abs,Y",   3, true,  AbsoluteY   },
+    [0xBA] = { TSX_Instr,   "TSX",         1, false, Implied     },
+    [0xBC] = { LDY_Instr,   "LDY abs,X",   3, true,  AbsoluteX   },
+    [0xBD] = { LDA_Instr,   "LDA abs,X",   3, true,  AbsoluteX   },
+    [0xBE] = { LDX_Instr,   "LDX abs,Y",   3, true,  AbsoluteY   },
 
-    [0xC0] = { CPY_Instr, "CPY #imm", 2, false, Immediate },
-    [0xC1] = { CMP_Instr, "CMP (ind,X)", 2, false, IndirectX },
-    [0xC2] = { NOP_Instr, "NOP", 2, false, Immediate },
-    [0xC4] = { CPY_Instr, "CPY zp", 2, false, ZeroPage },
-    [0xC5] = { CMP_Instr, "CMP zp", 2, false, ZeroPage },
-    [0xC6] = { DEC_Instr, "DEC zp", 2, false, ZeroPage },
-    [0xC8] = { INY_Instr, "INY", 1, false, Implied },
-    [0xC9] = { CMP_Instr, "CMP #imm", 2, false, Immediate },
-    [0xCA] = { DEX_Instr, "DEX", 1, false, Implied },
-    [0xCB] = { SBX_Instr, "SBX", 2, false, Immediate },
-    [0xCC] = { CPY_Instr, "CPY abs", 3, false, Absolute },
-    [0xCD] = { CMP_Instr, "CMP abs", 3, false, Absolute },
-    [0xCE] = { DEC_Instr, "DEC abs", 3, false, Absolute },
+    [0xC0] = { CPY_Instr,   "CPY #imm",    2, false, Immediate   },
+    [0xC1] = { CMP_Instr,   "CMP (ind,X)", 2, false, IndirectX   },
+    [0xC2] = { NOP_Instr,   "NOP",         2, false, Immediate   },
+    [0xC4] = { CPY_Instr,   "CPY zp",      2, false, ZeroPage    },
+    [0xC5] = { CMP_Instr,   "CMP zp",      2, false, ZeroPage    },
+    [0xC6] = { DEC_Instr,   "DEC zp",      2, false, ZeroPage    },
+    [0xC8] = { INY_Instr,   "INY",         1, false, Implied     },
+    [0xC9] = { CMP_Instr,   "CMP #imm",    2, false, Immediate   },
+    [0xCA] = { DEX_Instr,   "DEX",         1, false, Implied     },
+    [0xCB] = { SBX_Instr,   "SBX",         2, false, Immediate   },
+    [0xCC] = { CPY_Instr,   "CPY abs",     3, false, Absolute    },
+    [0xCD] = { CMP_Instr,   "CMP abs",     3, false, Absolute    },
+    [0xCE] = { DEC_Instr,   "DEC abs",     3, false, Absolute    },
 
-    [0xD0] = { BNE_Instr, "BNE rel", 2, true, Relative },
-    [0xD1] = { CMP_Instr, "CMP (ind),Y", 2, true, IndirectY },
-    [0xD4] = { NOP_Instr, "NOP", 2, false, ZeroPageX },
-    [0xD5] = { CMP_Instr, "CMP zp,X", 2, false, ZeroPageX },
-    [0xD6] = { DEC_Instr, "DEC zp,X", 2, false, ZeroPageX },
-    [0xD8] = { CLD_Instr, "CLD", 1, false, Implied },
-    [0xD9] = { CMP_Instr, "CMP abs,Y", 3, true, AbsoluteY },
-    [0xDA] = { NOP_Instr, "NOP", 1, false, Implied },
-    [0xDC] = { NOP_Instr, "NOP", 3, true, AbsoluteX },
-    [0xDD] = { CMP_Instr, "CMP abs,X", 3, true, AbsoluteX },
-    [0xDE] = { DEC_Instr, "DEC abs,X", 3, false, AbsoluteX },
+    [0xD0] = { BNE_Instr,   "BNE rel",     2, true,  Relative    },
+    [0xD1] = { CMP_Instr,   "CMP (ind),Y", 2, true,  IndirectY   },
+    [0xD4] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
+    [0xD5] = { CMP_Instr,   "CMP zp,X",    2, false, ZeroPageX   },
+    [0xD6] = { DEC_Instr,   "DEC zp,X",    2, false, ZeroPageX   },
+    [0xD8] = { CLD_Instr,   "CLD",         1, false, Implied     },
+    [0xD9] = { CMP_Instr,   "CMP abs,Y",   3, true,  AbsoluteY   },
+    [0xDA] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0xDC] = { NOP_Instr,   "NOP",         3, true,  AbsoluteX   },
+    [0xDD] = { CMP_Instr,   "CMP abs,X",   3, true,  AbsoluteX   },
+    [0xDE] = { DEC_Instr,   "DEC abs,X",   3, false, AbsoluteX   },
 
-    [0xE0] = { CPX_Instr, "CPX #imm", 2, false, Immediate },
-    [0xE1] = { SBC_Instr, "SBC (ind,X)", 2, false, IndirectX },
-    [0xE2] = { NOP_Instr, "NOP #imm", 2, false, Immediate },
-    [0xE4] = { CPX_Instr, "CPX zp", 2, false, ZeroPage },
-    [0xE5] = { SBC_Instr, "SBC zp", 2, false, ZeroPage },
-    [0xE6] = { INC_Instr, "INC zp", 2, false, ZeroPage },
-    [0xE8] = { INX_Instr, "INX", 1, false, Implied },
-    [0xE9] = { SBC_Instr, "SBC #imm", 2, false, Immediate },
-    [0xEA] = { NOP_Instr, "NOP", 1, false, Implied },
-    [0xEB] = { SBC_Instr, "SBC #imm", 2, false, Immediate },
-    [0xEC] = { CPX_Instr, "CPX abs", 3, false, Absolute },
-    [0xED] = { SBC_Instr, "SBC abs", 3, false, Absolute },
-    [0xEE] = { INC_Instr, "INC abs", 3, false, Absolute },
+    [0xE0] = { CPX_Instr,   "CPX #imm",    2, false, Immediate   },
+    [0xE1] = { SBC_Instr,   "SBC (ind,X)", 2, false, IndirectX   },
+    [0xE2] = { NOP_Instr,   "NOP #imm",    2, false, Immediate   },
+    [0xE4] = { CPX_Instr,   "CPX zp",      2, false, ZeroPage    },
+    [0xE5] = { SBC_Instr,   "SBC zp",      2, false, ZeroPage    },
+    [0xE6] = { INC_Instr,   "INC zp",      2, false, ZeroPage    },
+    [0xE8] = { INX_Instr,   "INX",         1, false, Implied     },
+    [0xE9] = { SBC_Instr,   "SBC #imm",    2, false, Immediate   },
+    [0xEA] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0xEB] = { SBC_Instr,   "SBC #imm",    2, false, Immediate   },
+    [0xEC] = { CPX_Instr,   "CPX abs",     3, false, Absolute    },
+    [0xED] = { SBC_Instr,   "SBC abs",     3, false, Absolute    },
+    [0xEE] = { INC_Instr,   "INC abs",     3, false, Absolute    },
 
-    [0xF0] = { BEQ_Instr, "BEQ rel", 2, true, Relative },
-    [0xF1] = { SBC_Instr, "SBC (ind),Y", 2, true, IndirectY },
-    [0xF4] = { NOP_Instr, "NOP zp,X", 2, false, ZeroPageX },
-    [0xF5] = { SBC_Instr, "SBC zp,X", 2, false, ZeroPageX },
-    [0xF6] = { INC_Instr, "INC zp,X", 2, false, ZeroPageX },
-    [0xF8] = { SED_Instr, "SED", 1, false, Implied },
-    [0xF9] = { SBC_Instr, "SBC abs,Y", 3, true, AbsoluteY },
-    [0xFA] = { NOP_Instr, "NOP", 1, false, Implied },
-    [0xFC] = { NOP_Instr, "NOP abs,X", 3, true, AbsoluteX },
-    [0xFD] = { SBC_Instr, "SBC abs,X", 3, true, AbsoluteX },
-    [0xFE] = { INC_Instr, "INC abs,X", 3, false, AbsoluteX },
+    [0xF0] = { BEQ_Instr,   "BEQ rel",     2, true,  Relative    },
+    [0xF1] = { SBC_Instr,   "SBC (ind),Y", 2, true,  IndirectY   },
+    [0xF4] = { NOP_Instr,   "NOP zp,X",    2, false, ZeroPageX   },
+    [0xF5] = { SBC_Instr,   "SBC zp,X",    2, false, ZeroPageX   },
+    [0xF6] = { INC_Instr,   "INC zp,X",    2, false, ZeroPageX   },
+    [0xF8] = { SED_Instr,   "SED",         1, false, Implied     },
+    [0xF9] = { SBC_Instr,   "SBC abs,Y",   3, true,  AbsoluteY   },
+    [0xFA] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0xFC] = { NOP_Instr,   "NOP abs,X",   3, true,  AbsoluteX   },
+    [0xFD] = { SBC_Instr,   "SBC abs,X",   3, true,  AbsoluteX   },
+    [0xFE] = { INC_Instr,   "INC abs,X",   3, false, AbsoluteX   },
 };
 
 static void ExecuteOpcode(Cpu *cpu, bool debug_info)
