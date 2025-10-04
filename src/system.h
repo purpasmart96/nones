@@ -52,8 +52,6 @@ void SystemInit(System *system, uint32_t **buffers);
 void SystemRun(System *system, SystemState state, bool debug_info);
 void SystemSync(uint64_t cycles);
 void SystemTick(void);
-void SystemSetNmiPin(void);
-void SystemPollNmi(void);
 void SystemPrePollAllIrqs(void);
 bool SystemPollAllIrqs(void);
 void SystemReset(System *system);

@@ -407,27 +407,22 @@ bool SystemPollAllIrqs(void)
     return PollApuIrqs(system_ptr->apu) || PollMapperIrq();
 }
 
-void SystemSetNmiPin(void)
-{
-    system_ptr->cpu->nmi_pin = ~(system_ptr->ppu->ctrl.vblank_nmi & system_ptr->ppu->status.vblank);
-}
-
 // The PPU pulls /NMI low if and only if both vblank_flag and NMI_output are true.
-static uint8_t SystemReadNmiPin(void)
+static uint8_t SystemReadNmiPin(System *system)
 {
-    return ~(system_ptr->ppu->ctrl.vblank_nmi & system_ptr->ppu->status.vblank);
+    return ~(system->ppu->ctrl.vblank_nmi & system->ppu->status.vblank);
 }
 
-void SystemPollNmi(void)
+static void SystemPollNmi(System *system)
 {
-    uint8_t current_nmi_pin = SystemReadNmiPin();
-    if (~current_nmi_pin & system_ptr->cpu->nmi_pin)
+    uint8_t current_nmi_pin = SystemReadNmiPin(system);
+    if (~current_nmi_pin & system->cpu->nmi_pin)
     {
-        system_ptr->cpu->nmi_pending = true;
+        system->cpu->nmi_pending = true;
         //printf("NMI falling edge at frame: %ld ppu cycle: %d scanline:%d\n",
         //        system_ptr->ppu->frames, system_ptr->ppu->cycle_counter, system_ptr->ppu->scanline);
     }
-    system_ptr->cpu->nmi_pin = current_nmi_pin;
+    system->cpu->nmi_pin = current_nmi_pin;
 }
 
 void SystemTick(void)
@@ -435,7 +430,7 @@ void SystemTick(void)
     APU_Tick(system_ptr->apu);
 
     PPU_Tick(system_ptr->ppu);
-    SystemPollNmi();
+    SystemPollNmi(system_ptr);
     PPU_Tick(system_ptr->ppu);
     PPU_Tick(system_ptr->ppu);
     PpuUpdateRenderingState(system_ptr->ppu);
