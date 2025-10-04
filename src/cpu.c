@@ -1052,11 +1052,11 @@ static inline void NOP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
             ++cpu->pc;
             break;
         case ZeroPage:
-            GetZPAddr(cpu);
+            CpuRead8(GetZPAddr(cpu));
             ++cpu->pc;
             break;
         case ZeroPageX:
-            GetZPIndexedAddr(cpu, cpu->x);
+            CpuRead8(GetZPIndexedAddr(cpu, cpu->x));
             ++cpu->pc;
             break;
         case Absolute:
@@ -1064,11 +1064,12 @@ static inline void NOP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
             ++cpu->pc;
             break;
         case AbsoluteX:
-            GetAbsoluteXAddr(cpu, page_cycle, true);
+            CpuRead8(GetAbsoluteXAddr(cpu, page_cycle, true));
             ++cpu->pc;
             break;
         default:
-            printf("Bad addr mode!: %d\n", addr_mode);
+            printf("NOP has bad addr mode!: %d\n", addr_mode);
+            exit(EXIT_FAILURE);
             break;
     }
     CpuPollIRQ(cpu);
