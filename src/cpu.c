@@ -315,7 +315,7 @@ static inline void ShiftOneRight(Cpu *cpu, uint8_t *operand)
     cpu->status.z = !(*operand);
 }
 
-static inline void ShiftOneRightFromMem(Cpu *cpu, const uint16_t operand_addr)
+static inline uint8_t ShiftOneRightFromMem(Cpu *cpu, const uint16_t operand_addr)
 {
     uint8_t operand = CpuRead8(operand_addr);
     // Dummy write
@@ -332,6 +332,7 @@ static inline void ShiftOneRightFromMem(Cpu *cpu, const uint16_t operand_addr)
     cpu->status.n = 0;
     // Zero flag (is operand zero?)
     cpu->status.z = !operand;
+    return operand;
 }
 
 static inline void ShiftOneLeft(Cpu *cpu, uint8_t *operand)
@@ -459,6 +460,50 @@ static inline void ANC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
+static inline void ANE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+    UNUSED(page_cycle);
+
+    CpuPollIRQ(cpu);
+    cpu->a &= cpu->x & CpuRead8(++cpu->pc);
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(cpu->a);
+
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void ARR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+    UNUSED(page_cycle);
+
+    CpuPollIRQ(cpu);
+    cpu->a &= CpuRead8(++cpu->pc);
+
+    RotateOneRight(cpu, &cpu->a);
+    // C will be copied from the bit 6 of the result
+    cpu->status.c = (cpu->a >> 6) & 1;
+    // V is the result of an XOR operation between the bit 6 and the bit 5 of the result
+    cpu->status.v = cpu->status.c ^ ((cpu->a >> 5) & 1);
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void SAX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+    CpuPollIRQ(cpu);
+    CpuWrite8(operand_addr, cpu->a & cpu->x);
+
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
 static inline void ASL_A_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
@@ -486,6 +531,15 @@ static inline void ASL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 static inline void SLO_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     cpu->a |= ShiftOneLeftFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
+    // Update status flags
+    UPDATE_FLAGS_NZ(cpu->a);
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void SRE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    cpu->a ^= ShiftOneRightFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->a);
     ++cpu->pc;
@@ -854,6 +908,23 @@ static inline void DEC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
+static inline void DCP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+    uint8_t operand = CpuRead8(operand_addr);
+
+    // Dummy write
+    CpuWrite8(operand_addr, operand);
+
+    CpuPollIRQ(cpu);
+    CpuWrite8(operand_addr, --operand);
+
+    CompareRegAndSetFlags(cpu, cpu->a, operand);
+
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
 static inline void DEX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
@@ -936,6 +1007,23 @@ static inline void INC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuPollIRQ(cpu);
     CpuWrite8(operand_addr, ++operand);
     UPDATE_FLAGS_NZ(operand);
+
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void ISC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+    uint8_t operand = CpuRead8(operand_addr);
+
+    // Dummy write
+    CpuWrite8(operand_addr, operand);
+
+    CpuPollIRQ(cpu);
+    CpuWrite8(operand_addr, ++operand);
+
+    AddWithCarry(cpu, ~operand);
 
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
@@ -1028,6 +1116,21 @@ static inline void LDX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     // Update status flags
     UPDATE_FLAGS_NZ(cpu->x);
     ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void LAX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+    CpuPollIRQ(cpu);
+
+    cpu->a = CpuRead8(operand_addr);
+    cpu->x = cpu->a;
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(cpu->a);
+    ++cpu->pc;
+
     CpuHandleInterrupts(cpu);
 }
 
@@ -1380,6 +1483,17 @@ static inline void STY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
+// TODO: This is wrong, will need to be fixed
+static inline void SHA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+
+    CpuPollIRQ(cpu);
+    CpuWrite8(operand_addr, cpu->a & cpu->x & ((operand_addr >> 8) + 1));
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
 // Transfer Accumulator to Index X
 static inline void TAX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
@@ -1553,9 +1667,11 @@ static const OpcodeHandler opcodes[256] =
 
     [0x40] = { RTI_Instr,   "RTI",         1, false, Implied     },
     [0x41] = { EOR_Instr,   "EOR (ind,X)", 2, false, IndirectX   },
+    [0x43] = { SRE_Instr,   "SRE (ind,X)", 2, false, IndirectX   },
     [0x44] = { NOP_Instr,   "NOP",         2, false, ZeroPage    },
     [0x45] = { EOR_Instr,   "EOR zp",      2, false, ZeroPage    },
     [0x46] = { LSR_Instr,   "LSR zp",      2, false, ZeroPage    },
+    [0x47] = { SRE_Instr,   "SRE zp",      2, false, ZeroPage    },
     [0x48] = { PHA_Instr,   "PHA",         1, false, Implied     },
     [0x49] = { EOR_Instr,   "EOR #imm",    2, false, Immediate   },
     [0x4A] = { LSR_A_Instr, "LSR A",       1, false, Accumulator },
@@ -1563,18 +1679,23 @@ static const OpcodeHandler opcodes[256] =
     [0x4C] = { JMP_Instr,   "JMP abs",     3, false, Absolute    },
     [0x4D] = { EOR_Instr,   "EOR abs",     3, false, Absolute    },
     [0x4E] = { LSR_Instr,   "LSR abs",     3, false, Absolute    },
+    [0x4F] = { SRE_Instr,   "SRE abs",     3, false, Absolute    },
 
     [0x50] = { BVC_Instr,   "BVC rel",     2, true,  Relative    },
     [0x51] = { EOR_Instr,   "EOR (ind),Y", 2, true,  IndirectY   },
+    [0x53] = { SRE_Instr,   "SRE (ind),Y", 2, false, IndirectY   },
     [0x54] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
     [0x55] = { EOR_Instr,   "EOR zp,X",    2, false, ZeroPageX   },
     [0x56] = { LSR_Instr,   "LSR zp,X",    2, false, ZeroPageX   },
+    [0x57] = { SRE_Instr,   "SRE zp,X",    2, false, ZeroPageX   },
     [0x58] = { CLI_Instr,   "CLI",         1, false, Implied     },
     [0x59] = { EOR_Instr,   "EOR abs,Y",   3, true,  AbsoluteY   },
     [0x5A] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0x5B] = { SRE_Instr,   "SRE abs,Y",   3, false, AbsoluteY   },
     [0x5C] = { NOP_Instr,   "NOP",         3, true,  AbsoluteX   },
     [0x5D] = { EOR_Instr,   "EOR abs,X",   3, true,  AbsoluteX   },
     [0x5E] = { LSR_Instr,   "LSR abs,X",   3, false, AbsoluteX   },
+    [0x5F] = { SRE_Instr,   "SRE abs,X",   3, false, AbsoluteX   },
 
     [0x60] = { RTS_Instr,   "RTS",         1, false, Implied     },
     [0x61] = { ADC_Instr,   "ADC (ind,X)", 2, false, IndirectX   },
@@ -1586,6 +1707,7 @@ static const OpcodeHandler opcodes[256] =
     [0x68] = { PLA_Instr,   "PLA",         1, false, Implied     },
     [0x69] = { ADC_Instr,   "ADC #imm",    2, false, Immediate   },
     [0x6A] = { ROR_A_Instr, "ROR A",       1, false, Accumulator },
+    [0x6B] = { ARR_Instr,   "ARR",         2, false, Immediate   },
     [0x6C] = { JMP_Instr,   "JMP (ind)",   3, false, Indirect    },
     [0x6D] = { ADC_Instr,   "ADC abs",     3, false, Absolute    },
     [0x6E] = { ROR_Instr,   "ROR abs",     3, false, Absolute    },
@@ -1610,59 +1732,72 @@ static const OpcodeHandler opcodes[256] =
     [0x80] = { NOP_Instr,   "NOP",         2, false, Immediate   },
     [0x81] = { STA_Instr,   "STA (ind,X)", 2, false, IndirectX   },
     [0x82] = { NOP_Instr,   "NOP",         2, false, Immediate   },
+    [0x83] = { SAX_Instr,   "SAX (ind,X)", 2, false, IndirectX   },
     [0x84] = { STY_Instr,   "STY zp",      2, false, ZeroPage    },
     [0x85] = { STA_Instr,   "STA zp",      2, false, ZeroPage    },
     [0x86] = { STX_Instr,   "STX zp",      2, false, ZeroPage    },
+    [0x87] = { SAX_Instr,   "SAX zp",      2, false, ZeroPage    },
     [0x88] = { DEY_Instr,   "DEY",         1, false, Implied     },
     [0x89] = { NOP_Instr,   "NOP",         2, false, Immediate   },
     [0x8A] = { TXA_Instr,   "TXA",         1, false, Implied     },
+    [0x8B] = { ANE_Instr,   "ANE",         2, false, Immediate   },
     [0x8C] = { STY_Instr,   "STY abs",     3, false, Absolute    },
     [0x8D] = { STA_Instr,   "STA abs",     3, false, Absolute    },
     [0x8E] = { STX_Instr,   "STX abs",     3, false, Absolute    },
+    [0x8F] = { SAX_Instr,   "SAX abs",     3, false, Absolute    },
 
     [0x90] = { BCC_Instr,   "BCC rel",     2, true,  Relative    },
     [0x91] = { STA_Instr,   "STA (ind),Y", 2, false, IndirectY   },
-    //[0x93] = { SHA_Instr,   "SHA (ind),Y", 2, false, IndirectY   },
+    [0x93] = { SHA_Instr,   "SHA (ind),Y", 2, false, IndirectY   },
     [0x94] = { STY_Instr,   "STY zp,X",    2, false, ZeroPageX   },
     [0x95] = { STA_Instr,   "STA zp,X",    2, false, ZeroPageX   },
     [0x96] = { STX_Instr,   "STX zp,Y",    2, false, ZeroPageY   },
+    [0x97] = { SAX_Instr,   "SAX zp,Y",    2, false, ZeroPageY   },
     [0x98] = { TYA_Instr,   "TYA",         1, false, Implied     },
     [0x99] = { STA_Instr,   "STA abs,Y",   3, false, AbsoluteY   },
     [0x9A] = { TXS_Instr,   "TXS",         1, false, Implied     },
     [0x9D] = { STA_Instr,   "STA abs,X",   3, false, AbsoluteX   },
-    //[0x9F] = { SHA_Instr,   "SHA abs,Y",   3, false, AbsoluteY   },
+    [0x9F] = { SHA_Instr,   "SHA abs,Y",   3, false, AbsoluteY   },
 
     [0xA0] = { LDY_Instr,   "LDY #imm",    2, false, Immediate   },
     [0xA1] = { LDA_Instr,   "LDA (ind,X)", 2, false, IndirectX   },
     [0xA2] = { LDX_Instr,   "LDX #imm",    2, false, Immediate   },
+    [0xA3] = { LAX_Instr,   "LAX (ind,X)", 2, false, IndirectX   },
     [0xA4] = { LDY_Instr,   "LDY zp",      2, false, ZeroPage    },
     [0xA5] = { LDA_Instr,   "LDA zp",      2, false, ZeroPage    },
     [0xA6] = { LDX_Instr,   "LDX zp",      2, false, ZeroPage    },
+    [0xA7] = { LAX_Instr,   "LAX zp",      2, false, ZeroPage    },
     [0xA8] = { TAY_Instr,   "TAY",         1, false, Implied     },
     [0xA9] = { LDA_Instr,   "LDA #imm",    2, false, Immediate   },
     [0xAA] = { TAX_Instr,   "TAX",         1, false, Implied     },
     [0xAC] = { LDY_Instr,   "LDY abs",     3, false, Absolute    },
     [0xAD] = { LDA_Instr,   "LDA abs",     3, false, Absolute    },
     [0xAE] = { LDX_Instr,   "LDX abs",     3, false, Absolute    },
+    [0xAF] = { LAX_Instr,   "LAX abs",     3, false, Absolute    },
 
     [0xB0] = { BCS_Instr,   "BCS rel",     2, true,  Relative    },
     [0xB1] = { LDA_Instr,   "LDA (ind),Y", 2, true,  IndirectY   },
+    [0xB3] = { LAX_Instr,   "LAX (ind),Y", 2, true,  IndirectY   },
     [0xB4] = { LDY_Instr,   "LDY zp,X",    2, false, ZeroPageX   },
     [0xB5] = { LDA_Instr,   "LDA zp,X",    2, false, ZeroPageX   },
     [0xB6] = { LDX_Instr,   "LDX zp,Y",    2, false, ZeroPageY   },
+    [0xB7] = { LAX_Instr,   "LAX zp,Y",    2, false, ZeroPageY   },
     [0xB8] = { CLV_Instr,   "CLV",         1, false, Implied     },
     [0xB9] = { LDA_Instr,   "LDA abs,Y",   3, true,  AbsoluteY   },
     [0xBA] = { TSX_Instr,   "TSX",         1, false, Implied     },
     [0xBC] = { LDY_Instr,   "LDY abs,X",   3, true,  AbsoluteX   },
     [0xBD] = { LDA_Instr,   "LDA abs,X",   3, true,  AbsoluteX   },
     [0xBE] = { LDX_Instr,   "LDX abs,Y",   3, true,  AbsoluteY   },
+    [0xBF] = { LAX_Instr,   "LAX abs,Y",   3, true,  AbsoluteY   },
 
     [0xC0] = { CPY_Instr,   "CPY #imm",    2, false, Immediate   },
     [0xC1] = { CMP_Instr,   "CMP (ind,X)", 2, false, IndirectX   },
     [0xC2] = { NOP_Instr,   "NOP",         2, false, Immediate   },
+    [0xC3] = { DCP_Instr,   "DCP (ind,X)", 2, false, IndirectX   },
     [0xC4] = { CPY_Instr,   "CPY zp",      2, false, ZeroPage    },
     [0xC5] = { CMP_Instr,   "CMP zp",      2, false, ZeroPage    },
     [0xC6] = { DEC_Instr,   "DEC zp",      2, false, ZeroPage    },
+    [0xC7] = { DCP_Instr,   "DCP zp",      2, false, ZeroPage    },
     [0xC8] = { INY_Instr,   "INY",         1, false, Implied     },
     [0xC9] = { CMP_Instr,   "CMP #imm",    2, false, Immediate   },
     [0xCA] = { DEX_Instr,   "DEX",         1, false, Implied     },
@@ -1670,25 +1805,32 @@ static const OpcodeHandler opcodes[256] =
     [0xCC] = { CPY_Instr,   "CPY abs",     3, false, Absolute    },
     [0xCD] = { CMP_Instr,   "CMP abs",     3, false, Absolute    },
     [0xCE] = { DEC_Instr,   "DEC abs",     3, false, Absolute    },
+    [0xCF] = { DCP_Instr,   "DCP abs",     3, false, Absolute    },
 
     [0xD0] = { BNE_Instr,   "BNE rel",     2, true,  Relative    },
     [0xD1] = { CMP_Instr,   "CMP (ind),Y", 2, true,  IndirectY   },
+    [0xD3] = { DCP_Instr,   "DCP (ind),Y", 2, false, IndirectY   },
     [0xD4] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
     [0xD5] = { CMP_Instr,   "CMP zp,X",    2, false, ZeroPageX   },
     [0xD6] = { DEC_Instr,   "DEC zp,X",    2, false, ZeroPageX   },
+    [0xD7] = { DCP_Instr,   "DCP zp,X",    2, false, ZeroPageX   },
     [0xD8] = { CLD_Instr,   "CLD",         1, false, Implied     },
     [0xD9] = { CMP_Instr,   "CMP abs,Y",   3, true,  AbsoluteY   },
     [0xDA] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0xDB] = { DCP_Instr,   "DCP abs,Y",   3, true,  AbsoluteY   },
     [0xDC] = { NOP_Instr,   "NOP",         3, true,  AbsoluteX   },
     [0xDD] = { CMP_Instr,   "CMP abs,X",   3, true,  AbsoluteX   },
     [0xDE] = { DEC_Instr,   "DEC abs,X",   3, false, AbsoluteX   },
+    [0xDF] = { DCP_Instr,   "DCP abs,X",   3, false, AbsoluteX   },
 
     [0xE0] = { CPX_Instr,   "CPX #imm",    2, false, Immediate   },
     [0xE1] = { SBC_Instr,   "SBC (ind,X)", 2, false, IndirectX   },
     [0xE2] = { NOP_Instr,   "NOP #imm",    2, false, Immediate   },
+    [0xE3] = { ISC_Instr,   "ISC (ind,X)", 2, false, IndirectX   },
     [0xE4] = { CPX_Instr,   "CPX zp",      2, false, ZeroPage    },
     [0xE5] = { SBC_Instr,   "SBC zp",      2, false, ZeroPage    },
     [0xE6] = { INC_Instr,   "INC zp",      2, false, ZeroPage    },
+    [0xE7] = { ISC_Instr,   "ISC zp",      2, false, ZeroPage    },
     [0xE8] = { INX_Instr,   "INX",         1, false, Implied     },
     [0xE9] = { SBC_Instr,   "SBC #imm",    2, false, Immediate   },
     [0xEA] = { NOP_Instr,   "NOP",         1, false, Implied     },
@@ -1696,18 +1838,23 @@ static const OpcodeHandler opcodes[256] =
     [0xEC] = { CPX_Instr,   "CPX abs",     3, false, Absolute    },
     [0xED] = { SBC_Instr,   "SBC abs",     3, false, Absolute    },
     [0xEE] = { INC_Instr,   "INC abs",     3, false, Absolute    },
+    [0xEF] = { ISC_Instr,   "ISC abs",     3, false, Absolute    },
 
     [0xF0] = { BEQ_Instr,   "BEQ rel",     2, true,  Relative    },
     [0xF1] = { SBC_Instr,   "SBC (ind),Y", 2, true,  IndirectY   },
+    [0xF3] = { ISC_Instr,   "ISC (ind),Y", 2, false, IndirectY   },
     [0xF4] = { NOP_Instr,   "NOP zp,X",    2, false, ZeroPageX   },
     [0xF5] = { SBC_Instr,   "SBC zp,X",    2, false, ZeroPageX   },
     [0xF6] = { INC_Instr,   "INC zp,X",    2, false, ZeroPageX   },
+    [0xF7] = { ISC_Instr,   "ISC zp,X",    2, false, ZeroPageX   },
     [0xF8] = { SED_Instr,   "SED",         1, false, Implied     },
     [0xF9] = { SBC_Instr,   "SBC abs,Y",   3, true,  AbsoluteY   },
     [0xFA] = { NOP_Instr,   "NOP",         1, false, Implied     },
+    [0xFB] = { ISC_Instr,   "ISC abs,Y",   3, false, AbsoluteY   },
     [0xFC] = { NOP_Instr,   "NOP abs,X",   3, true,  AbsoluteX   },
     [0xFD] = { SBC_Instr,   "SBC abs,X",   3, true,  AbsoluteX   },
     [0xFE] = { INC_Instr,   "INC abs,X",   3, false, AbsoluteX   },
+    [0xFF] = { ISC_Instr,   "ISC abs,X",   3, false, AbsoluteX   },
 };
 
 static void ExecuteOpcode(Cpu *cpu, bool debug_info)
