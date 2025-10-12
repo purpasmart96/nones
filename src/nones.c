@@ -263,7 +263,7 @@ void NonesRun(Nones *nones, const char *path)
     buffers[0] = ArenaPush(nones->arena, buffer_size);
     buffers[1] = ArenaPush(nones->arena, buffer_size);
 
-    SystemInit(nones->system, buffers);
+    SystemInit(nones->system, buffers, buffer_size);
     SDL_Event event;
     void *raw_pixels;
     int raw_pitch;

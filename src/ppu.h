@@ -35,7 +35,8 @@ typedef enum
     PPU_DATA   = 7
 } PpuIoReg;
 
-typedef enum {
+typedef enum
+{
     NAMETABLE_HORIZONTAL,
     NAMETABLE_VERTICAL,
     NAMETABLE_SINGLE_SCREEN,
@@ -51,11 +52,22 @@ typedef enum
 
 typedef enum
 {
-    PPU_RENDER_BEGIN = 1,
-    PPU_RENDER_END = 239,
-    PPU_POST_RENDER = 241,
-    PPU_PRE_RENDER = 261
-} PpuStages;
+    PPU_RENDERER_BEGIN = 0,
+    PPU_RENDERER_END = 239,
+    PPU_RENDERER_POST = 240,
+    PPU_RENDERER_PRE = 261
+} PpuRendererStages;
+
+typedef union
+{
+    int v[2];
+    struct
+    {
+        int x;
+        int y;
+    };
+
+} ivec2;
 
 typedef union
 {
@@ -256,6 +268,7 @@ typedef struct
     // buffer 0 is the backbuffer
     // buffer 1 is the frontbuffer
     uint32_t *buffers[2];
+    uint32_t buffer_size;
 
     // PPU internel regs
     struct {
@@ -270,7 +283,7 @@ typedef struct
         bool w;
     };
 
-    NameTableMirror nt_mirror_mode;
+    NameTableMirror mirroring;
     int ext_input;
 
     ShiftReg bg_shift_low;
@@ -303,7 +316,7 @@ typedef struct
     uint8_t io_bus;
 } Ppu;
 
-void PPU_Init(Ppu *ppu, int name_table_layout, uint32_t **buffers);
+void PPU_Init(Ppu *ppu, int mirroring, uint32_t **buffers, uint32_t buffer_size);
 void PPU_Tick(Ppu *ppu);
 void PPU_Reset(Ppu *ppu);
 void PpuUpdateRenderingState(Ppu *ppu);
