@@ -1119,12 +1119,46 @@ static inline void LDX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
+static inline void LAS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+
+    const uint16_t operand_addr = GetAbsoluteYAddr(cpu, page_cycle, true);
+    CpuPollIRQ(cpu);
+
+    cpu->a = cpu->x = cpu->sp = CpuRead8(operand_addr) & cpu->sp;
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(cpu->a);
+    ++cpu->pc;
+
+    CpuHandleInterrupts(cpu);
+}
+
 static inline void LAX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
     CpuPollIRQ(cpu);
 
     cpu->a = CpuRead8(operand_addr);
+    cpu->x = cpu->a;
+
+    // Update status flags
+    UPDATE_FLAGS_NZ(cpu->a);
+    ++cpu->pc;
+
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void LXA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+    UNUSED(page_cycle);
+
+    CpuPollIRQ(cpu);
+    cpu->a &= cpu->a & CpuRead8(++cpu->pc);
     cpu->x = cpu->a;
 
     // Update status flags
@@ -1494,6 +1528,32 @@ static inline void SHA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
+static inline void SHX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+
+    const uint16_t operand_addr = GetAbsoluteYAddr(cpu, page_cycle, true);
+
+    CpuPollIRQ(cpu);
+    CpuWrite8(operand_addr, cpu->x & ((operand_addr >> 8) + 1));
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void SHY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+
+    const uint16_t operand_addr = GetAbsoluteXAddr(cpu, page_cycle, true);
+
+    CpuPollIRQ(cpu);
+    CpuWrite8(operand_addr, cpu->y & ((operand_addr >> 8) + 1));
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
 // Transfer Accumulator to Index X
 static inline void TAX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
@@ -1599,10 +1659,43 @@ static inline void TYA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
+static inline void TAS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+
+    uint16_t addr = GetAbsoluteYAddr(cpu, page_cycle, true);
+    CpuPollIRQ(cpu);
+
+    const uint8_t a_and_x = cpu->a & cpu->x;
+
+    //const uint16_t new_addr = (a_and_x & ((addr >> 8) + 1)) << 8 | (addr & 0xFF);
+    //printf("TAS: ADDR3: %X\n", new_addr);
+
+    cpu->sp = a_and_x;
+    CpuWrite8(addr, a_and_x & ((addr >> 8) + 1));
+    ++cpu->pc;
+    CpuHandleInterrupts(cpu);
+}
+
+static inline void JAM_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+{
+    // Unused
+    UNUSED(addr_mode);
+    UNUSED(page_cycle);
+    
+    printf("\nJAM opcode: 0x%02X at PC: 0x%04X\n", CpuRead8(cpu->pc), cpu->pc);
+    printf("A: 0x%X\nX: 0x%X\nY: 0x%X\nSP: 0x%X\nSR: 0x%X\n", cpu->a, cpu->x, cpu->y, cpu->sp, cpu->status.raw);
+    printf("Cycles done: %lu\n", cpu->cycles);
+    printf("Exiting Emulator!\n");
+    exit(EXIT_FAILURE);
+}
+
 static const OpcodeHandler opcodes[256] =
 {
     [0x00] = { BRK_Instr,   "BRK",         1, false, Implied     },
     [0x01] = { ORA_Instr,   "ORA (ind,X)", 2, false, IndirectX   },
+    [0x02] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x03] = { SLO_Instr,   "SLO (ind,X)", 2, false, IndirectX   },
     [0x04] = { NOP_Instr,   "NOP",         2, false, ZeroPage    },
     [0x05] = { ORA_Instr,   "ORA zp",      2, false, ZeroPage    },
@@ -1619,6 +1712,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0x10] = { BPL_Instr,   "BPL rel",     2, true,  Relative    },
     [0x11] = { ORA_Instr,   "ORA (ind),Y", 2, true,  IndirectY   },
+    [0x12] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x13] = { SLO_Instr,   "SLO (ind),Y", 2, false, IndirectY   },
     [0x14] = { NOP_Instr,   "NOP zp,X",    2, false, ZeroPageX   },
     [0x15] = { ORA_Instr,   "ORA zp,X",    2, false, ZeroPageX   },
@@ -1635,6 +1729,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0x20] = { JSR_Instr,   "JSR abs",     3, false, Absolute    },
     [0x21] = { AND_Instr,   "AND (ind,X)", 2, false, IndirectX   },
+    [0x22] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x23] = { RLA_Instr,   "RLA (ind,X)", 2, false, IndirectX   },
     [0x24] = { BIT_Instr,   "BIT zp",      2, false, ZeroPage    },
     [0x25] = { AND_Instr,   "AND zp",      2, false, ZeroPage    },
@@ -1650,6 +1745,7 @@ static const OpcodeHandler opcodes[256] =
     [0x2F] = { RLA_Instr,   "RLA abs",     3, false, Absolute    },
 
     [0x30] = { BMI_Instr,   "BMI rel",     2, true,  Relative    },
+    [0x32] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x31] = { AND_Instr,   "AND (ind),Y", 2, true,  IndirectY   },
     [0x33] = { RLA_Instr,   "RLA (ind),Y", 2, false, IndirectY   },
     [0x34] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
@@ -1667,6 +1763,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0x40] = { RTI_Instr,   "RTI",         1, false, Implied     },
     [0x41] = { EOR_Instr,   "EOR (ind,X)", 2, false, IndirectX   },
+    [0x42] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x43] = { SRE_Instr,   "SRE (ind,X)", 2, false, IndirectX   },
     [0x44] = { NOP_Instr,   "NOP",         2, false, ZeroPage    },
     [0x45] = { EOR_Instr,   "EOR zp",      2, false, ZeroPage    },
@@ -1683,6 +1780,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0x50] = { BVC_Instr,   "BVC rel",     2, true,  Relative    },
     [0x51] = { EOR_Instr,   "EOR (ind),Y", 2, true,  IndirectY   },
+    [0x52] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x53] = { SRE_Instr,   "SRE (ind),Y", 2, false, IndirectY   },
     [0x54] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
     [0x55] = { EOR_Instr,   "EOR zp,X",    2, false, ZeroPageX   },
@@ -1699,6 +1797,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0x60] = { RTS_Instr,   "RTS",         1, false, Implied     },
     [0x61] = { ADC_Instr,   "ADC (ind,X)", 2, false, IndirectX   },
+    [0x62] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x63] = { RRA_Instr,   "RRA (ind,X)", 2, false, IndirectX   },
     [0x64] = { NOP_Instr,   "NOP",         2, false, ZeroPage    },
     [0x65] = { ADC_Instr,   "ADC zp",      2, false, ZeroPage    },
@@ -1715,6 +1814,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0x70] = { BVS_Instr,   "BVS rel",     2, true,  Relative    },
     [0x71] = { ADC_Instr,   "ADC (ind),Y", 2, true,  IndirectY   },
+    [0x72] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x73] = { RRA_Instr,   "RRA (ind),Y", 2, false, IndirectY   },
     [0x74] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
     [0x75] = { ADC_Instr,   "ADC zp,X",    2, false, ZeroPageX   },
@@ -1748,6 +1848,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0x90] = { BCC_Instr,   "BCC rel",     2, true,  Relative    },
     [0x91] = { STA_Instr,   "STA (ind),Y", 2, false, IndirectY   },
+    [0x92] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0x93] = { SHA_Instr,   "SHA (ind),Y", 2, false, IndirectY   },
     [0x94] = { STY_Instr,   "STY zp,X",    2, false, ZeroPageX   },
     [0x95] = { STA_Instr,   "STA zp,X",    2, false, ZeroPageX   },
@@ -1756,7 +1857,10 @@ static const OpcodeHandler opcodes[256] =
     [0x98] = { TYA_Instr,   "TYA",         1, false, Implied     },
     [0x99] = { STA_Instr,   "STA abs,Y",   3, false, AbsoluteY   },
     [0x9A] = { TXS_Instr,   "TXS",         1, false, Implied     },
+    [0x9B] = { TAS_Instr,   "TAS",         3, false, AbsoluteY   },
+    [0x9C] = { SHY_Instr,   "SHY",         3, false, AbsoluteX   },
     [0x9D] = { STA_Instr,   "STA abs,X",   3, false, AbsoluteX   },
+    [0x9E] = { SHX_Instr,   "SHX",         3, false, AbsoluteY   },
     [0x9F] = { SHA_Instr,   "SHA abs,Y",   3, false, AbsoluteY   },
 
     [0xA0] = { LDY_Instr,   "LDY #imm",    2, false, Immediate   },
@@ -1770,6 +1874,7 @@ static const OpcodeHandler opcodes[256] =
     [0xA8] = { TAY_Instr,   "TAY",         1, false, Implied     },
     [0xA9] = { LDA_Instr,   "LDA #imm",    2, false, Immediate   },
     [0xAA] = { TAX_Instr,   "TAX",         1, false, Implied     },
+    [0xAB] = { LXA_Instr,   "LXA",         2, false, Immediate   },
     [0xAC] = { LDY_Instr,   "LDY abs",     3, false, Absolute    },
     [0xAD] = { LDA_Instr,   "LDA abs",     3, false, Absolute    },
     [0xAE] = { LDX_Instr,   "LDX abs",     3, false, Absolute    },
@@ -1777,6 +1882,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0xB0] = { BCS_Instr,   "BCS rel",     2, true,  Relative    },
     [0xB1] = { LDA_Instr,   "LDA (ind),Y", 2, true,  IndirectY   },
+    [0xB2] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0xB3] = { LAX_Instr,   "LAX (ind),Y", 2, true,  IndirectY   },
     [0xB4] = { LDY_Instr,   "LDY zp,X",    2, false, ZeroPageX   },
     [0xB5] = { LDA_Instr,   "LDA zp,X",    2, false, ZeroPageX   },
@@ -1785,6 +1891,7 @@ static const OpcodeHandler opcodes[256] =
     [0xB8] = { CLV_Instr,   "CLV",         1, false, Implied     },
     [0xB9] = { LDA_Instr,   "LDA abs,Y",   3, true,  AbsoluteY   },
     [0xBA] = { TSX_Instr,   "TSX",         1, false, Implied     },
+    [0xBB] = { LAS_Instr,   "LAS",         3, true,  AbsoluteY   },
     [0xBC] = { LDY_Instr,   "LDY abs,X",   3, true,  AbsoluteX   },
     [0xBD] = { LDA_Instr,   "LDA abs,X",   3, true,  AbsoluteX   },
     [0xBE] = { LDX_Instr,   "LDX abs,Y",   3, true,  AbsoluteY   },
@@ -1809,6 +1916,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0xD0] = { BNE_Instr,   "BNE rel",     2, true,  Relative    },
     [0xD1] = { CMP_Instr,   "CMP (ind),Y", 2, true,  IndirectY   },
+    [0xD2] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0xD3] = { DCP_Instr,   "DCP (ind),Y", 2, false, IndirectY   },
     [0xD4] = { NOP_Instr,   "NOP",         2, false, ZeroPageX   },
     [0xD5] = { CMP_Instr,   "CMP zp,X",    2, false, ZeroPageX   },
@@ -1817,7 +1925,7 @@ static const OpcodeHandler opcodes[256] =
     [0xD8] = { CLD_Instr,   "CLD",         1, false, Implied     },
     [0xD9] = { CMP_Instr,   "CMP abs,Y",   3, true,  AbsoluteY   },
     [0xDA] = { NOP_Instr,   "NOP",         1, false, Implied     },
-    [0xDB] = { DCP_Instr,   "DCP abs,Y",   3, true,  AbsoluteY   },
+    [0xDB] = { DCP_Instr,   "DCP abs,Y",   3, false, AbsoluteY   },
     [0xDC] = { NOP_Instr,   "NOP",         3, true,  AbsoluteX   },
     [0xDD] = { CMP_Instr,   "CMP abs,X",   3, true,  AbsoluteX   },
     [0xDE] = { DEC_Instr,   "DEC abs,X",   3, false, AbsoluteX   },
@@ -1842,6 +1950,7 @@ static const OpcodeHandler opcodes[256] =
 
     [0xF0] = { BEQ_Instr,   "BEQ rel",     2, true,  Relative    },
     [0xF1] = { SBC_Instr,   "SBC (ind),Y", 2, true,  IndirectY   },
+    [0xF2] = { JAM_Instr,   "JAM",         1, false, Implied     },
     [0xF3] = { ISC_Instr,   "ISC (ind),Y", 2, false, IndirectY   },
     [0xF4] = { NOP_Instr,   "NOP zp,X",    2, false, ZeroPageX   },
     [0xF5] = { SBC_Instr,   "SBC zp,X",    2, false, ZeroPageX   },
