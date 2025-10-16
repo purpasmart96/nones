@@ -21,8 +21,7 @@
 static uint8_t vram[0x800];
 // Pointers to handle mirroring
 static uint8_t *nametables[4];
-// OAM Secondary
-static Sprite sprites_secondary[8];
+static Sprite oam2[8];
 static uint8_t palette_table[32];
 
 static Color sys_palette[64] =
@@ -163,12 +162,9 @@ static void PpuIncrementScrollX(Ppu *ppu)
 {
     if (ppu->v.scrolling.coarse_x == 31)
     {
-        //printf("PPU v addr before: 0x%04X\n", ppu->v.raw);
         ppu->v.scrolling.coarse_x = 0;
-        //printf("PPU v addr after coarse_x reset : 0x%04X\n", ppu->v.raw);
         // Switch horizontal nametable
         ppu->v.scrolling.name_table_sel ^= 0x1;
-        //printf("PPU v addr after nt switch: 0x%04X\n", ppu->v.raw);
     }
     else
     {
@@ -180,7 +176,7 @@ static void PpuIncrementScrollX(Ppu *ppu)
 static void PpuIncrementScrollY(Ppu *ppu)
 {
     if (ppu->v.scrolling.fine_y < 7)
-        ppu->v.scrolling.fine_y++;
+        ++ppu->v.scrolling.fine_y;
     else
     {
         ppu->v.scrolling.fine_y = 0;
@@ -192,10 +188,8 @@ static void PpuIncrementScrollY(Ppu *ppu)
         }
         else if (ppu->v.scrolling.coarse_y == 31)
         {
-            //printf("PPU v addr before: 0x%04X\n", ppu_ptr->v.raw);
             // coarse Y = 0, nametable not switched
             ppu->v.scrolling.coarse_y = 0;
-            //printf("PPU v addr after: 0x%04X\n", ppu_ptr->v.raw);
         }
         else
         {
@@ -205,14 +199,12 @@ static void PpuIncrementScrollY(Ppu *ppu)
     }
 }
 
-static void WriteToPaletteTable(const uint16_t addr, const uint8_t data)
+static void WriteToPaletteTable(const uint8_t palette_addr, const uint8_t data)
 {
-    uint16_t effective_addr = addr;
-    if ((effective_addr & 0x3) == 0)
-    {
-        effective_addr &= ~0x10;
-    }
-    palette_table[effective_addr] = data;
+    palette_table[palette_addr] = data;
+
+    if ((palette_addr & 3) == 0)
+        palette_table[palette_addr ^ 0x10] = data;
 }
 
 static void PPU_WriteCtrl(Ppu *ppu, const uint8_t data)
@@ -234,17 +226,16 @@ void PPU_WriteData(Ppu *ppu, const uint8_t data)
         case 0x1:
         {
             // chr rom is actually chr ram
-            PpuBusWriteChrRam(ppu->v.raw, data);
-            //printf("ppu v: 0x%X\n", ppu->v.raw);
+            PpuBusWriteChrRam(addr, data);
             break;
         }
         case 0x2:
         case 0x3:
         {
             if (addr < 0x3F00)
-                PpuNametableWrite(ppu, ppu->v.raw, data);
+                PpuNametableWrite(ppu, addr, data);
             else
-                WriteToPaletteTable(ppu->v.raw & 0x1F, data);
+                WriteToPaletteTable(addr & 0x1F, data);
             break;
         }
     }
@@ -339,6 +330,7 @@ uint8_t PPU_ReadData(Ppu *ppu)
             }
             else
             {
+                ppu->buffered_data = PpuNametableRead(ppu, addr);
                 data = (palette_table[addr & 0x1F] & 0x3F) | (ppu->io_bus & 0xC0);
             }
             break;
@@ -369,8 +361,12 @@ uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr)
             ppu->io_bus = PPU_ReadStatus(ppu);
             break;
         case OAM_DATA:
-            ppu->io_bus = ppu->sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3];
+        {
+            Sprite found_sprite = ppu->oam1[ppu->oam1_addr >> 2];
+            found_sprite.attribs.padding = 0;
+            ppu->io_bus = found_sprite.raw[ppu->oam1_addr & 3];
             break;
+        }
         case PPU_DATA:
             ppu->io_bus = PPU_ReadData(ppu);
             break;
@@ -396,18 +392,18 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             ppu->mask.raw = data;
             break;
         case OAM_ADDR:
-            ppu->oam_addr = data;
+            ppu->oam1_addr = data;
             break;
         case OAM_DATA:
         {
             if (!ppu->rendering || (ppu->scanline > 239 && ppu->scanline < 261))
             {
-                ppu->sprites[ppu->oam_addr >> 2].raw[ppu->oam_addr & 3] = data;
-                ++ppu->oam_addr;
+                ppu->oam1[ppu->oam1_addr >> 2].raw[ppu->oam1_addr & 3] = data;
+                ++ppu->oam1_addr;
             }
             else
             {
-                ppu->oam_addr += 4;
+                ppu->oam1_addr += 4;
             }
             break;
         }
@@ -477,11 +473,12 @@ static void DrawPixel(uint32_t *buffer, int x, int y, Color color)
     buffer[y * SCREEN_WIDTH + x] = (uint32_t)((color.r << 24) | (color.g << 16) | (color.b << 8) | 255);
 }
 
-static void ResetSecondaryOAMSprites(void)
+static void ResetOAM2Sprites(void)
 {
-    memset(sprites_secondary, 0xFF, sizeof(sprites_secondary));
+    memset(oam2, 0xFF, sizeof(oam2));
 }
 
+// TODO: OAM Eval needs to be redone
 static void PpuUpdateSprites(Ppu *ppu)
 {
     ppu->found_sprites = 0;
@@ -489,7 +486,7 @@ static void PpuUpdateSprites(Ppu *ppu)
 
     for (int n = 0; n < 64; n++)
     {
-        Sprite curr_sprite = ppu->sprites[n];
+        Sprite curr_sprite = ppu->oam1[n];
         if (ppu->scanline >= curr_sprite.y && ppu->scanline < curr_sprite.y + (ppu->ctrl.sprite_size ? 16 : 8))
         {
             if (ppu->found_sprites == 8)
@@ -506,7 +503,7 @@ static void PpuUpdateSprites(Ppu *ppu)
             }
 
             //printf("Found sprite %d at y:%d\n", found_sprites, ppu->scanline);
-            sprites_secondary[ppu->found_sprites++] = curr_sprite;
+            oam2[ppu->found_sprites++] = curr_sprite;
         }
     }
 }
@@ -522,14 +519,14 @@ static void PpuHandleSprite0Hit(Ppu *ppu, const int xpos, const int fifo_lane, c
     if (!ppu->mask.bg_rendering || ppu->status.sprite_hit)
         return;
 
-    const bool sprite_0_hit_inrange = xpos != 255 && (xpos > 7 || ppu->mask.show_bg_left_corner);
+    const bool valid_xpos = xpos != 255 && (xpos > 7 || ppu->mask.show_bg_left_corner);
 
     // Check if we are currently inside of sprite 0
-    const bool inside_sprite0 = ppu->scanline >= ppu->sprites[0].y &&
-                                xpos <= (ppu->sprites[0].x + 7) &&
-                                xpos >= ppu->sprites[0].x;
+    const bool inside_sprite0 = ppu->scanline >= ppu->oam1[0].y &&
+                                xpos <= (ppu->oam1[0].x + 7) &&
+                                xpos >= ppu->oam1[0].x;
 
-    ppu->status.sprite_hit = inside_sprite0 && sprite_0_hit_inrange;
+    ppu->status.sprite_hit = inside_sprite0 && valid_xpos;
 }
 
 static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, const uint8_t bg_pixel)
@@ -537,7 +534,7 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, c
     if (!ppu->mask.sprites_rendering)
         return;
 
-    const bool sprite_inrange = (ppu->mask.show_sprites_left_corner || xpos > 7);
+    const bool valid_xpos = (ppu->mask.show_sprites_left_corner || xpos > 7);
 
     uint8_t sprite_pixel = 0;
 
@@ -548,7 +545,7 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, c
             --fifo_lane->x;
         else
         {
-            if (!sprite_pixel && scanline && sprite_inrange)
+            if (!sprite_pixel && valid_xpos)
             {
                 const uint8_t bit = !fifo_lane->attribs.horz_flip * 7;
                 uint8_t spixel_low  = (fifo_lane->shift.low >> bit) & 1;
@@ -598,6 +595,14 @@ static inline void PpuFetchShifters(Ppu *ppu)
     ppu->attrib_shift_high.low = latch_high ? 0xFF : 0x00;
 }
 
+//static void PpuSpriteRangeCheck(Ppu *ppu, Sprite *curr_sprite)
+//{
+//    uint8_t scanline_trunc = ppu->scanline & 0xFF;
+//    const int y_offset = (scanline_trunc - curr_sprite->y);
+//    ppu->sprite_in_range = y_offset < (ppu->ctrl.sprite_size ? 16 : 8);
+//    ppu->sprite_y_offset = y_offset & 0xF;
+//}
+
 static void PpuRender(Ppu *ppu, int scanline, int cycle)
 {
     const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
@@ -615,6 +620,8 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
         }
         case 1:
         {
+            // TODO: Call PpuSpriteRangeCheck here once proper sprite eval is finished
+            //PpuSpriteRangeCheck(ppu, &oam2[(ppu->cycle_counter - 1) & 7]);
             PpuFetchShifters(ppu);
             break;
         }
@@ -686,7 +693,9 @@ static void PpuRender(Ppu *ppu, int scanline, int cycle)
 
 static uint16_t PpuGetSpriteAddr(Ppu *ppu, Sprite *curr_sprite)
 {
-    const int y_offset = ppu->scanline - curr_sprite->y;
+    const int y_offset = (ppu->scanline - curr_sprite->y);
+    ppu->sprite_in_range = (y_offset < (ppu->ctrl.sprite_size ? 16 : 8));
+
     const bool flip_vert = curr_sprite->attribs.vert_flip;
     const uint8_t tile_row = (flip_vert ? 7 - y_offset : y_offset) & 7;
 
@@ -703,11 +712,13 @@ static uint16_t PpuGetSpriteAddr(Ppu *ppu, Sprite *curr_sprite)
         int bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0x0;
         return (bank + (curr_sprite->tile_id * 16)) | tile_row;
     }
+
+    //ppu->sprite_y_offset = y_offset & 0xF;
 }
 
 static void PpuFetchSprite(Ppu *ppu, int sprite_num)
 {
-    Sprite *curr_sprite = &sprites_secondary[sprite_num];
+    Sprite *curr_sprite = &oam2[sprite_num];
     const int effective_cycle = ppu->cycle_counter - 257;
 
     switch (effective_cycle & 7)
@@ -721,13 +732,14 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
         case 5:
         {
             // Bitplane 0
-            ppu->fifo[sprite_num].shift.low = PpuReadChr(ppu, PpuGetSpriteAddr(ppu, curr_sprite));
+            ppu->sprite_addr = PpuGetSpriteAddr(ppu, curr_sprite);
+            ppu->fifo[sprite_num].shift.low = PpuReadChr(ppu, ppu->sprite_addr) * ppu->sprite_in_range;
             break;
         }
         case 7:
         {
             // Bitplane 1
-            ppu->fifo[sprite_num].shift.high = PpuReadChr(ppu, PpuGetSpriteAddr(ppu, curr_sprite) + 8);
+            ppu->fifo[sprite_num].shift.high = PpuReadChr(ppu, ppu->sprite_addr + 8) * ppu->sprite_in_range;
             break;
         }
     }
@@ -747,7 +759,7 @@ void PPU_Tick(Ppu *ppu)
 
         if (ppu->cycle_counter == 64 && ppu->scanline != 261)
         {
-            ResetSecondaryOAMSprites();
+            ResetOAM2Sprites();
         }
 
         if (ppu->rendering)
@@ -776,7 +788,7 @@ void PPU_Tick(Ppu *ppu)
     
         if (ppu->cycle_counter >= 257 && ppu->cycle_counter <= 320)
         {
-            ppu->oam_addr *= !ppu->rendering;
+            ppu->oam1_addr *= !ppu->rendering;
             PpuFetchSprite(ppu, (ppu->cycle_counter - 257) >> 3);
         }
     }

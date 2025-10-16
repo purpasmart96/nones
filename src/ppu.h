@@ -60,17 +60,6 @@ typedef enum
 
 typedef union
 {
-    int v[2];
-    struct
-    {
-        int x;
-        int y;
-    };
-
-} ivec2;
-
-typedef union
-{
     uint8_t raw;
     struct {
         // Base nametable address
@@ -255,7 +244,7 @@ typedef struct
 
 typedef struct
 {
-    Sprite sprites[64];
+    Sprite oam1[64];
     SpriteFifo fifo[8];
     int64_t cycles;
     uint64_t frames;
@@ -293,7 +282,10 @@ typedef struct
 
     // Per scanline
     int found_sprites;
+    int sprite_y_offset;
+    uint32_t sprite_addr;
     bool sprite0_loaded;
+    bool sprite_in_range;
     
     bool rendering;
     bool clear_vblank;
@@ -303,7 +295,7 @@ typedef struct
     PpuCtrl ctrl;
     PpuMask mask;
     PpuStatus status;
-    uint8_t oam_addr;
+    uint8_t oam1_addr;
     // Read buffer for $2007
     uint8_t buffered_data;
 
