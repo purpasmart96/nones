@@ -42,9 +42,16 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         return -1;
     }
 
-    const int mapper_number = hdr.mapper_number_d7d4 << 4 | hdr.mapper_number_d3d0;
+    int mapper_number = hdr.mapper_number_d7d4 << 4 | hdr.mapper_number_d3d0;
 
     printf("Loading %s\n", path);
+
+    if (hdr.nes2_id == 0x2)
+    {
+        printf("NES 2.0 header detected\n");
+        mapper_number = hdr.mapper_number_d11d8 << 8 | mapper_number;
+    }
+
     printf("ID String: %s\n", hdr.id_string);
     printf("PRG Rom Size in 16 KiB units: %d\n", hdr.prg_rom_size_lsb);
     printf("CHR Rom Size in 8 KiB units: %d\n", hdr.chr_rom_size_lsb);
