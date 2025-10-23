@@ -245,7 +245,9 @@ typedef struct
 typedef struct
 {
     Sprite oam1[64];
+    Sprite oam2[8];
     SpriteFifo fifo[8];
+    uint8_t palettes[32];
     int64_t cycles;
     uint64_t frames;
     int32_t cycles_to_run;
@@ -282,9 +284,11 @@ typedef struct
 
     // Per scanline
     int found_sprites;
+    int prev_found_sprites;
     int sprite_y_offset;
     uint32_t sprite_addr;
     bool sprite0_loaded;
+    bool prev_sprite0_loaded;
     bool sprite_in_range;
     
     bool rendering;
@@ -296,6 +300,11 @@ typedef struct
     PpuMask mask;
     PpuStatus status;
     uint8_t oam1_addr;
+    uint8_t oam2_addr;
+    bool oam2_addr_overflow;
+    bool sprite_eval_done;
+    uint8_t sprite_timer;
+    uint8_t oam_buffer;
     // Read buffer for $2007
     uint8_t buffered_data;
 
