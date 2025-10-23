@@ -655,7 +655,7 @@ static void PpuRender(Ppu *ppu, int scanline)
     // The effective x positon is the current cycle - 1, since cycle 0 is a dummy cycle
     const int xpos = ppu->cycle_counter - 1;
 
-    if (ppu->mask.bg_rendering)
+    if (ppu->rendering)
         PpuShiftRegsUpdate(ppu);
 
     switch (xpos & 7)
