@@ -115,7 +115,6 @@ static void SystemStartOamDma(System *system, const uint8_t page_num, const uint
             SystemTick();
             ApuDmcDmaUpdate(system->apu);
             system->dmc_dma_triggered = false;
-
         }
         else if (system_ptr->dmc_dma_triggered && system_ptr->oam_dma_bytes_remaining == 2)
         {
@@ -217,6 +216,33 @@ uint8_t BusRead(const uint16_t addr)
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
 
+    if (ApuRegsActivated(system_ptr))
+    {
+        uint8_t val = addr & 0x1F;
+        if (val == 0x15)
+        {
+            return ApuReadStatus(system_ptr->apu, system_ptr->bus_data);
+        }
+        else if (val == 0x16)
+        {
+            // Clear bits 0–4
+            system_ptr->bus_data &= 0xE0;
+            // Update bits 0–4
+            system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad1) & 0x1F);
+        }
+        else if (val == 0x17)
+        {
+            // Clear bits 0–4
+            system_ptr->bus_data &= 0xE0;
+            // Update bits 0–4
+            system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad2) & 0x1F);
+        }
+        else if (addr >= 0x4000 && addr < 0x6000)
+        {
+            DEBUG_LOG("Open bus read! addr: 0x%04X bus: %X\n", addr, system_ptr->bus_data);
+        }
+    }
+
     switch (region)
     {
         // $0000 - $1FFF
@@ -226,39 +252,8 @@ uint8_t BusRead(const uint16_t addr)
 
         // $2000 - $3FFF
         case 0x1:
-        {
             system_ptr->bus_data = ReadPPURegister(system_ptr->ppu, addr);
             break;
-        }
-        // $4000 - $5FFF
-        case 0x2:
-            if (addr < 0x4018 && ApuRegsActivated(system_ptr))
-            {
-                if (addr == 0x4016)
-                {
-                    // Clear bits 0–4
-                    system_ptr->bus_data &= 0xE0;
-                    // Update bits 0–4
-                    system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad1) & 0x1F);
-                }
-                else if (addr == 0x4017)
-                {
-                    // Clear bits 0–4
-                    system_ptr->bus_data &= 0xE0;
-                    // Update bits 0–4
-                    system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad2) & 0x1F);
-                }
-                else if (addr == 0x4015)
-                {
-                    return ApuReadStatus(system_ptr->apu, system_ptr->bus_data);
-                }
-                break;
-            }
-            else
-            {
-                DEBUG_LOG("Trying to read value at 0x%04X\n", addr);
-                break;
-            }
 
         case 0x3:  // $6000 - $7FFF
             system_ptr->bus_data = SWramRead(system_ptr, addr);
@@ -372,6 +367,9 @@ uint8_t PpuBusReadChrRom(const uint16_t addr)
 
 void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data)
 {
+    if (!system_ptr->cart->chr_rom.is_ram)
+        return;
+
     ChrRom *chr_rom = &system_ptr->cart->chr_rom;
     chr_rom->data[addr & (chr_rom->size - 1)] = data;
 }
