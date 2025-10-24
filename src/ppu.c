@@ -574,7 +574,7 @@ static void PpuHandleSprite0Hit(Ppu *ppu, const int xpos, const int fifo_lane, c
     if (fifo_lane != 0 || !ppu->prev_sprite0_loaded)
         return;
 
-    if (!ppu->mask.bg_rendering || ppu->status.sprite_hit)
+    if (!ppu->mask.bg_rendering || ppu->status.sprite_hit || !ppu->mask.sprites_rendering)
         return;
 
     const bool valid_xpos = xpos != 255 && (xpos > 7 || ppu->mask.show_bg_left_corner);
@@ -584,9 +584,6 @@ static void PpuHandleSprite0Hit(Ppu *ppu, const int xpos, const int fifo_lane, c
 
 static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, const uint8_t bg_pixel)
 {
-    if (!ppu->mask.sprites_rendering)
-        return;
-
     const bool valid_xpos = (ppu->mask.show_sprites_left_corner || xpos > 7);
 
     uint8_t sprite_pixel = 0;
@@ -603,7 +600,7 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, c
                 const uint8_t bit = !fifo_lane->attribs.horz_flip * 7;
                 uint8_t spixel_low  = (fifo_lane->shift.low >> bit) & 1;
                 uint8_t spixel_high = (fifo_lane->shift.high >> bit) & 1;
-                sprite_pixel = (spixel_high << 1) | spixel_low;
+                sprite_pixel = ((spixel_high << 1) | spixel_low) * (ppu->mask.sprites_rendering && ppu->rendering);
 
                 PpuHandleSprite0Hit(ppu, xpos, i, bg_pixel, sprite_pixel);
 
@@ -613,6 +610,9 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, c
                     DrawPixel(ppu->buffers[0], xpos, scanline, color);
                 }
             }
+
+            if (!ppu->rendering)
+                continue;
 
             if (fifo_lane->attribs.horz_flip)
             {
@@ -711,21 +711,13 @@ static void PpuRender(Ppu *ppu, int scanline)
         uint8_t bg_palette_low  = (ppu->attrib_shift_low.raw >> bit) & 1;
         uint8_t bg_palette_high = (ppu->attrib_shift_high.raw >> bit) & 1;
 
-        const uint8_t bg_pixel = (bg_pixel_high << 1) | bg_pixel_low;
+        const bool draw_bg = ppu->rendering && ppu->mask.bg_rendering && (ppu->mask.show_bg_left_corner || xpos > 7);
+
+        const uint8_t bg_pixel = ((bg_pixel_high << 1) | bg_pixel_low) * draw_bg;
         const uint8_t bg_palette = (bg_palette_high << 1) | bg_palette_low;
 
-        const bool draw_bg = ppu->mask.bg_rendering && (ppu->mask.show_bg_left_corner || xpos > 7);
-
-        if (draw_bg)
-        {
-            Color color = GetBGColor(ppu, bg_palette, bg_pixel);
-            DrawPixel(ppu->buffers[0], xpos, scanline, color);
-        }
-        else
-        {
-            Color color = GetBGColor(ppu, bg_palette, 0);
-            DrawPixel(ppu->buffers[0], xpos, scanline, color);
-        }
+        Color color = GetBGColor(ppu, bg_palette, bg_pixel);
+        DrawPixel(ppu->buffers[0], xpos, scanline, color);
 
         PpuRenderSpritePixel(ppu, xpos, scanline, bg_pixel);
     }
