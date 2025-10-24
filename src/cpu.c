@@ -102,7 +102,7 @@ static void CpuNmiHandler(Cpu *cpu)
     //uint16_t prev_pc = cpu->pc;
     cpu->pc = CpuReadVector(NMI_VECTOR);
     cpu->status.i = 1;
-    cpu->nmi_pending = 0;
+    cpu->nmi_pending = false;
     //printf("NMI Jumped from: 0x%X --> 0x%X\n", prev_pc, cpu->pc);
 }
 
@@ -185,6 +185,7 @@ static inline uint16_t GetIndirectAddr(Cpu *cpu)
     uint16_t ptr = (uint16_t)ptr_high << 8 | ptr_low;
 
     uint8_t pc_low = CpuRead8(ptr);
+    CpuPollIRQ(cpu);
     uint8_t pc_high;
     // 6502 Page Boundary Bug** (If ptr is at 0xXXFF, high byte comes from 0xXX00, not 0xXXFF+1)
     if ((ptr & 0xFF) == 0xFF)
@@ -383,6 +384,32 @@ static inline void AddWithCarry(Cpu *cpu, uint8_t operand)
     CPU_LOG("ADC/SBC Operand: %x\n", operand);
 }
 
+static inline void BranchHandler(Cpu *cpu, const bool flag_cmp)
+{
+    if (flag_cmp)
+    {
+        int8_t offset = (int8_t)CpuRead8(++cpu->pc);
+        ++cpu->pc;
+        uint16_t final_addr = cpu->pc + offset;
+        // Extra cycle if the branch crosses a page boundary
+        bool page_cross = PageCross(cpu->pc, final_addr);
+        // Opcode of next instruction
+        CpuRead8(cpu->pc);
+        if (page_cross)
+        {
+            CpuPollIRQ(cpu);
+            CpuRead8(final_addr - PAGE_SIZE);
+        }
+        cpu->pc = final_addr;
+    }
+    else
+    {
+        CpuPollIRQ(cpu);
+        CpuRead8(++cpu->pc);
+        ++cpu->pc;
+    }
+}
+
 static inline uint16_t GetOperandAddrFromMem(Cpu *cpu, AddressingMode addr_mode, bool page_cycle, bool dummy_read)
 {
     switch (addr_mode)
@@ -499,7 +526,6 @@ static inline void SAX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
     CpuPollIRQ(cpu);
     CpuWrite8(operand_addr, cpu->a & cpu->x);
-
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
 }
@@ -511,12 +537,8 @@ static inline void ASL_A_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cyc
     UNUSED(page_cycle);
 
     CpuPollIRQ(cpu);
-#ifndef DISABLE_DUMMY_READ_WRITES
     // Dummy read of next instruction byte
     CpuRead8(++cpu->pc);
-#else
-    ++cpu->pc;
-#endif
     ShiftOneLeft(cpu, &cpu->a);
     CpuHandleInterrupts(cpu);
 }
@@ -552,24 +574,7 @@ static inline void BCC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (!cpu->status.c)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("BCC pc offset: %d\n", offset);
-    }
+    BranchHandler(cpu, !cpu->status.c);
     CpuHandleInterrupts(cpu);
 }
 
@@ -579,24 +584,7 @@ static inline void BCS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (cpu->status.c)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("BCS pc offset: %d\n", offset);
-    }
+    BranchHandler(cpu, cpu->status.c);
     CpuHandleInterrupts(cpu);
 }
 
@@ -606,24 +594,7 @@ static inline void BEQ_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (cpu->status.z)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("BEQ pc offset: %d\n", offset);
-    }
+    BranchHandler(cpu, cpu->status.z);
     CpuHandleInterrupts(cpu);
 }
 
@@ -645,24 +616,7 @@ static inline void BMI_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (cpu->status.n)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("BMI pc offset: %d\n", offset);
-    }
+    BranchHandler(cpu, cpu->status.n);
     CpuHandleInterrupts(cpu);
 }
 
@@ -672,24 +626,7 @@ static inline void BNE_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (!cpu->status.z)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("BNE pc offset: %d\n", offset);
-    }
+    BranchHandler(cpu, !cpu->status.z);
     CpuHandleInterrupts(cpu);
 }
 
@@ -699,25 +636,7 @@ static inline void BPL_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (!cpu->status.n)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("BPL pc offset: %d\n", offset);
-        //printf("BPL cross page triggered 0x%X --> 0x%X\n", cpu->pc, cpu->pc + offset);
-    }
+    BranchHandler(cpu, !cpu->status.n);
     CpuHandleInterrupts(cpu);
 }
 
@@ -761,24 +680,7 @@ static inline void BVC_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (!cpu->status.v)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("BVC pc offset: %d\n", offset);
-    }
+    BranchHandler(cpu, !cpu->status.v);
     CpuHandleInterrupts(cpu);
 }
 
@@ -787,24 +689,7 @@ static inline void BVS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(addr_mode);
     UNUSED(page_cycle);
 
-    int8_t offset = (int8_t)CpuRead8(++cpu->pc);
-    ++cpu->pc;
-    CpuPollIRQ(cpu);
-    if (cpu->status.v)
-    {
-        uint16_t final_addr = cpu->pc + offset;
-        // Extra cycle if the branch crosses a page boundary
-        bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
-        if (page_cross)
-        {
-            CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
-        }
-        cpu->pc = final_addr;
-        CPU_LOG("PC Offset %d\n", offset);
-    }
+    BranchHandler(cpu, cpu->status.v);
     CpuHandleInterrupts(cpu);
 }
 
@@ -1067,8 +952,18 @@ static inline void JMP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 {
     UNUSED(page_cycle);
 
-    cpu->pc = addr_mode == Absolute ? GetAbsoluteAddr(cpu) : GetIndirectAddr(cpu);
-    CpuPollIRQ(cpu);
+    if (addr_mode == Absolute)
+    {
+        uint8_t addr_low = CpuRead8(++cpu->pc);
+        CpuPollIRQ(cpu);
+        uint8_t addr_high = CpuRead8(++cpu->pc);
+        cpu->pc = (uint16_t)addr_high << 8 | addr_low;
+    }
+    else
+    {
+        cpu->pc = GetIndirectAddr(cpu);
+    }
+
     CpuHandleInterrupts(cpu);
 }
 
@@ -1199,36 +1094,46 @@ static inline void LSR_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 {
     ShiftOneRightFromMem(cpu, GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true));
     ++cpu->pc;
-    CpuPollIRQ(cpu);
     CpuHandleInterrupts(cpu);
 }
 
 static inline void NOP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
+    uint16_t operand_addr = 0;
     switch (addr_mode)
     {
         case Implied:
+            CpuPollIRQ(cpu);
             // Dummy read of next instruction byte
             CpuRead8(++cpu->pc);
             break;
         case Immediate:
+            CpuPollIRQ(cpu);
             CpuRead8(++cpu->pc);
             ++cpu->pc;
             break;
         case ZeroPage:
-            CpuRead8(GetZPAddr(cpu));
+            operand_addr = GetZPAddr(cpu);
+            CpuPollIRQ(cpu);
+            CpuRead8(operand_addr);
             ++cpu->pc;
             break;
         case ZeroPageX:
-            CpuRead8(GetZPIndexedAddr(cpu, cpu->x));
+            operand_addr = GetZPIndexedAddr(cpu, cpu->x);
+            CpuPollIRQ(cpu);
+            CpuRead8(operand_addr);
             ++cpu->pc;
             break;
         case Absolute:
-            CpuRead8(GetAbsoluteAddr(cpu));
+            operand_addr = GetAbsoluteAddr(cpu);
+            CpuPollIRQ(cpu);
+            CpuRead8(operand_addr);
             ++cpu->pc;
             break;
         case AbsoluteX:
-            CpuRead8(GetAbsoluteXAddr(cpu, page_cycle, true));
+            operand_addr = GetAbsoluteXAddr(cpu, page_cycle, true);
+            CpuPollIRQ(cpu);
+            CpuRead8(operand_addr);
             ++cpu->pc;
             break;
         default:
@@ -1236,7 +1141,7 @@ static inline void NOP_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
             exit(EXIT_FAILURE);
             break;
     }
-    CpuPollIRQ(cpu);
+
     CpuHandleInterrupts(cpu);
 }
 
@@ -1685,8 +1590,15 @@ static inline void JAM_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     UNUSED(page_cycle);
     
     printf("\nJAM opcode: 0x%02X at PC: 0x%04X\n", CpuRead8(cpu->pc), cpu->pc);
-    printf("A: 0x%X\nX: 0x%X\nY: 0x%X\nSP: 0x%X\nSR: 0x%X\n", cpu->a, cpu->x, cpu->y, cpu->sp, cpu->status.raw);
     printf("Cycles done: %lu\n", cpu->cycles);
+    printf("A: 0x%X\nX: 0x%X\nY: 0x%X\nSP: 0x%X\nSR: 0x%X\n\n", cpu->a, cpu->x, cpu->y, cpu->sp, cpu->status.raw);
+
+    // Dump Stack for debugging
+    for (int sp = 0xFF; sp >= cpu->sp; sp--)
+    {
+        printf("STACK: 0x%X = %X\n", sp + STACK_START, CpuRead8(sp + STACK_START));
+    }
+
     printf("Exiting Emulator!\n");
     exit(EXIT_FAILURE);
 }
