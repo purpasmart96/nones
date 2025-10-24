@@ -571,15 +571,10 @@ static void PpuHandleSprite0Hit(Ppu *ppu, const int xpos, const int fifo_lane, c
     if (!bg_pixel || !sprite_pixel)
         return;
 
-    if (fifo_lane != 0 || !ppu->prev_sprite0_loaded)
+    if (fifo_lane != 0 || !ppu->prev_sprite0_loaded || ppu->status.sprite_hit)
         return;
 
-    if (!ppu->mask.bg_rendering || ppu->status.sprite_hit || !ppu->mask.sprites_rendering)
-        return;
-
-    const bool valid_xpos = xpos != 255 && (xpos > 7 || ppu->mask.show_bg_left_corner);
-
-    ppu->status.sprite_hit = valid_xpos;
+    ppu->status.sprite_hit = xpos != 255;
 }
 
 static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, const uint8_t bg_pixel)
