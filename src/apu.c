@@ -649,7 +649,7 @@ uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data)
         .triangle = apu->triangle.length_counter != 0,
         .noise = apu->noise.length_counter != 0,
         .dmc = apu->dmc.bytes_remaining != 0,
-        .open_bus = bus_data,
+        .open_bus = bus_data >> 5,
         .frame_irq = apu->status.frame_irq,
         .dmc_irq = apu->status.dmc_irq
     };
