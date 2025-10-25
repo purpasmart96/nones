@@ -393,12 +393,18 @@ static inline void BranchHandler(Cpu *cpu, const bool flag_cmp)
         uint16_t final_addr = cpu->pc + offset;
         // Extra cycle if the branch crosses a page boundary
         bool page_cross = PageCross(cpu->pc, final_addr);
-        // Opcode of next instruction
-        CpuRead8(cpu->pc);
         if (page_cross)
         {
+            // Opcode of next instruction
+            CpuRead8(cpu->pc);
             CpuPollIRQ(cpu);
             CpuRead8(final_addr - PAGE_SIZE);
+        }
+        else
+        {
+            // TODO: Shouldn't IRQ's be ignored here?
+            CpuPollIRQ(cpu);
+            CpuRead8(cpu->pc);
         }
         cpu->pc = final_addr;
     }
@@ -1885,7 +1891,7 @@ static void ExecuteOpcode(Cpu *cpu, bool debug_info)
 
     if (handler->InstrFn)
     {
-        CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X\n", handler->name, opcode, cpu->pc);
+        CPU_LOG("Executing %s (Opcode: 0x%02X) at PC: 0x%04X SP: %X\n", handler->name, opcode, cpu->pc, cpu->sp);
         if (debug_info)
             snprintf(cpu->debug_msg, sizeof(cpu->debug_msg), "PC:%04X %s", cpu->pc, handler->name);
 
