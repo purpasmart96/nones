@@ -248,9 +248,7 @@ typedef struct
     Sprite oam2[8];
     SpriteFifo fifo[8];
     uint8_t palettes[32];
-    int64_t cycles;
     uint64_t frames;
-    int32_t cycles_to_run;
     int32_t cycle_counter;
     int scanline;
     uint32_t bus_addr;

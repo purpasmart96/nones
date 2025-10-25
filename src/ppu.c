@@ -386,8 +386,9 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
 {
     const uint16_t reg = addr & 7;
 
-    if ((ppu->cycles < 88974) && (reg == PPU_CTRL || reg == PPU_MASK || reg == PPU_SCROLL || reg == PPU_ADDR))
-        return;
+    // NES-001 PPU warmup. This will break Famicom games that try to enable NMI before 29658 cpu cycles have passed.
+    //if (!ppu->frames && (reg == PPU_CTRL || reg == PPU_MASK || reg == PPU_SCROLL || reg == PPU_ADDR))
+    //    return;
 
     switch (reg)
     {
@@ -410,6 +411,7 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             }
             else
             {
+                ppu->sprite_eval_done |= ppu->oam1_addr > 251;
                 ppu->oam1_addr += 4;
                 if (ppu->rendering && (ppu->scanline < 240 || ppu->scanline == 261))
                 {
@@ -849,7 +851,6 @@ void PPU_Tick(Ppu *ppu)
     }
 
     ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
-    ++ppu->cycles;
 
     if (!ppu->cycle_counter)
     {
@@ -883,8 +884,6 @@ void PPU_Tick(Ppu *ppu)
 void PPU_Reset(Ppu *ppu)
 {
     ppu->cycle_counter = 0;
-    ppu->cycles = 0;
-    ppu->cycles_to_run = 0;
     ppu->frames = 0;
     ppu->frame_finished = 0;
     ppu->w = false;
