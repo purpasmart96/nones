@@ -160,10 +160,7 @@ typedef struct
 {
     float buffer[14890];
     int16_t outbuffer[735];
-
     uint64_t cycles;
-    int64_t prev_cpu_cycles;
-    int32_t cycles_to_run;
 
     struct {
         ApuPulseReg reg;
@@ -173,7 +170,6 @@ typedef struct
         // Internal timer
         ApuTimer timer;
         ApuEnvelope envelope;
-        uint16_t freq;
         bool reload;
         uint16_t sweep_counter;
         uint16_t target_period;
@@ -191,7 +187,6 @@ typedef struct
         ApuTimer timer_period;
         ApuTimer timer;
         ApuEnvelope envelope;
-        uint16_t freq;
         bool reload;
         uint16_t sweep_counter;
         uint16_t target_period;
@@ -242,7 +237,6 @@ typedef struct
         bool empty;
         bool silence;
         bool restart;
-        //bool reload;
         bool looped;
         uint8_t output_level : 7;
     } dmc;
@@ -254,7 +248,6 @@ typedef struct
     int alignment;
     int current_sample;
     bool clear_frame_irq;
-    bool frame;
 } Apu;
 
 typedef enum 
