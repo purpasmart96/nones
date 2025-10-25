@@ -590,14 +590,14 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, c
         SpriteFifo *fifo_lane = &ppu->fifo[i];
         if (fifo_lane->x > 0)
             --fifo_lane->x;
-        else
+        else if (ppu->rendering)
         {
-            if (!sprite_pixel && valid_xpos)
+            if (!sprite_pixel && valid_xpos && ppu->mask.sprites_rendering)
             {
                 const uint8_t bit = !fifo_lane->attribs.horz_flip * 7;
                 uint8_t spixel_low  = (fifo_lane->shift.low >> bit) & 1;
                 uint8_t spixel_high = (fifo_lane->shift.high >> bit) & 1;
-                sprite_pixel = ((spixel_high << 1) | spixel_low) * (ppu->mask.sprites_rendering && ppu->rendering);
+                sprite_pixel = (spixel_high << 1) | spixel_low;
 
                 PpuHandleSprite0Hit(ppu, xpos, i, bg_pixel, sprite_pixel);
 
@@ -607,9 +607,6 @@ static void PpuRenderSpritePixel(Ppu *ppu, const int xpos, const int scanline, c
                     DrawPixel(ppu->buffers[0], xpos, scanline, color);
                 }
             }
-
-            if (!ppu->rendering)
-                continue;
 
             if (fifo_lane->attribs.horz_flip)
             {
