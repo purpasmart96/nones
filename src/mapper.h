@@ -28,6 +28,7 @@ typedef enum
 
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr);
 uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr);
+void MapperWriteChrRam(Cart *cart, const uint16_t addr, const uint8_t data);
 void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data);
 
 void Mmc3ClockIrqCounter(Cart *cart);

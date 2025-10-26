@@ -31,6 +31,11 @@ static uint8_t NromReadPrgRom(Cart *cart, uint16_t addr)
     return cart->prg_rom.data[addr & cart->prg_rom.mask];
 }
 
+static void ChrWriteGeneric(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    cart->chr_rom.data[addr & (cart->chr_rom.size - 1)] = data;
+}
+
 static inline int GetNumPrgRomBanks(const uint32_t prg_rom_size, const uint16_t bank_size)
 {
     return prg_rom_size / bank_size;
@@ -97,7 +102,7 @@ static uint8_t Mmc1PrgReadMode3(Cart *cart, int bank, const uint16_t addr)
     return 0;
 }
 
-static uint8_t Mmc3ReadPrgRom(Cart *cart, const uint16_t addr)
+static uint8_t Mmc3ReadPrg(Cart *cart, const uint16_t addr)
 {
     if (mmc3.bank_sel.prg_rom_bank_mode)
     {
@@ -239,7 +244,7 @@ static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
     return cart->chr_rom.data[final_addr];
 }
 
-static uint8_t Mmc3ReadChrRom(Cart *cart, const uint16_t addr)
+static inline uint32_t GetMmc3ChrAddr(const uint16_t addr)
 {
     const uint32_t effective_addr = addr ^ (mmc3.bank_sel.chr_a12_invert * 0x1000);
 
@@ -264,9 +269,17 @@ static uint8_t Mmc3ReadChrRom(Cart *cart, const uint16_t addr)
 
     uint32_t index = (effective_addr >> shift) - offset;
     uint32_t bank_base = mmc3.regs[index] << shift;
-    uint32_t final_addr = bank_base | (effective_addr & (bank_size - 1));
+    return bank_base | (effective_addr & (bank_size - 1));
+}
 
-    return cart->chr_rom.data[final_addr];
+static uint8_t Mmc3ReadChr(Cart *cart, const uint16_t addr)
+{
+    return cart->chr_rom.data[GetMmc3ChrAddr(addr)];
+}
+
+static void Mmc3WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    cart->chr_rom.data[GetMmc3ChrAddr(addr)] = data;
 }
 
 static uint8_t CnromReadChrRom(Cart *cart, const uint16_t addr)
@@ -357,11 +370,11 @@ static void Mmc3RegWriteOdd(const uint16_t addr, const uint8_t data)
             uint8_t effective_data = data;
             if (mmc3.bank_sel.reg == 0x6 || mmc3.bank_sel.reg == 0x7)
             {
-                effective_data = data & 0x3F;
+                effective_data &= 0x3F;
             }
             else if (mmc3.bank_sel.reg == 0x0 || mmc3.bank_sel.reg == 0x1)
             {
-                effective_data = data >> 1;
+                effective_data >>= 1;
             }
             mmc3.regs[mmc3.bank_sel.reg] = effective_data;
         
@@ -503,6 +516,11 @@ uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr)
     return cart->ChrReadFn(cart, addr);
 }
 
+void MapperWriteChrRam(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    cart->ChrWriteFn(cart, addr, data);
+}
+
 void MapperWrite(Cart *cart, const uint16_t addr, uint8_t data)
 {
     if (cart->mapper_num != MAPPER_NROM)
@@ -545,12 +563,14 @@ void MapperInit(Cart *cart)
         case MAPPER_NROM:
             cart->PrgReadFn = NromReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
             cart->mem_map = MEM_MAP_NORMAL;
             break;
         case MAPPER_MMC1:
             mmc1.control.prg_rom_bank_mode = 3;
             cart->PrgReadFn = Mmc1ReadPrgRom;
             cart->ChrReadFn = Mmc1ReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = Mmc1RegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
@@ -558,6 +578,7 @@ void MapperInit(Cart *cart)
         case MAPPER_UXROM:
             cart->PrgReadFn = UxRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = UxRomRegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
@@ -565,19 +586,24 @@ void MapperInit(Cart *cart)
         case MAPPER_CNROM:
             cart->PrgReadFn = NromReadPrgRom;
             cart->ChrReadFn = CnromReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = CnRomRegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
             break;
         case MAPPER_MMC3:
-            cart->PrgReadFn = Mmc3ReadPrgRom;
-            cart->ChrReadFn = Mmc3ReadChrRom;
+        {
+            cart->PrgReadFn = Mmc3ReadPrg;
+            cart->ChrReadFn = Mmc3ReadChr;
+            cart->ChrWriteFn = Mmc3WriteChr;
             cart->RegWriteFn = Mmc3RegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_8KIB);
             break;
+        }
         case MAPPER_AXROM:
             cart->PrgReadFn = AxRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = AxRomRegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
@@ -585,6 +611,7 @@ void MapperInit(Cart *cart)
         case MAPPER_COLORDREAMS:
             cart->PrgReadFn = ColorDreamsReadPrgRom;
             cart->ChrReadFn = ColorDreamsReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = ColorDreamsRegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
@@ -595,12 +622,14 @@ void MapperInit(Cart *cart)
             {
                 cart->PrgReadFn = NinjaReadPrgRom;
                 cart->ChrReadFn = NinjaReadChrRom;
+                cart->ChrWriteFn = ChrWriteGeneric;
                 cart->RegWriteFn = NinjaRegWrite;
                 cart->mem_map = MEM_MAP_NINJA;
                 break;
             }
             cart->PrgReadFn = BnRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = BnRomRegWrite;
             cart->mem_map = MEM_MAP_NORMAL;
             break;

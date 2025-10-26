@@ -48,7 +48,7 @@ typedef struct
 {
     uint8_t *data;
     uint32_t size;
-    bool is_ram;
+    bool ram;
 } ChrRom;
 
 typedef union
@@ -257,6 +257,7 @@ typedef struct Cart {
     bool battery;
     uint8_t (*PrgReadFn)(struct Cart *cart, const uint16_t addr);
     uint8_t (*ChrReadFn)(struct Cart *cart, const uint16_t addr);
+    void (*ChrWriteFn)(struct Cart *cart, const uint16_t addr, const uint8_t data);
     void (*RegWriteFn)(const uint16_t addr, const uint8_t data);
 } Cart;
 

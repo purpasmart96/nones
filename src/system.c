@@ -317,7 +317,7 @@ void BusWrite(const uint16_t addr, const uint8_t data)
             }
             else
             {
-                DEBUG_LOG("Trying to write %d at 0x%04X\n", data, addr);
+                DEBUG_LOG("Trying to write %X at 0x%04X\n", data, addr);
             }
             break;
         }
@@ -367,11 +367,11 @@ uint8_t PpuBusReadChrRom(const uint16_t addr)
 
 void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data)
 {
-    if (!system_ptr->cart->chr_rom.is_ram)
+    Cart *cart = system_ptr->cart;
+    if (!cart->chr_rom.ram)
         return;
 
-    ChrRom *chr_rom = &system_ptr->cart->chr_rom;
-    chr_rom->data[addr & (chr_rom->size - 1)] = data;
+    MapperWriteChrRam(cart, addr, data);
 }
 
 void PpuClockMMC3(void)
