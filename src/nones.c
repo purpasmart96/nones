@@ -82,6 +82,7 @@ static void NonesSetIntegerScale(Nones *nones, int scale)
 {
     SDL_SetWindowSize(nones->window, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale);
     SDL_SetRenderScale(nones->renderer, scale, scale);
+    //SDL_SetRenderLogicalPresentation(nones->renderer, SCREEN_WIDTH * scale, SCREEN_HEIGHT * scale, SDL_LOGICAL_PRESENTATION_INTEGER_SCALE);
     // Doesn't work on Wayland...
     SDL_SetWindowPosition(nones->window,  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED);
 }
@@ -140,7 +141,7 @@ static void NonesHandleInput(Nones *nones)
         NonesSetIntegerScale(nones, 5);
 }
 
-static void NonesInit(Nones *nones, const char *path)
+static void NonesInit(Nones *nones, const char *path, const char *audio_driver)
 {
     memset(nones, 0, sizeof(*nones));
     nones->arena = ArenaCreate(1024 * 1024 * 3);
@@ -152,11 +153,19 @@ static void NonesInit(Nones *nones, const char *path)
         exit(EXIT_FAILURE);
     }
 
+    if (audio_driver != NULL)
+    {
+        SDL_SetHint(SDL_HINT_AUDIO_DRIVER, audio_driver);
+    }
+
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_GAMEPAD))
     {
         SDL_Log("SDL Init Error: %s", SDL_GetError());
+        ArenaDestroy(nones->arena);
         exit(EXIT_FAILURE);
     }
+
+    SDL_Log("SDL audio driver: %s\n", SDL_GetCurrentAudioDriver());
 
     nones->window = SDL_CreateWindow("nones", SCREEN_WIDTH * 2, SCREEN_HEIGHT * 2, 0);
     if (!nones->window)
@@ -213,6 +222,7 @@ static void NonesInit(Nones *nones, const char *path)
         SDL_DestroyRenderer(nones->renderer);
         SDL_DestroyWindow(nones->window);
         SDL_Quit();
+        ArenaDestroy(nones->arena);
         exit(EXIT_FAILURE);
     }
 
@@ -253,9 +263,9 @@ static void NonesReset(Nones *nones)
     SystemReset(nones->system);
 }
 
-void NonesRun(Nones *nones, const char *path)
+void NonesRun(Nones *nones, bool ppu_warmup, const char *path, const char *audio_driver)
 {
-    NonesInit(nones, path);
+    NonesInit(nones, path, audio_driver);
 
     // Allocate pixel buffers (back and front)
     uint32_t *buffers[2];
@@ -263,7 +273,7 @@ void NonesRun(Nones *nones, const char *path)
     buffers[0] = ArenaPush(nones->arena, buffer_size);
     buffers[1] = ArenaPush(nones->arena, buffer_size);
 
-    SystemInit(nones->system, buffers, buffer_size);
+    SystemInit(nones->system, ppu_warmup, buffers, buffer_size);
     SDL_Event event;
     void *raw_pixels;
     int raw_pitch;

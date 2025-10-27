@@ -201,7 +201,7 @@ static void PpuPaletteWrite(Ppu *ppu, const uint8_t palette_addr, const uint8_t 
 {
     ppu->palettes[palette_addr] = data;
 
-    if ((palette_addr & 3) == 0)
+    if (!(palette_addr & 3))
         ppu->palettes[palette_addr ^ 0x10] = data;
 }
 
@@ -387,8 +387,8 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
     const uint16_t reg = addr & 7;
 
     // NES-001 PPU warmup. This will break Famicom games that try to enable NMI before 29658 cpu cycles have passed.
-    //if (!ppu->frames && (reg == PPU_CTRL || reg == PPU_MASK || reg == PPU_SCROLL || reg == PPU_ADDR))
-    //    return;
+    if (ppu->warmup && !ppu->frames && (reg == PPU_CTRL || reg == PPU_MASK || reg == PPU_SCROLL || reg == PPU_ADDR))
+        return;
 
     switch (reg)
     {
@@ -465,7 +465,7 @@ void PpuSetMirroring(NameTableMirror mode, int page)
     }
 }
 
-void PPU_Init(Ppu *ppu, int mirroring, uint32_t **buffers, const uint32_t buffer_size)
+void PPU_Init(Ppu *ppu, int mirroring, bool warmup, uint32_t **buffers, const uint32_t buffer_size)
 {
     memset(ppu, 0, sizeof(*ppu));
     ppu->mirroring = mirroring;
@@ -475,6 +475,7 @@ void PPU_Init(Ppu *ppu, int mirroring, uint32_t **buffers, const uint32_t buffer
     ppu->buffers[1] = buffers[1];
     ppu->buffer_size = buffer_size;
     ppu->ext_input = 0;
+    ppu->warmup = warmup;
     //ppu->status.open_bus = 0x1C;
 }
 
@@ -674,17 +675,15 @@ static void PpuRender(Ppu *ppu, int scanline)
         case 4:
         {
             // Get pattern table address for this tile
-            size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
+            ppu->bg_addr = bank + (ppu->tile_id << 4) + ppu->v.scrolling.fine_y;
             // Bitplane 0
-            ppu->bg_lsb = PpuReadChr(ppu, tile_offset);
+            ppu->bg_lsb = PpuReadChr(ppu, ppu->bg_addr);
             break;
         }
         case 6:
         {
-            // Get pattern table address for this tile
-            size_t tile_offset = bank + (ppu->tile_id * 16) + ppu->v.scrolling.fine_y;
             // Bitplane 1
-            ppu->bg_msb = PpuReadChr(ppu, tile_offset + 8);
+            ppu->bg_msb = PpuReadChr(ppu, ppu->bg_addr + 8);
             break;
         }
         case 7:

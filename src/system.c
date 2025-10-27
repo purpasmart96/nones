@@ -36,9 +36,9 @@ int SystemLoadCart(Arena *arena, System *system, const char *path)
     return CartLoad(arena, system->cart, path);
 }
 
-void SystemInit(System *system, uint32_t **buffers, const uint32_t buffer_size)
+void SystemInit(System *system, bool ppu_warmup, uint32_t **buffers, const uint32_t buffer_size)
 {
-    PPU_Init(system->ppu, system->cart->mirroring, buffers, buffer_size);
+    PPU_Init(system->ppu, system->cart->mirroring, ppu_warmup, buffers, buffer_size);
     APU_Init(system->apu);
     CPU_Init(system->cpu);
 }

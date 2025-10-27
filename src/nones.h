@@ -39,7 +39,7 @@ typedef struct {
     bool quit;
 } Nones;
 
-void NonesRun(Nones *nones, const char *path);
+void NonesRun(Nones *nones, bool ppu_warmup, const char *path, const char *audio_driver);
 void NonesPutSoundData(Apu *apu);
 
 #endif
