@@ -108,22 +108,16 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         cart->chr_rom.data = ArenaPush(arena, cart->chr_rom.size);
         memcpy(cart->chr_rom.data, &rom[cart->prg_rom.size], cart->chr_rom.size);
     }
-    else if (hdr.chr_ram_shift_count)
-    {
-        const uint32_t chr_ram_size = 64 << hdr.chr_ram_shift_count;
-        printf("Using Chr ram size of %d bytes\n", chr_ram_size);
-        cart->chr_rom.data = ArenaPush(arena, chr_ram_size);
-        cart->chr_rom.size = chr_ram_size;
-        cart->chr_rom.ram = true;
-    }
     else
     {
-        // Chr rom size is 0, and chr ram shift count is 0. Assume it's chr ram with a size of 8kib
-        printf("Using default Chr ram size of 8 kib\n");
-        cart->chr_rom.data = ArenaPush(arena, CHR_RAM_SIZE);
-        cart->chr_rom.size = CHR_RAM_SIZE;
-        cart->chr_rom.ram = true;  
+        // If Chr rom size is 0, and chr ram shift count is 0. Assume it's Chr ram with a size of 8 Kib
+        cart->chr_rom.size = hdr.chr_ram_shift_count ? 64 << hdr.chr_ram_shift_count : CHR_RAM_SIZE;
+        printf("CHR Ram Size: %d KiB\n", cart->chr_rom.size >> 10);
+        cart->chr_rom.data = ArenaPush(arena, cart->chr_rom.size);
+        cart->chr_rom.ram = true;
     }
+
+    cart->chr_rom.mask = cart->chr_rom.size - 1;
 
     // Sram / Wram
     cart->ram = ArenaPush(arena, CART_RAM_SIZE);

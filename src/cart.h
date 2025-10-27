@@ -48,6 +48,7 @@ typedef struct
 {
     uint8_t *data;
     uint32_t size;
+    uint32_t mask;
     bool ram;
 } ChrRom;
 
