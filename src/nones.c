@@ -287,8 +287,8 @@ void NonesRun(Nones *nones, bool ppu_warmup, const char *path, const char *audio
         .timer = SDL_GetTicks(),
     };
 
-    uint64_t current_time = SDL_GetTicksNS();
     uint64_t previous_time = 0;
+    uint64_t current_time = 0;
     uint64_t accumulator = 0;
 
     while (!nones->quit)
