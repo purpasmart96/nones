@@ -145,7 +145,13 @@ typedef union
         uint16_t  bit_z: 1;
     } writing;
 
-    struct {
+    struct
+    {
+        uint16_t addr : 5;
+    } palette;
+
+    struct
+    {
         uint16_t bit0 : 1;
         uint16_t bit1 : 1;
         uint16_t bit2 : 1;

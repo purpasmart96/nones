@@ -93,13 +93,22 @@ static Color sys_palette[64] =
 static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
 {
     // Compute palette memory address
-    const uint16_t palette_addr = 0x3F00 + (palette_index * 4) + pixel;
+    const uint16_t palette_addr = 0x3F00 | (palette_index << 2) | pixel;
+
+    // When rendering is off and V points to palette memory;
+    // The backdrop color is replaced by the value from the low 5 bits of V
+    const bool backdrop_override = !ppu->rendering && (((ppu->v.raw & 0x3FFF) >= 0x3F00));
 
     // Read the color index from PPU palette memory
     uint16_t color_index = ppu->palettes[palette_addr & 0x1F];
 
-    if (!pixel)
+    if (backdrop_override)
     {
+        color_index = ppu->palettes[ppu->v.palette.addr];
+    }
+    else if (!pixel)
+    {
+        // Use backdrop color
         color_index = ppu->palettes[0];
     }
 
@@ -113,7 +122,7 @@ static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pix
 
 static Color GetSpriteColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
 {
-    const uint16_t palette_addr = 0x10 + (palette_index * 4) + pixel;
+    const uint16_t palette_addr = 0x10 | (palette_index << 2) | pixel;
     uint16_t color_index = ppu->palettes[palette_addr];
 
     if (ppu->mask.grey_scale)
