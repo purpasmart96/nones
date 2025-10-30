@@ -76,7 +76,7 @@ static const uint8_t dmc_table[16] =
 
 bool PollApuIrqs(Apu *apu)
 {
-    return apu->status.dmc_irq | apu->status.frame_irq;
+    return apu->status.dmc_irq | (apu->status.frame_irq & ~apu->frame_counter.control.irq_inhibit);
 }
 
 #define FCPU 1789773.0
@@ -494,10 +494,7 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
     apu->frame_counter.reset = true;
 
     // Seems correct
-    if (apu->frame_counter.control.irq_inhibit)
-    {
-        apu->status.frame_irq = 0;
-    }
+    apu->status.frame_irq &= ~apu->frame_counter.control.irq_inhibit;
 }
 
 static void ApuWritePulse1Sweep(Apu *apu, const uint8_t data)
@@ -789,7 +786,7 @@ void APU_Tick(Apu *apu)
         }
         if (step.frame_interrupt)
         {
-            apu->status.frame_irq |= ~apu->frame_counter.control.irq_inhibit;
+            apu->status.frame_irq = ~apu->frame_counter.control.irq_inhibit;
             // Don't overwrite the newly set frame irq flag
             apu->clear_frame_irq = false;
         }
