@@ -97,20 +97,20 @@ static void PpuApplyColorEmphasis(Ppu *ppu, Color *color, uint8_t color_index)
 
     if (ppu->mask.emphasize_red)
     {
-        color->b = MAX(0, color->b * COLOR_ATTENUATION);
-        color->g = MAX(0, color->g * COLOR_ATTENUATION);
+        color->b *= COLOR_ATTENUATION;
+        color->g *= COLOR_ATTENUATION;
     }
 
     if (ppu->mask.emphasize_green)
     {
-        color->b = MAX(0, color->b * COLOR_ATTENUATION);
-        color->r = MAX(0, color->r * COLOR_ATTENUATION);
+        color->b *= COLOR_ATTENUATION;
+        color->r *= COLOR_ATTENUATION;
     }
 
     if (ppu->mask.emphasize_blue)
     {
-        color->g = MAX(0, color->g * COLOR_ATTENUATION);
-        color->r = MAX(0, color->r * COLOR_ATTENUATION);
+        color->g *= COLOR_ATTENUATION;
+        color->r *= COLOR_ATTENUATION;
     }
 }
 
