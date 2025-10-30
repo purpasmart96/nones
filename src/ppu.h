@@ -23,6 +23,9 @@
 #define PPU_DATA_REG   0x2007
 #define OAM_DMA_REG    0x4014
 
+// For color emphasis
+#define COLOR_ATTENUATION 0.816328f
+
 typedef enum
 {
     PPU_CTRL   = 0,

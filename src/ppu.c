@@ -90,6 +90,30 @@ static Color sys_palette[64] =
     {0x00, 0x00, 0x00}
 };
 
+static void PpuApplyColorEmphasis(Ppu *ppu, Color *color, uint8_t color_index)
+{
+    if (color_index == 0xE || color_index == 0xF)
+        return;
+
+    if (ppu->mask.emphasize_red)
+    {
+        color->b = MAX(0, color->b * COLOR_ATTENUATION);
+        color->g = MAX(0, color->g * COLOR_ATTENUATION);
+    }
+
+    if (ppu->mask.emphasize_green)
+    {
+        color->b = MAX(0, color->b * COLOR_ATTENUATION);
+        color->r = MAX(0, color->r * COLOR_ATTENUATION);
+    }
+
+    if (ppu->mask.emphasize_blue)
+    {
+        color->g = MAX(0, color->g * COLOR_ATTENUATION);
+        color->r = MAX(0, color->r * COLOR_ATTENUATION);
+    }
+}
+
 static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
 {
     // Compute palette memory address
@@ -117,7 +141,10 @@ static Color GetBGColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pix
         color_index &= 0x30;
     }
 
-    return sys_palette[color_index & 0x3F];
+    Color color = sys_palette[color_index & 0x3F];
+    PpuApplyColorEmphasis(ppu, &color, color_index);
+
+    return color;
 }
 
 static Color GetSpriteColor(Ppu *ppu, const uint8_t palette_index, const uint8_t pixel)
@@ -130,7 +157,10 @@ static Color GetSpriteColor(Ppu *ppu, const uint8_t palette_index, const uint8_t
         color_index &= 0x30;
     }
 
-    return sys_palette[color_index & 0x3F];
+    Color color = sys_palette[color_index & 0x3F];
+    PpuApplyColorEmphasis(ppu, &color, color_index);
+
+    return color;
 }
 
 void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
