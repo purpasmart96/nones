@@ -116,7 +116,7 @@ static void SystemStartOamDma(System *system, const uint8_t page_num, const uint
             ApuDmcDmaUpdate(system->apu);
             system->dmc_dma_triggered = false;
         }
-        else if (system_ptr->dmc_dma_triggered && system_ptr->oam_dma_bytes_remaining == 2)
+        else if (system->dmc_dma_triggered && system->oam_dma_bytes_remaining == 2)
         {
             single_dma_cycle = true;
         }
@@ -148,13 +148,13 @@ static void SystemStartOamDma(System *system, const uint8_t page_num, const uint
     }
 }
 
-static void SystemStartDmcDma(const uint16_t addr)
+static void SystemStartDmcDma(System *system, const uint16_t addr)
 {
     // Add cpu halt cycle
     SystemTick();
     BusRead(addr);
 
-    if (ExplicitAbortDmcDma(system_ptr))
+    if (ExplicitAbortDmcDma(system))
     {
         system_ptr->dmc_dma_triggered = false;
         return;
@@ -165,15 +165,15 @@ static void SystemStartDmcDma(const uint16_t addr)
     BusRead(addr);
 
     // Alignment cycle if needed
-    if (system_ptr->cpu->cycles & 1)
+    if (system->cpu->cycles & 1)
     {
         SystemTick();
         BusRead(addr);
     }
 
     SystemTick();
-    ApuDmcDmaUpdate(system_ptr->apu);
-    system_ptr->dmc_dma_triggered = false;
+    ApuDmcDmaUpdate(system->apu);
+    system->dmc_dma_triggered = false;
 }
 
 void SystemSignalDmcDma(void)
