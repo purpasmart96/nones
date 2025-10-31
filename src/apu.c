@@ -720,7 +720,7 @@ static void ApuMixSample(Apu *apu)
     float tnd_out = 0.00851f * apu->triangle.output + 0.00494f * apu->noise.output + 0.00335f * apu->dmc.output_level;
 #else
     float pulse = 95.88 / ((8128.0 / (square1 + square2)) + 100);
-    float tnd_out = 159.79 / (1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0)) + 100);
+    float tnd_out = 159.79 / ((1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0))) + 100);
 #endif
     apu->mixed_sample = pulse + tnd_out;
 }
