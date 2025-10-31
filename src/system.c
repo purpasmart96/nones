@@ -156,7 +156,7 @@ static void SystemStartDmcDma(System *system, const uint16_t addr)
 
     if (ExplicitAbortDmcDma(system))
     {
-        system_ptr->dmc_dma_triggered = false;
+        system->dmc_dma_triggered = false;
         return;
     }
 
@@ -197,7 +197,7 @@ uint8_t SystemRead(const uint16_t addr)
     {
         if (system_ptr->dmc_dma_triggered && !system_ptr->oam_dma_triggered)
         {
-            SystemStartDmcDma(addr);
+            SystemStartDmcDma(system_ptr, addr);
         }
         else if (system_ptr->oam_dma_triggered)
         {
