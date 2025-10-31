@@ -169,22 +169,22 @@ static void ApuClockLengthCounters(Apu *apu)
 {
     if (apu->pulse1.length_counter && !apu->pulse1.reg.counter_halt)
     {
-        apu->pulse1.length_counter--;
+        --apu->pulse1.length_counter;
     }
 
     if (apu->pulse2.length_counter && !apu->pulse2.reg.counter_halt)
     {
-        apu->pulse2.length_counter--;
+        --apu->pulse2.length_counter;
     }
 
     if (apu->triangle.length_counter && !apu->triangle.reg.control_halt)
     {
-        apu->triangle.length_counter--;
+        --apu->triangle.length_counter;
     }
 
     if (apu->noise.length_counter && !apu->noise.reg.counter_halt)
     {
-        apu->noise.length_counter--;
+        --apu->noise.length_counter;
     }
 
     //printf("Pulse 1 length counter: %d\n", apu->pulse1.length_counter);
@@ -201,7 +201,7 @@ static void ApuClockLinearCounters(Apu *apu)
     }
     else if (apu->triangle.linear_counter > 0)
     {
-        apu->triangle.linear_counter--;
+        --apu->triangle.linear_counter;
     }
 
     apu->triangle.reload &= apu->triangle.reg.control_halt; 
@@ -309,7 +309,7 @@ static void ApuClockSweeps(Apu *apu)
     }
     else
     {
-        apu->pulse2.sweep_counter--;
+        --apu->pulse2.sweep_counter;
     }
 }
 
@@ -318,12 +318,12 @@ static void ApuClockEnvelopes(Apu *apu)
     if (!apu->pulse1.envelope.start)
     {
         if (apu->pulse1.envelope.counter > 0)
-            apu->pulse1.envelope.counter--;
+            --apu->pulse1.envelope.counter;
         else
         {
             apu->pulse1.envelope.counter = apu->pulse1.reg.volume_env;
             if (apu->pulse1.envelope.decay_counter > 0)
-                apu->pulse1.envelope.decay_counter--;
+                --apu->pulse1.envelope.decay_counter;
             else if (apu->pulse1.reg.counter_halt)
                 apu->pulse1.envelope.decay_counter = 15;
         }
@@ -340,12 +340,12 @@ static void ApuClockEnvelopes(Apu *apu)
     if (!apu->pulse2.envelope.start)
     {
         if (apu->pulse2.envelope.counter > 0)
-            apu->pulse2.envelope.counter--;
+            --apu->pulse2.envelope.counter;
         else
         {
             apu->pulse2.envelope.counter = apu->pulse2.reg.volume_env;
             if (apu->pulse2.envelope.decay_counter > 0)
-                apu->pulse2.envelope.decay_counter--;
+                --apu->pulse2.envelope.decay_counter;
             else if (apu->pulse2.reg.counter_halt)
                 apu->pulse2.envelope.decay_counter = 15;
         }
@@ -360,12 +360,12 @@ static void ApuClockEnvelopes(Apu *apu)
     if (!apu->noise.envelope.start)
     {
         if (apu->noise.envelope.counter > 0)
-            apu->noise.envelope.counter--;
+            --apu->noise.envelope.counter;
         else
         {
             apu->noise.envelope.counter = apu->noise.reg.volume_env;
             if (apu->noise.envelope.decay_counter > 0)
-                apu->noise.envelope.decay_counter--;
+                --apu->noise.envelope.decay_counter;
             else if (apu->noise.reg.counter_halt)
                 apu->noise.envelope.decay_counter = 15;
         }
@@ -403,7 +403,7 @@ static void ApuClockEnvelopes(Apu *apu)
 static void ApuClockTriangle(Apu *apu)
 {
     if (apu->triangle.timer.raw > 0)
-        apu->triangle.timer.raw--;
+        --apu->triangle.timer.raw;
     else
     {
         apu->triangle.timer.raw = apu->triangle.timer_period.raw;
@@ -424,7 +424,7 @@ static void ApuClockTriangle(Apu *apu)
 static void ApuClockDmc(Apu *apu)
 {
     if (apu->dmc.timer > 0)
-        apu->dmc.timer--;
+        --apu->dmc.timer;
     else
     {
         apu->dmc.timer = apu->dmc.timer_period;
@@ -648,7 +648,7 @@ uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data)
 static void ApuClockTimers(Apu *apu)
 {
     if (apu->pulse1.timer.raw > 0)
-        apu->pulse1.timer.raw--;
+        --apu->pulse1.timer.raw;
     else
     {
         apu->pulse1.timer.raw = apu->pulse1.timer_period.raw;
@@ -665,7 +665,7 @@ static void ApuClockTimers(Apu *apu)
     }
 
     if (apu->pulse2.timer.raw > 0)
-        apu->pulse2.timer.raw--;
+        --apu->pulse2.timer.raw;
     else
     {
         apu->pulse2.timer.raw = apu->pulse2.timer_period.raw;
@@ -682,7 +682,7 @@ static void ApuClockTimers(Apu *apu)
     }
 
     if (apu->noise.timer.raw > 0)
-        apu->noise.timer.raw--;
+        --apu->noise.timer.raw;
     else
     {
         apu->noise.timer.raw = apu->noise.timer_period.raw;
