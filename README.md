@@ -1,6 +1,6 @@
 # Nones
 
-A simple NTSC NES emulator written in C.
+A small cycle accurate NTSC NES emulator written in C.
 
 ### Current State
 
@@ -79,7 +79,17 @@ Basic gamepad support for up to two players, currently, button layout is fixed t
 
 After building you should be able run the program via `./nones "game.nes"`
 
-### Commands/Hotkeys:
+You can also apply additional arguments after specifying the rom path, which include the following:
+
+* `--sdl-audio-driver="driver-name"`
+
+Set the preferred audio driver for SDL to use.
+
+* `--ppu-warmup`
+
+Enable the ppu warm up delay found on the NES-001. (Will break some famicom games)
+
+### Hotkeys:
 
 * `1 -> 5`
 
