@@ -7,7 +7,7 @@
 #include <SDL3/SDL.h>
 #include "nones.h"
 
-#define VERSION "v0.3"
+#define VERSION "v0.3.1"
 
 static void About(void)
 {

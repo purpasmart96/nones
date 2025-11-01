@@ -20,7 +20,7 @@ OS_NAME ?= $(shell uname -s | tr '[:upper:]' '[:lower:]')
 ARCH := $(shell uname -m)
 
 BIN := nones
-VERSION := 0.3.0
+VERSION := 0.3.1
 ARCHIVE_FMT ?= .tar.gz
 ARCHIVE := $(BIN)-$(VERSION)-$(OS_NAME)-$(ARCH)$(ARCHIVE_FMT)
 
