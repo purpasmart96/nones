@@ -262,6 +262,7 @@ typedef struct
     ShiftReg attrib_shift_low;
     ShiftReg attrib_shift_high;
 
+    uint16_t delayed_vram_inc;
     uint16_t sprite_addr;
     uint16_t bg_addr;
 

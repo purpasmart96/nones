@@ -253,7 +253,6 @@ static void PPU_WriteCtrl(Ppu *ppu, const uint8_t data)
 
 void PPU_WriteData(Ppu *ppu, const uint8_t data)
 {
-    const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
     const uint16_t addr = ppu->v.raw & 0x3FFF;
 
     // Extract A13, A12, A11 for region decoding
@@ -287,10 +286,8 @@ void PPU_WriteData(Ppu *ppu, const uint8_t data)
     }
     else
     {
-        ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
+        ppu->delayed_vram_inc += ppu->ctrl.vram_addr_inc ? 32 : 1;
     }
-    if (~prev_a12 & ppu->v.raw_bits.bit12)
-        PpuClockMMC3();
 }
 
 static void PPU_WriteScroll(Ppu *ppu, const uint8_t value)
@@ -908,6 +905,16 @@ void PPU_Tick(Ppu *ppu)
         // Clear vblank
         ppu->status.vblank = 0;
         ppu->clear_vblank = false;
+    }
+
+    // VRAM addr (V) increments are delayed one dot/cycle for $2007(PPUDATA) writes
+    if (ppu->delayed_vram_inc)
+    {
+        const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
+        ppu->v.raw += ppu->delayed_vram_inc;
+        ppu->delayed_vram_inc = 0;
+        if (~prev_a12 & ppu->v.raw_bits.bit12)
+            PpuClockMMC3();
     }
 
     if (ppu->mask.bg_rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
