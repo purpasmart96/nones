@@ -45,12 +45,33 @@ static const uint8_t length_counter_table[] =
     12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
 };
 
-static const uint8_t duty_cycle_table[4][8] =
+static const uint8_t duty_cycle_table[2][4][8] =
 {
-    { 0, 0, 0, 0, 0, 0, 0, 1 },
-    { 0, 0, 0, 0, 0, 0, 1, 1 },
-    { 0, 0, 0, 0, 1, 1, 1, 1 },
-    { 1, 1, 1, 1, 1, 1, 0, 0 }
+    // Normal Duty cycle table
+    // Duty  Output
+    // 0 	 0 1 0 0 0 0 0 0 (12.5%)
+    // 1 	 0 1 1 0 0 0 0 0 (25%)
+    // 2 	 0 1 1 1 1 0 0 0 (50%)
+    // 3 	 1 0 0 1 1 1 1 1 (25% negated) 
+    {
+        { 0, 1, 0, 0, 0, 0, 0, 0 },
+        { 0, 1, 1, 0, 0, 0, 0, 0 },
+        { 0, 1, 1, 1, 1, 0, 0, 0 },
+        { 1, 0, 0, 1, 1, 1, 1, 1 }
+    },
+
+    // Swapped Duty cycle table for older famiclones
+    // Duty  Output
+    // 0 	 0 1 0 0 0 0 0 0 (12.5%)
+    // 1 	 0 1 1 1 1 0 0 0 (50%)
+    // 2 	 0 1 1 0 0 0 0 0 (25%)
+    // 3 	 1 0 0 1 1 1 1 1 (25% negated) 
+    {
+        { 0, 1, 0, 0, 0, 0, 0, 0 },
+        { 0, 1, 1, 1, 1, 0, 0, 0 },
+        { 0, 1, 1, 0, 0, 0, 0, 0 },
+        { 1, 0, 0, 1, 1, 1, 1, 1 }
+    }
 };
 
 static const uint8_t triangle_table[32] =
@@ -652,7 +673,7 @@ static void ApuClockTimers(Apu *apu)
     else
     {
         apu->pulse1.timer.raw = apu->pulse1.timer_period.raw;
-        apu->pulse1.duty_step = (apu->pulse1.duty_step + 1) & 7;
+        apu->pulse1.duty_step = (apu->pulse1.duty_step - 1) & 7;
     }
 
     if (apu->pulse1.length_counter == 0 || apu->pulse1.muting)
@@ -661,7 +682,7 @@ static void ApuClockTimers(Apu *apu)
     }
     else
     {
-        apu->pulse1.output = duty_cycle_table[apu->pulse1.reg.duty][apu->pulse1.duty_step];
+        apu->pulse1.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse1.reg.duty][apu->pulse1.duty_step];
     }
 
     if (apu->pulse2.timer.raw > 0)
@@ -669,7 +690,7 @@ static void ApuClockTimers(Apu *apu)
     else
     {
         apu->pulse2.timer.raw = apu->pulse2.timer_period.raw;
-        apu->pulse2.duty_step = (apu->pulse2.duty_step + 1) & 7;
+        apu->pulse2.duty_step = (apu->pulse2.duty_step - 1) & 7;
     }
 
     if (apu->pulse2.length_counter == 0 || apu->pulse2.muting)
@@ -678,7 +699,7 @@ static void ApuClockTimers(Apu *apu)
     }
     else
     {
-        apu->pulse2.output = duty_cycle_table[apu->pulse2.reg.duty][apu->pulse2.duty_step];
+        apu->pulse2.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse2.reg.duty][apu->pulse2.duty_step];
     }
 
     if (apu->noise.timer.raw > 0)
@@ -809,7 +830,7 @@ void APU_Tick(Apu *apu)
     ++apu->cycles;
 }
 
-void APU_Init(Apu *apu)
+void APU_Init(Apu *apu, const bool swap_duty_cycles)
 {
     memset(apu, 0, sizeof(*apu));
     ApuResetFrameCounter(apu);
@@ -817,6 +838,7 @@ void APU_Init(Apu *apu)
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
     apu->alignment = 0;
+    apu->swap_duty_cycles = swap_duty_cycles;
 }
 
 void APU_Reset(Apu *apu)

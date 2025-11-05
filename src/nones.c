@@ -263,7 +263,7 @@ static void NonesReset(Nones *nones)
     SystemReset(nones->system);
 }
 
-void NonesRun(Nones *nones, bool ppu_warmup, const char *path, const char *audio_driver)
+void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const char *path, const char *audio_driver)
 {
     NonesInit(nones, path, audio_driver);
 
@@ -273,7 +273,7 @@ void NonesRun(Nones *nones, bool ppu_warmup, const char *path, const char *audio
     buffers[0] = ArenaPush(nones->arena, buffer_size);
     buffers[1] = ArenaPush(nones->arena, buffer_size);
 
-    SystemInit(nones->system, ppu_warmup, buffers, buffer_size);
+    SystemInit(nones->system, ppu_warmup, swap_duty_cycles, buffers, buffer_size);
     SDL_Event event;
     void *raw_pixels;
     int raw_pitch;

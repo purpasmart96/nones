@@ -24,10 +24,11 @@ static void Help(void)
 {
     Usage();
     printf("Options:\n"
-           "  --help                              Display this information\n"
-           "  --version                           Display version information\n"
-           "  --sdl-audio-driver=\"driver-name\"    Set the preferred audio driver for SDL to use\n"
-           "  --ppu-warmup                        Enable the ppu warm up delay found on the NES-001(Will break some famicom games)\n");
+           "  --help                             Display this information\n"
+           "  --version                          Display version information\n"
+           "  --sdl-audio-driver=\"driver-name\"   Set the preferred audio driver for SDL to use\n"
+           "  --ppu-warmup                       Enable the ppu warm up delay found on the NES-001(Will break some famicom games)"
+           "  --apu-swap-duty-cycles             Enable the use of swapped duty cycles for the square/pulse channels(Needed for older famiclone games)\n");
 }
 
 int main(int argc, char **argv)
@@ -40,6 +41,7 @@ int main(int argc, char **argv)
     }
 
     bool ppu_warmup = false;
+    bool swap_duty_cycles = false;
     bool override_audio_driver = false;
     char audio_driver[128] = {"\0"};
 
@@ -63,6 +65,9 @@ int main(int argc, char **argv)
         if (!strcmp((argv[i]), "--ppu-warmup"))
             ppu_warmup = true;
 
+        if (!strcmp((argv[i]), "--apu-swap-duty-cycles"))
+            swap_duty_cycles = true;
+
         if (strstr((argv[i]), "--sdl-audio-driver="))
         {
             char *delim_pos = strchr(argv[i], '=');
@@ -76,6 +81,6 @@ int main(int argc, char **argv)
     }
 
     Nones nones;
-    NonesRun(&nones, ppu_warmup, argv[1], override_audio_driver ? audio_driver : NULL);
+    NonesRun(&nones, ppu_warmup, swap_duty_cycles, argv[1], override_audio_driver ? audio_driver : NULL);
     return EXIT_SUCCESS;
 }

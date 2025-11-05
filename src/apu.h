@@ -248,6 +248,7 @@ typedef struct
     int alignment;
     int current_sample;
     bool clear_frame_irq;
+    bool swap_duty_cycles;
 } Apu;
 
 typedef enum 
@@ -297,7 +298,7 @@ uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
 void ApuDmcDmaUpdate(Apu *apu);
-void APU_Init(Apu *apu);
+void APU_Init(Apu *apu, const bool swap_duty_cycles);
 void APU_Tick(Apu *apu);
 void APU_Reset(Apu *apu);
 
