@@ -22,9 +22,28 @@ typedef enum
 
 typedef enum
 {
-    MEM_MAP_NORMAL,
-    MEM_MAP_NINJA
-} MemMapType;
+    MEM_PERM_READ,
+    MEM_PERM_WRITE,
+    MEM_PERM_READ_WRITE,
+} MemPermissions;
+
+typedef enum
+{
+    MEM_PRG_READ,
+    MEM_REG_READ,
+    MEM_SWRAM_READ, 
+    MEM_REG_WRITE,
+    MEM_SWRAM_WRITE
+} MemOperation;
+
+typedef struct
+{
+    uint32_t start_addr;
+    uint32_t end_addr;
+    MemPermissions perms;
+    MemOperation op;
+} MemMap;
+
 
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr);
 uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr);

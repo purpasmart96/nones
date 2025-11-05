@@ -23,6 +23,8 @@ typedef enum
 
 typedef struct System
 {
+    MemMap mem_map_r[5];
+    MemMap mem_map_w[5];
     Cpu *cpu;
     Apu *apu;
     Ppu *ppu;
@@ -31,6 +33,8 @@ typedef struct System
     JoyPad *joy_pad1;
     JoyPad *joy_pad2;
     uint8_t *sys_ram;
+    int mem_maps_r;
+    int mem_maps_w;
     int oam_dma_bytes_remaining;
 
     uint16_t cpu_addr;
@@ -50,7 +54,9 @@ typedef struct System
 System *SystemCreate(Arena *arena);
 void SystemInit(System *system, bool ppu_warmup, bool swap_duty_cycles, uint32_t **buffers, const uint32_t buffer_size);
 void SystemRun(System *system, SystemState state, bool debug_info);
-void SystemSync(uint64_t cycles);
+void SystemAddMemMap(const uint16_t start_addr, const uint16_t end_addr, MemOperation op, MemPermissions perms);
+void SystemAddMemMapRead(const uint16_t start_addr, const uint16_t end_addr, MemOperation op);
+void SystemAddMemMapWrite(const uint16_t start_addr, const uint16_t end_addr, MemOperation op);
 void SystemTick(void);
 void SystemPrePollAllIrqs(void);
 bool SystemPollAllIrqs(void);

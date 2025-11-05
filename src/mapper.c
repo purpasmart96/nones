@@ -9,6 +9,7 @@
 #include "ppu.h"
 #include "cpu.h"
 #include "mapper.h"
+#include "system.h"
 
 #include "utils.h"
 
@@ -415,7 +416,7 @@ static void Mmc3RegWriteEven(const uint16_t addr, const uint8_t data)
         case 1:
             mmc3.name_table_arrgmnt = data & 1;
             PpuSetMirroring(mmc3.name_table_arrgmnt ^ 1, 0);
-            //printf("Set MMC3 nametable mirroring mode: %d\n", !cart->mmc3.name_table_setup);
+            //printf("Set MMC3 nametable mirroring mode: %d\n", !mmc3.name_table_arrgmnt);
             break;
         // IRQ latch ($C000-$DFFE, even)
         case 2:
@@ -565,7 +566,9 @@ void MapperInit(Cart *cart)
             cart->PrgReadFn = NromReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             cart->ChrWriteFn = ChrWriteGeneric;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
             break;
         case MAPPER_MMC1:
             mmc1.control.prg_rom_bank_mode = 3;
@@ -573,7 +576,10 @@ void MapperInit(Cart *cart)
             cart->ChrReadFn = Mmc1ReadChrRom;
             cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = Mmc1RegWrite;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
         case MAPPER_UXROM:
@@ -581,7 +587,10 @@ void MapperInit(Cart *cart)
             cart->ChrReadFn = NromReadChrRom;
             cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = UxRomRegWrite;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
         case MAPPER_CNROM:
@@ -589,7 +598,10 @@ void MapperInit(Cart *cart)
             cart->ChrReadFn = CnromReadChrRom;
             cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = CnRomRegWrite;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             break;
         case MAPPER_MMC3:
         {
@@ -597,7 +609,10 @@ void MapperInit(Cart *cart)
             cart->ChrReadFn = Mmc3ReadChr;
             cart->ChrWriteFn = Mmc3WriteChr;
             cart->RegWriteFn = Mmc3RegWrite;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_8KIB);
             break;
         }
@@ -606,7 +621,8 @@ void MapperInit(Cart *cart)
             cart->ChrReadFn = NromReadChrRom;
             cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = AxRomRegWrite;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
         case MAPPER_COLORDREAMS:
@@ -614,7 +630,8 @@ void MapperInit(Cart *cart)
             cart->ChrReadFn = ColorDreamsReadChrRom;
             cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = ColorDreamsRegWrite;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
         case MAPPER_BNROM_NINJA:
@@ -625,14 +642,18 @@ void MapperInit(Cart *cart)
                 cart->ChrReadFn = NinjaReadChrRom;
                 cart->ChrWriteFn = ChrWriteGeneric;
                 cart->RegWriteFn = NinjaRegWrite;
-                cart->mem_map = MEM_MAP_NINJA;
+                SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+                SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+                SystemAddMemMapWrite(0x7FFD, 0x7FFF, MEM_REG_WRITE);
+                SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
                 break;
             }
             cart->PrgReadFn = BnRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;
             cart->ChrWriteFn = ChrWriteGeneric;
             cart->RegWriteFn = BnRomRegWrite;
-            cart->mem_map = MEM_MAP_NORMAL;
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             break;
         default:
             printf("Bad Mapper type!: %d\n", cart->mapper_num);

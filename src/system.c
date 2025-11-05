@@ -68,12 +68,6 @@ static uint8_t SWramRead(System *system, const uint16_t addr)
     return system->cart->ram[addr & 0x1FFF];
 }
 
-static void NinjaWrite(System *system, const uint16_t addr, const uint8_t data)
-{
-    SWramWrite(system, addr, data);
-    MapperWrite(system->cart, addr, data);
-}
-
 static bool ApuRegsActivated(System *system)
 {
     return system->cpu_addr >= 0x4000 && system->cpu_addr < 0x4020;
@@ -182,13 +176,74 @@ void SystemSignalDmcDma(void)
     system_ptr->dmc_dma_triggered = true;
 }
 
-typedef void (*MemMap6k)(System *system, const uint16_t addr, const uint8_t data);
-// TODO: This method of handling mem maps should be redone
-static const MemMap6k mem_map_6k[] =
+static uint8_t SystemMemMappedRead(System *system, MemOperation op, const uint16_t addr)
 {
-    [0] = SWramWrite,
-    [1] = NinjaWrite,
-};
+    switch (op)
+    {
+        case MEM_PRG_READ:
+            return MapperReadPrgRom(system->cart, addr);
+        case MEM_SWRAM_READ:
+            return SWramRead(system, addr);
+        default:
+            return 0;
+    }
+}
+
+static void SystemMemMappedWrite(System *system, MemOperation op, const uint16_t addr, uint8_t data)
+{
+    switch (op)
+    {
+        case MEM_SWRAM_WRITE:
+            SWramWrite(system, addr, data);
+            break;
+        case MEM_REG_WRITE:
+            MapperWrite(system->cart, addr, data);
+            break;
+        default:
+            break;
+    }
+}
+
+
+void SystemAddMemMap(const uint16_t start_addr, const uint16_t end_addr, MemOperation op, MemPermissions perms)
+{
+    System *system = system_ptr;
+    MemMap *mem_map = NULL;
+
+    if (perms != MEM_PERM_WRITE)
+    {
+        mem_map = &system->mem_map_r[system->mem_maps_r++];
+        mem_map->start_addr = start_addr;
+        mem_map->end_addr = end_addr;
+        mem_map->op = op;
+    }
+
+    if (perms != MEM_PERM_READ)
+    {
+        mem_map = &system->mem_map_w[system->mem_maps_w++];
+        mem_map->start_addr = start_addr;
+        mem_map->end_addr = end_addr;
+        mem_map->op = op;
+    }
+}
+
+void SystemAddMemMapRead(const uint16_t start_addr, const uint16_t end_addr, MemOperation op)
+{
+    System *system = system_ptr;
+    MemMap *mem_map = &system->mem_map_r[system->mem_maps_r++];
+    mem_map->start_addr = start_addr;
+    mem_map->end_addr = end_addr;
+    mem_map->op = op;
+}
+
+void SystemAddMemMapWrite(const uint16_t start_addr, const uint16_t end_addr, MemOperation op)
+{
+    System *system = system_ptr;
+    MemMap *mem_map = &system->mem_map_w[system->mem_maps_w++];
+    mem_map->start_addr = start_addr;
+    mem_map->end_addr = end_addr;
+    mem_map->op = op;
+}
 
 uint8_t SystemRead(const uint16_t addr)
 {
@@ -254,17 +309,20 @@ uint8_t BusRead(const uint16_t addr)
         case 0x1:
             system_ptr->bus_data = ReadPPURegister(system_ptr->ppu, addr);
             break;
-
-        case 0x3:  // $6000 - $7FFF
-            system_ptr->bus_data = SWramRead(system_ptr, addr);
+        default:
+        {
+            for (int i = 0; i < system_ptr->mem_maps_r; i++)
+            {
+                MemMap *mem_map = &system_ptr->mem_map_r[i];
+            
+                if (addr >= mem_map->start_addr && addr <= mem_map->end_addr)
+                {
+                    system_ptr->bus_data = SystemMemMappedRead(system_ptr, mem_map->op, addr);
+                    break;
+                }
+            }
             break;
-    
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-            system_ptr->bus_data = MapperReadPrgRom(system_ptr->cart, addr);
-        break;
+        }
     }
 
     // Finally read the data from the bus
@@ -315,24 +373,18 @@ void BusWrite(const uint16_t addr, const uint8_t data)
             {
                 WriteAPURegister(system_ptr->apu, addr, data);
             }
-            else
-            {
-                DEBUG_LOG("Trying to write %X at 0x%04X\n", data, addr);
-            }
             break;
         }
-        // SRAM / WRAM / Mapper
-        // $6000 - $7FFF
-        case 0x3:
-            mem_map_6k[system_ptr->cart->mem_map](system_ptr, addr, data);
-            break;
+    }
 
-        case 0x4:  // $8000 - $9FFF
-        case 0x5:  // $A000 - $BFFF
-        case 0x6:  // $C000 - $DFFF
-        case 0x7:  // $E000 - $FFFF
-            MapperWrite(system_ptr->cart, addr, data);
-            break;
+    for (int i = 0; i < system_ptr->mem_maps_w; i++)
+    {
+        MemMap *mem_map = &system_ptr->mem_map_w[i];
+
+        if (addr >= mem_map->start_addr && addr <= mem_map->end_addr)
+        {
+            SystemMemMappedWrite(system_ptr, mem_map->op, addr, data);
+        }
     }
 
     system_ptr->bus_data = data;
