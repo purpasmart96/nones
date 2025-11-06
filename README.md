@@ -34,6 +34,9 @@ Games that use the following mapper chips are supported:
     <tr>
         <td align="center">Ninja + BNROM</td><td align="center">34</td>
     </tr>
+    <tr>
+        <td align="center">Nanjing</td><td align="center">163</td>
+    </tr>
 </table>
 
 Supports all of the original NES audio channels, which includes square, triangle, noise, and dmc audio channels.
@@ -88,6 +91,10 @@ Set the preferred audio driver for SDL to use.
 * `--ppu-warmup`
 
 Enable the ppu warm up delay found on the NES-001. (Will break some famicom games)
+
+* `--apu-swap-duty-cycles`
+
+Enable the use of swapped duty cycles for the square/pulse channels (Needed for older famiclone games)
 
 ### Hotkeys:
 
