@@ -240,6 +240,50 @@ typedef struct
     uint8_t chr_bank1 : 4;
 } Ninja;
 
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t prg_bank_low : 4;
+        uint8_t : 3;
+        uint8_t chr_ram_auto_switch : 1;
+    };
+
+} NanjingPrgLowReg;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t swap_d0d1 : 1;
+        uint8_t : 1;
+        uint8_t prg_15_16: 1;
+    };
+
+} NanjingModeReg;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t flip_latch : 1;
+        uint8_t pad : 1;
+        uint8_t latch: 1;
+    };
+
+} NanjingFeedbackReg;
+
+typedef struct
+{
+    NanjingPrgLowReg prg_low_reg;
+    uint8_t prg_high_reg : 2;
+    NanjingFeedbackReg feedback;
+    NanjingModeReg mode;
+} Nanjing;
+
 typedef struct
 {
     // Using a full byte to represent the prg bank rather than two bits
@@ -252,7 +296,6 @@ typedef struct Cart {
     // WRAM or SRAM
     uint8_t *ram;
     int mapper_num;
-    int mem_map;
     int mirroring;
     const char *name;
     bool battery;
@@ -260,6 +303,7 @@ typedef struct Cart {
     uint8_t (*ChrReadFn)(struct Cart *cart, const uint16_t addr);
     void (*ChrWriteFn)(struct Cart *cart, const uint16_t addr, const uint8_t data);
     void (*RegWriteFn)(const uint16_t addr, const uint8_t data);
+    uint8_t (*RegReadFn)(const uint16_t addr);
 } Cart;
 
 #define CART_RAM_SIZE 0x2000

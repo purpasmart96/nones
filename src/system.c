@@ -182,6 +182,8 @@ static uint8_t SystemMemMappedRead(System *system, MemOperation op, const uint16
     {
         case MEM_PRG_READ:
             return MapperReadPrgRom(system->cart, addr);
+        case MEM_REG_READ:
+            return MapperReadReg(system->cart, addr);
         case MEM_SWRAM_READ:
             return SWramRead(system, addr);
         default:
@@ -197,13 +199,12 @@ static void SystemMemMappedWrite(System *system, MemOperation op, const uint16_t
             SWramWrite(system, addr, data);
             break;
         case MEM_REG_WRITE:
-            MapperWrite(system->cart, addr, data);
+            MapperWriteReg(system->cart, addr, data);
             break;
         default:
             break;
     }
 }
-
 
 void SystemAddMemMap(const uint16_t start_addr, const uint16_t end_addr, MemOperation op, MemPermissions perms)
 {
@@ -410,6 +411,11 @@ Cpu *SystemGetCpu(void)
     return system_ptr->cpu;
 }
 
+uint8_t SystemGetPpuA9(void)
+{
+    return system_ptr->ppu->v.raw_bits.bit9;
+}
+
 // TODO: The Ppu struct should have a ptr to the chr rom / chr ram
 // The PPU only exposes the io regs on the main bus, it has its own bus
 uint8_t PpuBusReadChrRom(const uint16_t addr)
@@ -514,6 +520,7 @@ void SystemUpdateJPButtons(System *system, const bool *buttons)
 
 void SystemReset(System *system)
 {
+    MapperReset(system->cart);
     APU_Reset(system->apu);
     PPU_Reset(system->ppu);
     CPU_Reset(system->cpu);

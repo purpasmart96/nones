@@ -64,6 +64,7 @@ void SystemReset(System *system);
 void SystemShutdown(System *system);
 
 uint8_t SystemReadOpenBus(void);
+uint8_t SystemGetPpuA9(void);
 void SystemSignalDmcDma(void);
 uint8_t SystemRead(const uint16_t addr);
 uint8_t BusRead(const uint16_t addr);
