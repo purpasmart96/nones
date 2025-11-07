@@ -163,6 +163,18 @@ static Color GetSpriteColor(Ppu *ppu, const uint8_t palette_index, const uint8_t
     return color;
 }
 
+static void PpuCopyTtoV(Ppu *ppu)
+{
+    const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
+    // Transfer t to v
+    ppu->v.raw = ppu->t.raw;
+    if (~prev_a12 & ppu->v.raw_bits.bit12)
+        PpuClockMMC3();
+
+    ppu->copy_t_delay = 2;
+    ppu->copy_t = false;
+}
+
 void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
 {
     if (!ppu->w)
@@ -173,13 +185,9 @@ void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
     }
     else
     {
-        const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
         // Set low byte of t
         ppu->t.writing.low = value;
-        // Transfer t to v
-        ppu->v.raw = ppu->t.raw;
-        if (~prev_a12 & ppu->v.raw_bits.bit12)
-            PpuClockMMC3();
+        ppu->copy_t = true;
     }
     ppu->w = !ppu->w;
 }
@@ -511,6 +519,7 @@ void PPU_Init(Ppu *ppu, int mirroring, bool warmup, uint32_t **buffers, const ui
     ppu->buffers[1] = buffers[1];
     ppu->buffer_size = buffer_size;
     ppu->ext_input = 0;
+    ppu->copy_t_delay = 2;
     ppu->warmup = warmup;
     //ppu->status.open_bus = 0x1C;
 }
@@ -915,6 +924,14 @@ void PPU_Tick(Ppu *ppu)
         ppu->delayed_vram_inc = 0;
         if (~prev_a12 & ppu->v.raw_bits.bit12)
             PpuClockMMC3();
+    }
+
+    if (ppu->copy_t)
+    {
+        if (!(ppu->copy_t_delay--))
+        {
+            PpuCopyTtoV(ppu);
+        }
     }
 
     if (ppu->mask.bg_rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)

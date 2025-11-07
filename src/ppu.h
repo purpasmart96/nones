@@ -262,6 +262,7 @@ typedef struct
     ShiftReg attrib_shift_low;
     ShiftReg attrib_shift_high;
 
+    uint16_t copy_t_delay;
     uint16_t delayed_vram_inc;
     uint16_t sprite_addr;
     uint16_t bg_addr;
@@ -277,6 +278,7 @@ typedef struct
     bool rendering;
     bool clear_vblank;
     bool frame_finished;
+    bool copy_t;
 
     // External io regs for cpu
     PpuCtrl ctrl;
