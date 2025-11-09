@@ -340,6 +340,7 @@ static uint8_t PpuReadChr(Ppu *ppu, const uint16_t addr)
         PpuClockMMC3();
     }
     ppu->bus_addr = addr;
+    mmc5.prev_addr = addr;
     return PpuBusReadChrRom(addr);
 }
 
@@ -899,11 +900,11 @@ void PPU_Tick(Ppu *ppu)
                 ppu->oam1_addr = 0;
                 PpuFetchSprite(ppu, (ppu->cycle_counter - 257) >> 3);
             }
-        }
 
-        if (ppu->cycle_counter == 338 || ppu->cycle_counter == 340)
-        {
-            PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+            if (ppu->cycle_counter == 338 || ppu->cycle_counter == 340)
+            {
+                PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+            }
         }
     }
 

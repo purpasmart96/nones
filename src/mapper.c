@@ -371,11 +371,8 @@ static void Mmc3WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
 static inline uint32_t Mmc5ChrReadMode3(Cart *cart, uint16_t addr)
 {
     int reg_index = addr >> 10;
-    Ppu *ppu = SystemGetPpu();
 
-    const bool sprite_fetch = ppu->cycle_counter >= 260 && ppu->cycle_counter <= 320;
-
-    if (mmc5.sprite_mode && mmc5.sub_mode && !sprite_fetch && (ppu->rendering && ppu->scanline < 240))
+    if (mmc5.sprite_mode && mmc5.sub_mode && !mmc5.matches)
     {
         switch (reg_index)
         {
@@ -912,8 +909,7 @@ void Mmc5ClockIrqCounter(Cart *cart, const uint16_t addr)
     if (((addr >> 12) == 2) && mmc5.prev_addr == addr)
     {
         mmc5.prev_addr = addr;
-        // TODO: The example from the wiki uses 2 as the match count
-        if (++mmc5.matches != 3)
+        if (++mmc5.matches != 2)
             return;
         // If the "in-frame" flag (register $5204) was clear,
         // it becomes set, and the internal 8-bit scanline counter is reset to zero;
@@ -927,12 +923,8 @@ void Mmc5ClockIrqCounter(Cart *cart, const uint16_t addr)
         }
         else
         {
-            //printf("MMC5 Scanline Ctr: %d\n", mmc5.scanline);
-            // Old method here:
-            //if (mmc5.target_scanline && SystemGetPpu()->scanline == mmc5.target_scanline)
             if (++mmc5.scanline && mmc5.scanline == mmc5.target_scanline)
             {
-                //printf("MMC5 IRQ Pending! PPU SL: %d MMC5 SL: %d\n", SystemGetPpu()->scanline, mmc5.scanline);
                 mmc5.irq_status.irq_pending = 1;
             }
         }
