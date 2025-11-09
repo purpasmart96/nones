@@ -68,6 +68,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         case MAPPER_MMC1:
         case MAPPER_UXROM:
         case MAPPER_CNROM:
+        case MAPPER_MMC5:
         case MAPPER_MMC3:
         case MAPPER_AXROM:
         case MAPPER_COLORDREAMS:

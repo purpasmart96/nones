@@ -15,6 +15,7 @@
 
 Mmc1 mmc1;
 Mmc3 mmc3;
+Mmc5 mmc5;
 UxRom ux_rom;
 AxRom ax_rom;
 CnRom cn_rom;
@@ -172,6 +173,81 @@ static uint8_t Mmc3ReadPrgRom(Cart *cart, const uint16_t addr)
     return 0;
 }
 
+// PRG mode 0
+// CPU $6000-$7FFF: 8 KB switchable PRG RAM bank (Ignored here)
+// CPU $8000-$FFFF: 32 KB switchable PRG ROM bank
+static uint8_t Mmc5PrgReadMode0(Cart *cart, const uint16_t addr)
+{
+    const int reg_index = 0;
+    //printf("Mmc5 mode 0: Reading from addr: 0x%X\n", addr);
+    uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[reg_index].raw >> 1, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
+    return cart->prg_rom.data[final_addr];
+}
+
+// PRG mode 2
+// CPU $6000-$7FFF: 8 KB switchable PRG RAM bank (Ignored here)
+// CPU $8000-$BFFF: 16 KB switchable PRG ROM/RAM bank
+// CPU $C000-$DFFF: 8 KB switchable PRG ROM/RAM bank
+// CPU $E000-$FFFF: 8 KB switchable PRG ROM bank
+static uint8_t Mmc5PrgReadMode2(Cart *cart, const uint16_t addr)
+{
+    switch ((addr >> 13) & 0x3)
+    {
+        case 0:
+        case 1:
+        {
+            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[2].raw >> 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            //printf("Mmc5 mode 2: 0, 1, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+        case 2:
+        {
+            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[3].raw, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
+            //printf("Mmc5 mode 2: 2, 3, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+        case 3:
+        {
+            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[4].raw, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
+            //printf("Mmc5 mode 2: 2, 3, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+    }
+
+    return 0;
+}
+
+// PRG mode 3
+// CPU $6000-$7FFF: 8 KB switchable PRG RAM bank (Ignored here for now)
+// CPU $8000-$9FFF: 8 KB switchable PRG ROM/RAM bank
+// CPU $A000-$BFFF: 8 KB switchable PRG ROM/RAM bank
+// CPU $C000-$DFFF: 8 KB switchable PRG ROM/RAM bank
+// CPU $E000-$FFFF: 8 KB switchable PRG ROM bank
+static uint8_t Mmc5PrgReadMode3(Cart *cart, const uint16_t addr)
+{
+    const int reg_index = 1 + ((addr >> 13) & 3);
+    //printf("Mmc5 mode 3: Reading from addr: 0x%X\n", addr);
+    //printf("Prg reg index: %d\n", reg_index);
+    uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[reg_index].raw, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
+    return cart->prg_rom.data[final_addr];
+}
+
+static uint8_t Mmc5ReadPrgRom(Cart *cart, const uint16_t addr)
+{
+    switch (mmc5.prg_mode)
+    {
+        case 0:
+            return Mmc5PrgReadMode0(cart, addr);
+        case 2:
+            return Mmc5PrgReadMode2(cart, addr);
+        case 3:
+            return Mmc5PrgReadMode3(cart, addr);
+    }
+
+    printf("MMC5 PRG MODE NOT IMPLEMNENTD: %d\n", mmc5.prg_mode);
+    return 0;
+}
+
 static uint8_t Mmc1ReadPrgRom(Cart *cart, const uint16_t addr)
 {
     // Should this be in BusRead instead?
@@ -292,6 +368,67 @@ static void Mmc3WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
     cart->chr_rom.data[GetMmc3ChrAddr(cart, addr)] = data;
 }
 
+static inline uint32_t Mmc5ChrReadMode3(Cart *cart, uint16_t addr)
+{
+    int reg_index = addr >> 10;
+    Ppu *ppu = SystemGetPpu();
+
+    const bool sprite_fetch = ppu->cycle_counter >= 260 && ppu->cycle_counter <= 320;
+
+    if (mmc5.sprite_mode && mmc5.sub_mode && !sprite_fetch && (ppu->rendering && ppu->scanline < 240))
+    {
+        switch (reg_index)
+        {
+            case 0:
+            case 4:
+                reg_index = 8;
+                break;
+            case 1:
+            case 5:
+                reg_index = 9;
+                break;
+            case 2:
+            case 6:
+                reg_index = 10;
+                break;
+            case 3:
+            case 7:
+                reg_index = 11;
+                break;
+        }
+    }
+
+    return ((mmc5.chr_select[reg_index] * 0x400) + (addr & 0x3FF)) & cart->chr_rom.mask;
+}
+
+static inline int32_t GetMmc5ChrAddr(Cart *cart, const uint16_t addr)
+{
+    //if (mmc5.ext_ram_mode == 0x01)
+    //{
+    //    //return (((((mmc5.chr_high << 2) | (mmc5.ext_ram[addr & 0x3FF] & 0x1F))) + (addr & 0x1FFF))) & cart->chr_rom.mask;
+    //}
+    switch (mmc5.chr_mode)
+    {
+        case 0:
+            return ((mmc5.chr_select[7] * 0x2000) + (addr & 0x1FFF)) & cart->chr_rom.mask;
+        case 3:
+            return Mmc5ChrReadMode3(cart, addr);
+    }
+
+    printf("Unimpl CHR mode %d\n", mmc5.chr_mode);
+    return 0;
+}
+
+static uint8_t Mmc5ReadChr(Cart *cart, const uint16_t addr)
+{
+    return cart->chr_rom.data[GetMmc5ChrAddr(cart, addr)];
+}
+
+static void Mmc5WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    cart->chr_rom.data[GetMmc5ChrAddr(cart, addr)] = data;
+}
+
 static uint8_t CnromReadChrRom(Cart *cart, const uint16_t addr)
 {
     return cart->chr_rom.data[((cn_rom.chr_bank * 0x2000) + (addr & 0x1FFF)) & cart->chr_rom.mask];
@@ -309,7 +446,7 @@ static uint8_t NinjaReadChrRom(Cart *cart, const uint16_t addr)
     return cart->chr_rom.data[((bank * 0x1000) + (addr & 0xFFF)) & cart->chr_rom.mask];
 }
 
-uint16_t GetNanjingChrAddr(Cart *cart, uint16_t addr)
+static uint16_t GetNanjingChrAddr(Cart *cart, uint16_t addr)
 {
     uint16_t final_addr = addr;
     if (nanjing.prg_low_reg.chr_ram_auto_switch && addr < 0x1000)
@@ -571,6 +708,148 @@ static void NanjingRegWrite(const uint16_t addr, const uint8_t data)
     }
 }
 
+static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
+{
+    switch (addr)
+    {
+        // 8x16 mode enable ($2000 = PPUCTRL)
+        case 0x2000:
+            mmc5.sprite_mode = (data >> 5) & 1;
+            break;
+        // PPU Data Substitution Enable ($2001 = PPUMASK)
+        case 0x2001:
+            mmc5.sub_mode = (data >> 3) & 3;
+            break;
+        // PRG mode ($5100)
+        case 0x5100:
+            mmc5.prg_mode = data;
+            //printf("Mmc5 PRG Mode addr: 0x%X data: 0x%X\n", addr, data);
+            break;
+        // CHR mode ($5101)
+        case 0x5101:
+            mmc5.chr_mode = data;
+            //printf("Mmc5 CHR Mode addr: 0x%X data: 0x%X\n", addr, data);
+            break;
+        // PRG RAM Protect 1 ($5102)
+        case 0x5102:
+            //printf("Mmc5 Prg Ram Protect addr: 0x%X data: 0x%X\n", addr, data);
+            break;
+        // PRG RAM Protect 2 ($5103)
+        case 0x5103:
+            //printf("Mmc5 Prg Ram Protect2 addr: 0x%X data: 0x%X\n", addr, data);
+            break;
+        // Internal extended RAM mode ($5104)
+        case 0x5104:
+            mmc5.ext_ram_mode = data;
+            if (data & 1)
+            {
+                PpuSetMirroring(2, 1);
+            }
+            //printf("MMC5 Ext-ram mode addr: 0x%X data: 0x%X\n", addr, data);
+            break;
+        // Nametable mapping ($5105)
+        case 0x5105:
+            mmc5.mirroring.raw = data;
+            PpuSetNameTable(0, mmc5.mirroring.page0);
+            PpuSetNameTable(1, mmc5.mirroring.page1);
+            PpuSetNameTable(2, mmc5.mirroring.page2);
+            PpuSetNameTable(3, mmc5.mirroring.page3);
+            break;
+        // Fill-mode tile ($5106)
+        case 0x5106:
+            //printf("MMC5 Fill mode Tile addr: 0x%X data: 0x%X\n", addr, data);
+            break;
+        // Fill-mode color ($5107)
+        case 0x5107:
+            break;
+        case 0x5113:
+            mmc5.prg_bank[0].raw = data;
+            break;
+        case 0x5114:
+            mmc5.prg_bank[1].raw = data;
+            break;
+        case 0x5115:
+            mmc5.prg_bank[2].raw = data;
+            break;
+        case 0x5116:
+            mmc5.prg_bank[3].raw = data;
+            break;
+        case 0x5117:
+            mmc5.prg_bank[4].raw = data;
+            break;
+        case 0x5120:
+        case 0x5121:
+        case 0x5122:
+        case 0x5123:
+        case 0x5124:
+        case 0x5125:
+        case 0x5126:
+        case 0x5127:
+        case 0x5128:
+        case 0x5129:
+        case 0x512A:
+        case 0x512B:
+            //printf("MMC5 Set chr bank: %d data %d\n", addr - 0x5120, data);
+            mmc5.chr_select[addr & 0xF] = (mmc5.chr_high << 2) | data;
+            break;
+        // Upper CHR Bank bits ($5130)
+        case 0x5130:
+            //printf("MMC5 Set upper chr bank bits data: %X\n", data);
+            mmc5.chr_high = data;
+            break;
+        // Vertical Split Mode ($5200)
+        case 0x5200:
+            //printf("MMC5 Vertical Split Mode: %X\n", data);
+            break;
+        // IRQ Scanline Compare Value ($5203)
+        case 0x5203:
+            mmc5.target_scanline = data;
+            //printf("MMC5 Set target scanline: %d\n", mmc5.target_scanline);
+            break;
+        // Scanline IRQ Status ($5204, write)
+        case 0x5204:
+            mmc5.irq_enable = data >> 7;
+            //printf("MMC5 Irq enable: %d\n", mmc5.irq_enable);
+            break;
+        case 0x5300:
+            break;
+        default:
+            if (addr >= 0x5C00)
+            {
+                mmc5.ext_ram[addr & 0x3FF] = data;
+            }
+            //printf("MMC5 UNK addr: 0x%X\n", addr);
+            break;
+    }
+}
+
+static uint8_t Mmc5RegRead(const uint16_t addr)
+{
+    switch (addr)
+    {
+        case 0x5204:
+        {
+            Mmc5IrqStatusReg status = mmc5.irq_status;
+            mmc5.irq_status.irq_pending = false;
+            return status.raw;
+        }
+        case 0xFFFA:
+        case 0xFFFB:
+        {
+            mmc5.irq_status.in_frame = 0;
+            mmc5.prev_addr = 0;
+            return 0;
+        }
+        default:
+            if (addr >= 0x5C00)
+            {
+                return mmc5.ext_ram[addr & 0x3FF];
+            }
+            //printf("MMC5 Read UNK addr: 0x%X\n", addr);
+            return 0;
+    }
+}
+
 static uint8_t NanjingRegRead(const uint16_t addr)
 {
     UNUSED(addr);
@@ -626,15 +905,57 @@ void Mmc3ClockIrqCounter(Cart *cart)
     }
 }
 
+void Mmc5ClockIrqCounter(Cart *cart, const uint16_t addr)
+{
+    UNUSED(cart);
+
+    if (((addr >> 12) == 2) && mmc5.prev_addr == addr)
+    {
+        mmc5.prev_addr = addr;
+        // TODO: The example from the wiki uses 2 as the match count
+        if (++mmc5.matches != 3)
+            return;
+        // If the "in-frame" flag (register $5204) was clear,
+        // it becomes set, and the internal 8-bit scanline counter is reset to zero;
+        // but if it was already set, the scanline counter is incremented, then compared against the value written to $5203.
+        // If they match, the "irq pending" flag is set. 
+        if (!mmc5.irq_status.in_frame)
+        {
+            //printf("MMC5 In frame: %d\n", mmc5.scanline);
+            mmc5.irq_status.in_frame = 1;
+            mmc5.scanline = 0;
+        }
+        else
+        {
+            //printf("MMC5 Scanline Ctr: %d\n", mmc5.scanline);
+            // Old method here:
+            //if (mmc5.target_scanline && SystemGetPpu()->scanline == mmc5.target_scanline)
+            if (++mmc5.scanline && mmc5.scanline == mmc5.target_scanline)
+            {
+                //printf("MMC5 IRQ Pending! PPU SL: %d MMC5 SL: %d\n", SystemGetPpu()->scanline, mmc5.scanline);
+                mmc5.irq_status.irq_pending = 1;
+            }
+        }
+    }
+    else
+    {
+        mmc5.prev_addr = addr;
+        mmc5.matches = 0;
+    }
+}
+
 bool PollMapperIrq(void)
 {
-    return mmc3.irq_pending;
+    return mmc3.irq_pending | (mmc5.irq_status.irq_pending & mmc5.irq_enable);
 }
 
 void MapperReset(Cart *cart)
 {
     switch (cart->mapper_num)
     {
+        case MAPPER_MMC5:
+            mmc5.irq_enable = 0;
+            break;
         case MAPPER_NANJING:
             nanjing.feedback.raw = 0;
             nanjing.mode.raw = 0;
@@ -702,6 +1023,24 @@ void MapperInit(Cart *cart)
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_8KIB);
             break;
         }
+        case MAPPER_MMC5:
+            mmc5.prg_mode = 3;
+            mmc5.chr_mode = 3;
+            mmc5.prg_bank[4].raw = 0xFF;
+            cart->PrgReadFn = Mmc5ReadPrgRom;
+            cart->ChrReadFn = Mmc5ReadChr;
+            cart->ChrWriteFn = Mmc5WriteChr;
+            cart->RegWriteFn = Mmc5RegWrite;
+            cart->RegReadFn = Mmc5RegRead;
+            SystemAddMemMapWrite(0x2000, 0x2001, MEM_REG_WRITE);
+            SystemAddMemMapWrite(0x5000, 0x5FFF, MEM_REG_WRITE);
+            SystemAddMemMapRead(0x5000, 0x5FFF, MEM_REG_READ);
+            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+            SystemAddMemMapRead(0xFFFA, 0xFFFB, MEM_REG_READ);
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
+            break;
         case MAPPER_AXROM:
             cart->PrgReadFn = AxRomReadPrgRom;
             cart->ChrReadFn = NromReadChrRom;

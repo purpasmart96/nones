@@ -75,6 +75,7 @@ int SystemLoadCart(Arena *arena, System *System, const char *path);
 uint8_t PpuBusReadChrRom(const uint16_t addr);
 void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data);
 void PpuClockMMC3(void);
+void PpuClockMMC5(uint16_t addr);
 
 void SystemAddCpuCycles(uint32_t cycles);
 void SystemUpdateJPButtons(System *system, const bool *buttons);

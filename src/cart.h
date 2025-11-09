@@ -182,6 +182,106 @@ typedef struct
     bool irq_pending;
 } Mmc3;
 
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t enable: 2;
+    };
+
+} Mmc5PrgRamReg;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        // 7  bit  0
+        // ---- ----
+        // DDCC BBAA
+        // |||| ||||
+        // |||| ||++- Select nametable at PPU $2000-$23FF
+        uint8_t page0 : 2;
+        // |||| ++--- Select nametable at PPU $2400-$27FF
+        uint8_t page1 : 2;
+        // ||++------ Select nametable at PPU $2800-$2BFF
+        uint8_t page2 : 2;
+        // ++-------- Select nametable at PPU $2C00-$2FFF
+        uint8_t page3 : 2;
+    };
+
+} Mmc5NtReg;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        // 7  bit  0
+        // ---- ----
+        // RAAA AaAA
+        // |||| ||||
+        // |||| |||+- PRG ROM/RAM A13
+        uint8_t a13 : 1;
+        // |||| ||+-- PRG ROM/RAM A14
+        uint8_t a14 : 1;
+        // |||| |+--- PRG ROM/RAM A15, also selecting between PRG RAM /CE 0 and 1
+        uint8_t a15 : 1;
+        // |||| +---- PRG ROM/RAM A16
+        uint8_t a16 : 1;
+        // |||+------ PRG ROM A17
+        uint8_t a17 : 1;
+        // ||+------- PRG ROM A18
+        uint8_t a18 : 1;
+        // |+-------- PRG ROM A19
+        uint8_t a19 : 1;
+        // +--------- RAM/ROM toggle (0: RAM; 1: ROM) (registers $5114-$5116 only)
+        uint8_t rom : 1;
+    };
+
+} Mmc5PrgBankReg;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t : 6;
+        uint8_t in_frame : 1;
+        uint8_t irq_pending : 1;
+    };
+
+} Mmc5IrqStatusReg;
+
+typedef struct
+{
+    uint8_t ext_ram[0x400];
+    uint8_t chr_select[12];
+    Mmc5PrgBankReg prg_bank[5];
+    Mmc5PrgRamReg prg_ram[3];
+    uint16_t prev_addr;
+    Mmc5NtReg mirroring;
+    Mmc5IrqStatusReg irq_status;
+    uint8_t target_scanline;
+    uint8_t scanline;
+    uint8_t matches;
+    bool ppu_reading;
+    uint8_t ext_ram_mode : 2;
+    // 1,2,3: Substitutions enabled; 0: substitutions disabled
+    uint8_t sub_mode : 2;
+    // PRG bank mode:
+    // 0 - One 32KB bank;
+    // 1 - Two 16KB bankScanline IRQ Status;
+    // 2 - One 16KB bank ($8000-$BFFF) and two 8KB banks ($C000-$DFFF and $E000-$FFFF);
+    // 3 - Four 8KB banks;
+    uint8_t prg_mode : 2;
+    uint8_t chr_mode : 2;
+    uint8_t chr_high : 2;
+    uint8_t sprite_mode : 1;
+    uint8_t irq_enable : 1; 
+} Mmc5;
+
 typedef struct
 {
     uint8_t bank;

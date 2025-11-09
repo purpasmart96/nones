@@ -199,6 +199,7 @@ static void PpuNametableWrite(Ppu *ppu, uint16_t addr, uint8_t data)
 
 static uint8_t PpuNametableRead(Ppu *ppu, uint16_t addr)
 {
+    PpuClockMMC5(addr);
     return nametables[ppu->v.scrolling.name_table_sel][addr & 0x3FF];
 }
 
@@ -477,6 +478,23 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
     ppu->io_bus = data;
 }
 
+void PpuSetNameTable(int nt, int mode)
+{
+    switch (mode)
+    {
+        case 0:
+        case 1:
+            nametables[nt] = &vram[mode * 0x400];
+            break;
+        case 2:
+            nametables[nt] = &mmc5.ext_ram[0];
+            break;
+        default:
+            DEBUG_LOG("Unsupported NT mode! %d\n", mode);
+            break;
+    }
+}
+
 // Set the mirroring mode for the nametables
 // Note that mirroring is the opposite of arrangement
 void PpuSetMirroring(NameTableMirror mode, int page)
@@ -502,7 +520,12 @@ void PpuSetMirroring(NameTableMirror mode, int page)
             nametables[2] = &vram[0x400 * page];
             nametables[3] = &vram[0x400 * page];
             break;
-
+        case NAMETABLE_FOUR_SCREEN:
+            nametables[0] = &vram[0x000];  // NT0 (0x2000)
+            nametables[1] = &vram[0x400];  // NT1 (0x2400)
+            nametables[2] = &mmc5.ext_ram[0x000];  // NT0 (0x2800)
+            nametables[3] = &mmc5.ext_ram[0x400];  // NT1 (0x2C00)
+            break;
         default:
             printf("Unimplemented Nametable mirroring mode %d detected!\n", mode);
             break;
@@ -793,8 +816,14 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
 
     switch (effective_cycle & 7)
     {
+        case 1:
+        {
+            PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+            break;
+        }
         case 3:
         {
+            PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
             ppu->fifo[sprite_num].attribs = curr_sprite->attribs;
             ppu->fifo[sprite_num].x = curr_sprite->x;
             break;
@@ -870,6 +899,11 @@ void PPU_Tick(Ppu *ppu)
                 ppu->oam1_addr = 0;
                 PpuFetchSprite(ppu, (ppu->cycle_counter - 257) >> 3);
             }
+        }
+
+        if (ppu->cycle_counter == 338 || ppu->cycle_counter == 340)
+        {
+            PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
         }
     }
 

@@ -206,28 +206,6 @@ static void SystemMemMappedWrite(System *system, MemOperation op, const uint16_t
     }
 }
 
-void SystemAddMemMap(const uint16_t start_addr, const uint16_t end_addr, MemOperation op, MemPermissions perms)
-{
-    System *system = system_ptr;
-    MemMap *mem_map = NULL;
-
-    if (perms != MEM_PERM_WRITE)
-    {
-        mem_map = &system->mem_map_r[system->mem_maps_r++];
-        mem_map->start_addr = start_addr;
-        mem_map->end_addr = end_addr;
-        mem_map->op = op;
-    }
-
-    if (perms != MEM_PERM_READ)
-    {
-        mem_map = &system->mem_map_w[system->mem_maps_w++];
-        mem_map->start_addr = start_addr;
-        mem_map->end_addr = end_addr;
-        mem_map->op = op;
-    }
-}
-
 void SystemAddMemMapRead(const uint16_t start_addr, const uint16_t end_addr, MemOperation op)
 {
     System *system = system_ptr;
@@ -319,7 +297,6 @@ uint8_t BusRead(const uint16_t addr)
                 if (addr >= mem_map->start_addr && addr <= mem_map->end_addr)
                 {
                     system_ptr->bus_data = SystemMemMappedRead(system_ptr, mem_map->op, addr);
-                    break;
                 }
             }
             break;
@@ -438,6 +415,14 @@ void PpuClockMMC3(void)
         return;
 
     Mmc3ClockIrqCounter(system_ptr->cart);
+}
+
+void PpuClockMMC5(const uint16_t addr)
+{
+    if (system_ptr->cart->mapper_num != MAPPER_MMC5)
+        return;
+
+    Mmc5ClockIrqCounter(system_ptr->cart, addr);
 }
 
 void SystemRun(System *system, SystemState state, bool debug_info)

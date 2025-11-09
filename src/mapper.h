@@ -15,6 +15,7 @@ typedef enum
     MAPPER_UXROM,
     MAPPER_CNROM,
     MAPPER_MMC3,
+    MAPPER_MMC5,
     MAPPER_AXROM = 7,
     MAPPER_COLORDREAMS = 11,
     MAPPER_BNROM_NINJA = 34,
@@ -53,12 +54,14 @@ void MapperWriteChrRam(Cart *cart, const uint16_t addr, const uint8_t data);
 void MapperWriteReg(Cart *cart, const uint16_t addr, uint8_t data);
 
 void Mmc3ClockIrqCounter(Cart *cart);
+void Mmc5ClockIrqCounter(Cart *cart, uint16_t addr);
 bool PollMapperIrq(void);
 void MapperReset(Cart *cart);
 void MapperInit(Cart *cart);
 
 extern Mmc1 mmc1;
 extern Mmc3 mmc3;
+extern Mmc5 mmc5;
 extern UxRom ux_rom;
 extern AxRom ax_rom;
 extern CnRom cn_rom;
