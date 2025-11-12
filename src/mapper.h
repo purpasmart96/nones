@@ -19,6 +19,7 @@ typedef enum
     MAPPER_AXROM = 7,
     MAPPER_COLORDREAMS = 11,
     MAPPER_BNROM_NINJA = 34,
+    MAPPER_CAMERICA = 71,
     MAPPER_NANJING = 163
 } MapperType;
 
@@ -69,5 +70,6 @@ extern ColorDreams color_dreams;
 extern Ninja ninja;
 extern BnRom bn_rom;
 extern Nanjing nanjing;
+extern Camerica camerica;
 
 #endif

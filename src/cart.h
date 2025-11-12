@@ -390,6 +390,13 @@ typedef struct
     uint8_t bank;
 } BnRom;
 
+typedef struct
+{
+    uint8_t outer_bank : 2;
+    uint8_t mirroring : 1;
+    uint8_t inner_bank : 4;
+} Camerica;
+
 typedef struct Cart {
     PrgRom prg_rom;
     ChrRom chr_rom;

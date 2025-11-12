@@ -23,6 +23,7 @@ ColorDreams color_dreams;
 Ninja ninja;
 BnRom bn_rom;
 Nanjing nanjing;
+Camerica camerica;
 
 static const uint16_t mmc1_chr_bank_sizes[2] = 
 {
@@ -271,6 +272,24 @@ static uint8_t UxRomReadPrgRom(Cart *cart, const uint16_t addr)
 {
     // UxROM prg reads are just like mmc1's prg mode 3
     return Mmc1PrgReadMode3(cart, ux_rom.bank & 0x7, addr);
+}
+
+static uint8_t CarmericaReadPrgRom(Cart *cart, const uint16_t addr)
+{
+    uint32_t final_addr = 0;
+    switch ((addr >> 13) & 0x3)
+    {
+        case 0:
+        case 1:
+            final_addr = GetPrgBankAddr(camerica.inner_bank, addr,PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            break;
+        case 2:
+        case 3:
+            final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr,PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            break;
+    }
+
+    return cart->prg_rom.data[final_addr];
 }
 
 static uint8_t AxRomReadPrgRom(Cart *cart, const uint16_t addr)
@@ -615,6 +634,23 @@ static void UxRomRegWrite(const uint16_t addr, const uint8_t data)
 
     ux_rom.bank = data;
     DEBUG_LOG("Set prg rom bank index to %d\n", data & 0x7);
+}
+
+static void CamericaRomRegWrite(const uint16_t addr, const uint8_t data)
+{
+    switch ((addr >> 13) & 0x3)
+    {
+        case 0:
+        //case 1:
+        //    camerica.outer_bank = (data >> 3) & 0x7;
+            camerica.mirroring = data >> 4;
+            //PpuSetMirroring(2, camerica.mirroring);
+            break;
+        case 2:
+        case 3:
+            camerica.inner_bank = data & 0xF;
+            break;
+    }
 }
 
 static void AxRomRegWrite(const uint16_t addr, const uint8_t data)
@@ -1071,6 +1107,15 @@ void MapperInit(Cart *cart)
             cart->RegWriteFn = BnRomRegWrite;
             SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
             SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
+            break;
+        case MAPPER_CAMERICA:
+            cart->PrgReadFn = CarmericaReadPrgRom;
+            cart->ChrReadFn = NromReadChrRom;
+            cart->ChrWriteFn = ChrWriteGeneric;
+            cart->RegWriteFn = CamericaRomRegWrite;
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
+            cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
         case MAPPER_NANJING:
             cart->PrgReadFn = NanjingReadPrgRom;
