@@ -743,7 +743,7 @@ static void ApuMixSample(Apu *apu)
     float pulse = 95.88 / ((8128.0 / (square1 + square2)) + 100);
     float tnd_out = 159.79 / ((1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0))) + 100);
 #endif
-    apu->mixed_sample = pulse + tnd_out;
+    apu->mixed_sample = 2 * ((pulse + tnd_out) * 0.5) - 1;
 }
 
 static void ApuGetClock(Apu *apu)
