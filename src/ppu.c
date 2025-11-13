@@ -163,6 +163,25 @@ static Color GetSpriteColor(Ppu *ppu, const uint8_t palette_index, const uint8_t
     return color;
 }
 
+static void PpuUpdateBus(Ppu *ppu, const uint16_t addr)
+{
+    uint8_t prev_a12 = (ppu->bus_addr >> 12) & 1;
+    uint8_t new_a12 = (addr >> 12) & 1;
+    if (~prev_a12 & new_a12)
+    {
+        //printf("New addr: 0x%X Bus Addr: 0x%X PPU A12: %d scanline:%d cycle: %d\n", addr, ppu->bus_addr, new_a12, ppu->scanline, ppu->cycle_counter);
+        PpuClockMMC3();
+    }
+    ppu->bus_addr = addr;
+}
+
+static uint8_t PpuReadChr(Ppu *ppu, const uint16_t addr)
+{
+    PpuUpdateBus(ppu, addr);
+    mmc5.prev_addr = addr;
+    return PpuBusReadChrRom(addr);
+}
+
 static void PpuCopyTtoV(Ppu *ppu)
 {
     const uint8_t prev_a12 = ppu->v.raw_bits.bit12;
@@ -330,25 +349,9 @@ uint8_t PPU_ReadStatus(Ppu *ppu)
     return ret_status.raw;
 }
 
-static uint8_t PpuReadChr(Ppu *ppu, const uint16_t addr)
-{
-    uint8_t prev_a12 = (ppu->bus_addr >> 12) & 1;
-    uint8_t new_a12 = (addr >> 12) & 1;
-    if (~prev_a12 & new_a12)
-    {
-        //printf("PPU A12: %d scanline:%d cycle: %d\n", new_a12, ppu->scanline, ppu->cycle_counter);
-        PpuClockMMC3();
-    }
-    ppu->bus_addr = addr;
-    mmc5.prev_addr = addr;
-    return PpuBusReadChrRom(addr);
-}
-
 uint8_t PPU_ReadData(Ppu *ppu)
 {
-    const uint16_t prev_a12 = ppu->v.raw_bits.bit12;
     uint16_t addr = ppu->v.raw & 0x3FFF;
-
     uint8_t data = 0;
 
     switch (addr >> 12)
@@ -388,12 +391,13 @@ uint8_t PPU_ReadData(Ppu *ppu)
     }
     else
     {
+        const uint16_t prev_a12 = ppu->v.raw_bits.bit12;
         // Auto-increment address
         ppu->v.raw += ppu->ctrl.vram_addr_inc ? 32 : 1;
+        if (~prev_a12 & ppu->v.raw_bits.bit12)
+            PpuClockMMC3();
     }
 
-    if (~prev_a12 & ppu->v.raw_bits.bit12)
-        PpuClockMMC3();
     return data;
 }
 
@@ -564,6 +568,7 @@ static void PpuResetOAM2(Ppu *ppu)
     ppu->oam2_addr_overflow = false;
     ppu->oam2_addr = 0;
     ppu->sprite_timer = 0;
+    ppu->sprite_in_range = false;
 }
 
 static void PpuSpriteRangeCheck(Ppu *ppu)
@@ -728,8 +733,7 @@ static void PpuRender(Ppu *ppu, int scanline)
         {
             PpuFetchShifters(ppu);
             // TODO: should set the ppu bus addr here
-            const uint16_t tile_addr = 0x2000 | (ppu->v.raw & 0x0FFF);
-            ppu->tile_id = PpuNametableRead(ppu, tile_addr);
+            ppu->tile_id = PpuNametableRead(ppu, (0x2000 | (ppu->v.raw & 0x0FFF)));
             break;
         }
         case 2:
@@ -850,10 +854,38 @@ void PpuUpdateRenderingState(Ppu *ppu)
     ppu->rendering = ppu->mask.bg_rendering | ppu->mask.sprites_rendering;
 }
 
+static void PpuCycleUpdate(Ppu *ppu)
+{
+    ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
+
+    if (!ppu->cycle_counter)
+    {
+        // 1 scanline = 341 PPU cycles
+        ppu->scanline = (ppu->scanline + 1) % 262;
+    }
+
+    if (!ppu->cycle_counter && !ppu->scanline)
+    {
+        ppu->frame_finished = true;
+        // Clear io bus at the end of each frame
+        // (Actually random on real hardware and can be up to a 30 frame delay)
+        ppu->io_bus = 0;
+        ++ppu->frames;
+    }
+}
+
 void PPU_Tick(Ppu *ppu)
 {
     if (ppu->scanline < 240 || ppu->scanline == 261)
     {
+        if (ppu->skipped_cycle)
+        {
+            PpuCycleUpdate(ppu);
+            const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
+            PpuUpdateBus(ppu, bank + (ppu->tile_id << 4) + ppu->v.scrolling.fine_y);
+            ppu->skipped_cycle = false;
+        }
+
         if (ppu->cycle_counter && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline);
 
@@ -901,9 +933,13 @@ void PPU_Tick(Ppu *ppu)
                 PpuFetchSprite(ppu, (ppu->cycle_counter - 257) >> 3);
             }
 
-            if (ppu->cycle_counter == 338 || ppu->cycle_counter == 340)
+            if (ppu->cycle_counter == 337 || ppu->cycle_counter == 339)
             {
-                PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+                uint8_t nt_fetch = PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+                if (ppu->cycle_counter == 337)
+                    ppu->tile_id = nt_fetch;
+                if (ppu->cycle_counter == 339 && ppu->frames & 1 && ppu->scanline == 261)
+                    ppu->skipped_cycle = true;
             }
         }
     }
@@ -924,23 +960,6 @@ void PPU_Tick(Ppu *ppu)
         ppu->status.vblank = 0;
         ppu->status.sprite_hit = 0;
         ppu->status.sprite_overflow = 0;
-    }
-
-    ppu->cycle_counter = (ppu->cycle_counter + 1) % 341;
-
-    if (!ppu->cycle_counter)
-    {
-        // 1 scanline = 341 PPU cycles
-        ppu->scanline = (ppu->scanline + 1) % 262;
-    }
-
-    if (!ppu->cycle_counter && !ppu->scanline)
-    {
-        ppu->frame_finished = true;
-        // Clear io bus at the end of each frame
-        // (Actually random on real hardware and can be up to a 30 frame delay)
-        ppu->io_bus = 0;
-        ++ppu->frames;
     }
 
     // Seems like the vblank flag side effect from reading PpuStatus is delayed by one dot/cycle
@@ -969,10 +988,7 @@ void PPU_Tick(Ppu *ppu)
         }
     }
 
-    if (ppu->mask.bg_rendering && ppu->cycle_counter == 339 && ppu->scanline == 261 && ppu->frames & 1)
-    {
-        ++ppu->cycle_counter;
-    }
+    PpuCycleUpdate(ppu);
 }
 
 void PPU_Reset(Ppu *ppu)

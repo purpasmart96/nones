@@ -471,10 +471,10 @@ void SystemTick(void)
     APU_Tick(system_ptr->apu);
 
     PPU_Tick(system_ptr->ppu);
+    PpuUpdateRenderingState(system_ptr->ppu);
     SystemPollNmi(system_ptr);
     PPU_Tick(system_ptr->ppu);
     PPU_Tick(system_ptr->ppu);
-    PpuUpdateRenderingState(system_ptr->ppu);
 }
 
 void SystemAddCpuCycles(uint32_t cycles)

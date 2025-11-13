@@ -274,10 +274,11 @@ typedef struct
     bool sprite0_loaded;
     bool prev_sprite0_loaded;
     bool sprite_in_range;
-    
+
     bool rendering;
     bool clear_vblank;
     bool frame_finished;
+    bool skipped_cycle;
     bool copy_t;
 
     // External io regs for cpu
