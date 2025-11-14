@@ -425,22 +425,31 @@ void PpuClockMMC5(const uint16_t addr)
     Mmc5ClockIrqCounter(system_ptr->cart, addr);
 }
 
-void SystemRun(System *system, SystemState state, bool debug_info)
+void SystemUpdateState(System *system, SystemState state)
 {
-    if (state == PAUSED)
-        return;
-
-    if (state == STEP_FRAME && system->ppu->frame_finished)
+    if (system->state == PAUSED && state == PAUSED)
+        system->state ^= PAUSED;
+    else
     {
-        system->ppu->frame_finished = false;
-        return;
+        system->state = state;
     }
+}
+
+void SystemRun(System *system, bool debug_info)
+{
+    if (system->state == PAUSED)
+        return;
 
     system->ppu->frame_finished = false;
 
     do {
         CPU_Update(system->cpu, debug_info);
-    } while (!system->ppu->frame_finished && state != STEP_INSTR);
+    } while (!system->ppu->frame_finished && system->state != STEP_INSTR);
+
+    if ((system->state == STEP_FRAME && system->ppu->frame_finished) || system->state == STEP_INSTR)
+    {
+        system->state = PAUSED;
+    }
 }
 
 bool SystemPollAllIrqs(void)

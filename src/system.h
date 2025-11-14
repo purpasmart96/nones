@@ -33,6 +33,7 @@ typedef struct System
     JoyPad *joy_pad1;
     JoyPad *joy_pad2;
     uint8_t *sys_ram;
+    SystemState state;
     int mem_maps_r;
     int mem_maps_w;
     int oam_dma_bytes_remaining;
@@ -53,7 +54,8 @@ typedef struct System
 
 System *SystemCreate(Arena *arena);
 void SystemInit(System *system, bool ppu_warmup, bool swap_duty_cycles, uint32_t **buffers, const uint32_t buffer_size);
-void SystemRun(System *system, SystemState state, bool debug_info);
+void SystemRun(System *system, bool debug_info);
+void SystemUpdateState(System *system, SystemState state);
 void SystemAddMemMap(const uint16_t start_addr, const uint16_t end_addr, MemOperation op, MemPermissions perms);
 void SystemAddMemMapRead(const uint16_t start_addr, const uint16_t end_addr, MemOperation op);
 void SystemAddMemMapWrite(const uint16_t start_addr, const uint16_t end_addr, MemOperation op);

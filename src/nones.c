@@ -14,7 +14,6 @@
 
 #define HIGH_RATE_SAMPLES 14890
 #define LOW_RATE_SAMPLES 735
-//#define LOW_RATE_SAMPLES 800
 
 static SDL_AudioStream *stream = NULL;
 
@@ -316,13 +315,13 @@ void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const char *
                             NonesReset(nones);
                             break;
                         case SDLK_F6:
-                            nones->state ^= PAUSED;
+                            SystemUpdateState(nones->system, PAUSED);
                             break;
                         case SDLK_F10:
-                            nones->state = STEP_FRAME;
+                            SystemUpdateState(nones->system, STEP_FRAME);
                             break;
                         case SDLK_F11:
-                            nones->state = STEP_INSTR;
+                            SystemUpdateState(nones->system, STEP_INSTR);
                             break;
                     }
                     break;
@@ -333,10 +332,7 @@ void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const char *
 
         while (accumulator >= FRAME_TIME_NS)
         {
-            SystemRun(nones->system, nones->state, nones->debug_info);
-
-            if (nones->state > PAUSED)
-                nones->state = PAUSED;
+            SystemRun(nones->system, nones->debug_info);
 
             accumulator -= FRAME_TIME_NS;
             ++info.updates;
