@@ -12,32 +12,7 @@
 #include "cart.h"
 #include "nones.h"
 
-#define HIGH_RATE_SAMPLES 14890
-#define LOW_RATE_SAMPLES 735
-
 static SDL_AudioStream *stream = NULL;
-
-static void SampleTo44khz(const float *high_rate_buffer, int16_t *output_44khz_buffer)
-{
-    const double step = (double)(HIGH_RATE_SAMPLES) / LOW_RATE_SAMPLES;
-
-    double pos = 0.0;
-    for (int i = 0; i < LOW_RATE_SAMPLES; i++)
-    {
-        int index = (int)pos;
-        double frac = pos - index;
-
-        // Simple linear interpolation
-        float a = high_rate_buffer[index];
-        float b = (index + 1 < (HIGH_RATE_SAMPLES)) ? high_rate_buffer[index + 1] : a;
-
-        float sample = (float)((1.0 - frac) * a + frac * b);
-        // convert to s16
-        output_44khz_buffer[i] = (int16_t)(sample * 32767);
-
-        pos += step;
-    }
-}
 
 void NonesPutSoundData(Apu *apu)
 {
@@ -45,9 +20,7 @@ void NonesPutSoundData(Apu *apu)
     const int minimum_audio = (4096 * sizeof(int16_t));
     if (SDL_GetAudioStreamQueued(stream) < minimum_audio)
     {
-        SampleTo44khz(apu->buffer, apu->outbuffer);
-
-        SDL_PutAudioStreamData(stream, apu->outbuffer, sizeof(apu->outbuffer));
+        SDL_PutAudioStreamData(stream, apu->buffer, sizeof(apu->buffer));
     }
 }
 

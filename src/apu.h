@@ -158,8 +158,7 @@ typedef union
 
 typedef struct
 {
-    float buffer[14890];
-    int16_t outbuffer[735];
+    int16_t buffer[735];
     uint64_t cycles;
 
     struct {
@@ -241,12 +240,20 @@ typedef struct
         uint8_t output_level : 7;
     } dmc;
 
+    struct
+    {
+        float accum;
+        float accum_delta;
+        float sample;
+        float sample_rate;
+        int samples_per_frame;
+        int current_sample;
+    } mixer;
+
     ApuFrameCounter frame_counter;
     ApuStatus status;
 
-    float mixed_sample;
     int alignment;
-    int current_sample;
     bool clear_frame_irq;
     bool swap_duty_cycles;
 } Apu;
@@ -267,6 +274,9 @@ typedef struct
     // Frame interrupt flag 
     bool frame_interrupt;
 } SequenceStep;
+
+#define APU_CYCLES_PER_FRAME 14890.0f
+#define LOW_PASS_CUTOFF 14000
 
 #define APU_PULSE_1_DUTY 0x4000
 #define APU_PULSE_1_SWEEP 0x4001

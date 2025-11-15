@@ -334,69 +334,34 @@ static void ApuClockSweeps(Apu *apu)
     }
 }
 
+static void ApuClockEnvelope(ApuEnvelope *envelope, const uint8_t volume, const bool counter_halt)
+{
+    if (!envelope->start)
+    {
+        if (envelope->counter > 0)
+            --envelope->counter;
+        else
+        {
+            envelope->counter = volume;
+            if (envelope->decay_counter > 0)
+                --envelope->decay_counter;
+            else if (counter_halt)
+                envelope->decay_counter = 15;
+        }
+    }
+    else
+    {
+        envelope->start = false;
+        envelope->decay_counter = 15;
+        envelope->counter = volume;
+    }
+}
+
 static void ApuClockEnvelopes(Apu *apu)
 {
-    if (!apu->pulse1.envelope.start)
-    {
-        if (apu->pulse1.envelope.counter > 0)
-            --apu->pulse1.envelope.counter;
-        else
-        {
-            apu->pulse1.envelope.counter = apu->pulse1.reg.volume_env;
-            if (apu->pulse1.envelope.decay_counter > 0)
-                --apu->pulse1.envelope.decay_counter;
-            else if (apu->pulse1.reg.counter_halt)
-                apu->pulse1.envelope.decay_counter = 15;
-        }
-    }
-    else
-    {
-        apu->pulse1.envelope.start = false;
-        apu->pulse1.envelope.decay_counter = 15;
-        apu->pulse1.envelope.counter = apu->pulse1.reg.volume_env;
-    }
-
-    //printf("Pulse 1 envelope decay: %d\n", apu->pulse1.envelope.decay_counter);
-    //printf("Pulse 1 envelope counter: %d\n", apu->pulse1.envelope.counter);
-    if (!apu->pulse2.envelope.start)
-    {
-        if (apu->pulse2.envelope.counter > 0)
-            --apu->pulse2.envelope.counter;
-        else
-        {
-            apu->pulse2.envelope.counter = apu->pulse2.reg.volume_env;
-            if (apu->pulse2.envelope.decay_counter > 0)
-                --apu->pulse2.envelope.decay_counter;
-            else if (apu->pulse2.reg.counter_halt)
-                apu->pulse2.envelope.decay_counter = 15;
-        }
-    }
-    else
-    {
-        apu->pulse2.envelope.start = false;
-        apu->pulse2.envelope.decay_counter = 15;
-        apu->pulse2.envelope.counter = apu->pulse2.reg.volume_env;
-    }
-
-    if (!apu->noise.envelope.start)
-    {
-        if (apu->noise.envelope.counter > 0)
-            --apu->noise.envelope.counter;
-        else
-        {
-            apu->noise.envelope.counter = apu->noise.reg.volume_env;
-            if (apu->noise.envelope.decay_counter > 0)
-                --apu->noise.envelope.decay_counter;
-            else if (apu->noise.reg.counter_halt)
-                apu->noise.envelope.decay_counter = 15;
-        }
-    }
-    else
-    {
-        apu->noise.envelope.start = false;
-        apu->noise.envelope.decay_counter = 15;
-        apu->noise.envelope.counter = apu->noise.reg.volume_env;
-    }
+    ApuClockEnvelope(&apu->pulse1.envelope, apu->pulse1.reg.volume_env, apu->pulse1.reg.counter_halt);
+    ApuClockEnvelope(&apu->pulse2.envelope, apu->pulse2.reg.volume_env, apu->pulse2.reg.counter_halt);
+    ApuClockEnvelope(&apu->noise.envelope, apu->noise.reg.volume_env, apu->noise.reg.counter_halt);
 
     //DEBUG_LOG("Pulse 1 envelope counter: %d\n", apu->pulse1.envelope.counter);
     //DEBUG_LOG("Pulse 1 envelope decay counter: %d\n", apu->pulse1.envelope.decay_counter);
@@ -741,9 +706,11 @@ static void ApuMixSample(Apu *apu)
     float tnd_out = 0.00851f * apu->triangle.output + 0.00494f * apu->noise.output + 0.00335f * apu->dmc.output_level;
 #else
     float pulse = 95.88 / ((8128.0 / (square1 + square2)) + 100);
-    float tnd_out = 159.79 / ((1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0))) + 100);
+    float tnd = 1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0));
+    float tnd_out = 159.79 / (tnd + 100);
 #endif
-    apu->mixed_sample = 2 * ((pulse + tnd_out) * 0.5) - 1;
+    //apu->mixer.sample = 2 * ((pulse + tnd_out) * 0.5) - 1;
+    apu->mixer.sample = (int16_t)((pulse + tnd_out) * 32767);
 }
 
 static void ApuGetClock(Apu *apu)
@@ -769,15 +736,20 @@ static void ApuPutClock(Apu *apu)
 {
     ApuClockTimers(apu);
     ApuClockDmc(apu);
-    ApuMixSample(apu);
 
-    if (apu->current_sample == 14890)
+    if (++apu->mixer.accum >= apu->mixer.accum_delta)
     {
-        NonesPutSoundData(apu);
-        apu->current_sample = 0;
-    }
+        apu->mixer.accum -= apu->mixer.accum_delta;
 
-    apu->buffer[apu->current_sample++] = apu->mixed_sample;
+        ApuMixSample(apu);
+        apu->buffer[apu->mixer.current_sample++] = apu->mixer.sample;
+
+        if (apu->mixer.current_sample == apu->mixer.samples_per_frame)
+        {
+            NonesPutSoundData(apu);
+            apu->mixer.current_sample = 0;
+        }
+    }
 }
 
 void APU_Tick(Apu *apu)
@@ -834,6 +806,10 @@ void APU_Init(Apu *apu, const bool swap_duty_cycles)
 {
     memset(apu, 0, sizeof(*apu));
     ApuResetFrameCounter(apu);
+    // Hardcoded to 44.1 Khz for now
+    apu->mixer.sample_rate = 44100;
+    apu->mixer.samples_per_frame = apu->mixer.sample_rate / 60;
+    apu->mixer.accum_delta = APU_CYCLES_PER_FRAME / apu->mixer.samples_per_frame;
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
