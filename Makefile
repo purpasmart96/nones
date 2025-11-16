@@ -47,6 +47,10 @@ release: $(REL_BIN)
 ifeq ($(OS_NAME), windows)
 	cp /ucrt64/bin/SDL3.dll .
 	cp /ucrt64/bin/libsoxr.dll .
+#libsoxr uses libgomp... Yuck. Guess we gotta add the rest the required dll's
+	cp /ucrt64/bin/libgomp-1.dll .
+	cp /ucrt64/bin/libwinpthread-1.dll .
+	cp /ucrt64/bin/libgcc_s_seh-1.dll .
 endif
 	@cp $< $(BIN)
 
@@ -61,6 +65,10 @@ debug: $(DBG_BIN)
 ifeq ($(OS_NAME), windows)
 	cp /ucrt64/bin/SDL3.dll .
 	cp /ucrt64/bin/libsoxr.dll .
+#libsoxr uses libgomp... Yuck. Guess we gotta add the rest the required dll's
+	cp /ucrt64/bin/libgomp-1.dll .
+	cp /ucrt64/bin/libwinpthread-1.dll .
+	cp /ucrt64/bin/libgcc_s_seh-1.dll .
 endif
 	@cp $< $(BIN)
 
@@ -79,6 +87,10 @@ clean:
 	@if [ -f "$(BIN)" ]; then rm $(BIN); fi
 	@if [ -f "$(ARCHIVE)" ]; then rm $(ARCHIVE); fi
 	@if [ -f "SDL3.dll" ]; then rm "SDL3.dll"; fi
+	@if [ -f "libsoxr.dll" ]; then rm "libsoxr.dll"; fi
+	@if [ -f "libgomp-1.dll" ]; then rm "libgomp-1.dll"; fi
+	@if [ -f "libwinpthread-1.dll" ]; then rm "libwinpthread-1.dll"; fi
+	@if [ -f "libgcc_s_seh-1.dll" ]; then rm "libgcc_s_seh-1.dll"; fi
 
 tarball:
 	@if [ -f "$(BIN)" ]; then \
@@ -92,7 +104,7 @@ tarball:
 win_zip:
 	@if [ -f "$(BIN)" ]; then \
 		strip $(BIN).exe; \
-		7z a $(ARCHIVE) $(BIN).exe "SDL3.dll" "LICENSE" "README.md"; \
+		7z a $(ARCHIVE) $(BIN).exe "SDL3.dll" "libsoxr.dll" "libgomp-1.dll" "libwinpthread-1.dll" "libgcc_s_seh-1.dll" "LICENSE" "README.md"; \
 		echo "Created zip $(ARCHIVE)..."; \
 	else \
 		echo "Please run 'make' before creating a zip."; \
