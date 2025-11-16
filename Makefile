@@ -1,6 +1,6 @@
 CC := gcc
 CFLAGS := -std=c11 -Wall -Wextra -pedantic
-LDFLAGS := -lm -lSDL3
+LDFLAGS := -lm -lSDL3 -lsoxr
 REL_FLAGS := -O3 -flto=auto -D DISABLE_DEBUG -D DISABLE_CPU_LOG
 DBG_FLAGS := -ggdb -Og -D DISABLE_CPU_LOG
 # For profiling
@@ -46,6 +46,7 @@ all: release
 release: $(REL_BIN)
 ifeq ($(OS_NAME), windows)
 	cp /ucrt64/bin/SDL3.dll .
+	cp /ucrt64/bin/libsoxr.dll .
 endif
 	@cp $< $(BIN)
 
@@ -59,6 +60,7 @@ $(REL_DIR)/%.o: src/%.c
 debug: $(DBG_BIN)
 ifeq ($(OS_NAME), windows)
 	cp /ucrt64/bin/SDL3.dll .
+	cp /ucrt64/bin/libsoxr.dll .
 endif
 	@cp $< $(BIN)
 

@@ -5,6 +5,7 @@
 #include <stdbool.h>
 #include <time.h>
 
+#include "arena.h"
 #include "cpu.h"
 #include "apu.h"
 #include "ppu.h"

@@ -14,13 +14,13 @@
 
 static SDL_AudioStream *stream = NULL;
 
-void NonesPutSoundData(Apu *apu)
+void NonesPutSoundData(int16_t *buffer, const int buffer_size)
 {
-    // Buffer size of 4096 samples
-    const int minimum_audio = (4096 * sizeof(int16_t));
+    // SDL buffer size is 5x the size of the sample buffer
+    const int minimum_audio = (5 * buffer_size);
     if (SDL_GetAudioStreamQueued(stream) < minimum_audio)
     {
-        SDL_PutAudioStreamData(stream, apu->buffer, sizeof(apu->buffer));
+        SDL_PutAudioStreamData(stream, buffer, buffer_size);
     }
 }
 
@@ -113,7 +113,7 @@ static void NonesHandleInput(Nones *nones)
         NonesSetIntegerScale(nones, 5);
 }
 
-static void NonesInit(Nones *nones, const char *path, const char *audio_driver)
+static void NonesInit(Nones *nones, const char *path, const char *audio_driver, const int sample_rate)
 {
     memset(nones, 0, sizeof(*nones));
     nones->arena = ArenaCreate(1024 * 1024 * 3);
@@ -185,7 +185,7 @@ static void NonesInit(Nones *nones, const char *path, const char *audio_driver)
     SDL_AudioSpec spec;
     spec.channels = 1;
     spec.format = SDL_AUDIO_S16;
-    spec.freq = 44100;
+    spec.freq = sample_rate;
 
     stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, NULL, NULL);
     if (!stream)
@@ -235,9 +235,10 @@ static void NonesReset(Nones *nones)
     SystemReset(nones->system);
 }
 
-void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const char *path, const char *audio_driver)
+void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const int sample_rate,
+              const char *path, const char *audio_driver)
 {
-    NonesInit(nones, path, audio_driver);
+    NonesInit(nones, path, audio_driver, sample_rate);
 
     // Allocate pixel buffers (back and front)
     uint32_t *buffers[2];
@@ -245,7 +246,7 @@ void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const char *
     buffers[0] = ArenaPush(nones->arena, buffer_size);
     buffers[1] = ArenaPush(nones->arena, buffer_size);
 
-    SystemInit(nones->system, ppu_warmup, swap_duty_cycles, buffers, buffer_size);
+    SystemInit(nones->system,nones->arena, ppu_warmup, swap_duty_cycles, sample_rate, buffers, buffer_size);
     SDL_Event event;
     void *raw_pixels;
     int raw_pitch;

@@ -158,7 +158,8 @@ typedef union
 
 typedef struct
 {
-    int16_t buffer[735];
+    float input_buffer[14890];
+    int16_t *output_buffer;
     uint64_t cycles;
 
     struct {
@@ -242,12 +243,13 @@ typedef struct
 
     struct
     {
-        float accum;
-        float accum_delta;
         float sample;
         float sample_rate;
+        float hpf_accum;
         int samples_per_frame;
         int current_sample;
+        int input_index;
+        int output_size;
     } mixer;
 
     ApuFrameCounter frame_counter;
@@ -308,8 +310,9 @@ uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
 void ApuDmcDmaUpdate(Apu *apu);
-void APU_Init(Apu *apu, const bool swap_duty_cycles);
+void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_rate);
 void APU_Tick(Apu *apu);
 void APU_Reset(Apu *apu);
+void APU_Shutdown(Apu *apu);
 
 #endif

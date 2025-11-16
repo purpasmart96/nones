@@ -38,7 +38,7 @@ typedef struct {
     bool quit;
 } Nones;
 
-void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const char *path, const char *audio_driver);
-void NonesPutSoundData(Apu *apu);
+void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const int sample_rate, const char *path, const char *audio_driver);
+void NonesPutSoundData(int16_t *buffer, const int buffer_size);
 
 #endif

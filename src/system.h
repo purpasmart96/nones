@@ -53,7 +53,8 @@ typedef struct System
 #define CPU_RAM_SIZE 0x800
 
 System *SystemCreate(Arena *arena);
-void SystemInit(System *system, bool ppu_warmup, bool swap_duty_cycles, uint32_t **buffers, const uint32_t buffer_size);
+void SystemInit(System *system, Arena *arena, bool ppu_warmup, bool swap_duty_cycles,
+                int sample_rate, uint32_t **buffers, const uint32_t buffer_size);
 void SystemRun(System *system, bool debug_info);
 void SystemUpdateState(System *system, SystemState state);
 void SystemAddMemMap(const uint16_t start_addr, const uint16_t end_addr, MemOperation op, MemPermissions perms);

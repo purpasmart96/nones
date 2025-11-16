@@ -6,6 +6,7 @@
 #include "system.h"
 #include <SDL3/SDL.h>
 #include "nones.h"
+#include "utils.h"
 
 #define VERSION "v0.3.1"
 
@@ -17,7 +18,7 @@ static void About(void)
 static void Usage(void)
 {
     About();
-    printf("Usage: nones \"game.nes\" [options...]\n\n");
+    printf("Usage: nones \"game.nes\" [options...]\n");
 }
 
 static void Help(void)
@@ -27,9 +28,18 @@ static void Help(void)
            "  --help                             Display this information\n"
            "  --version                          Display version information\n"
            "  --sdl-audio-driver=\"driver-name\"   Set the preferred audio driver for SDL to use\n"
-           "  --ppu-warmup                       Enable the ppu warm up delay found on the NES-001(Will break some famicom games)"
-           "  --apu-swap-duty-cycles             Enable the use of swapped duty cycles for the square/pulse channels(Needed for older famiclone games)\n");
+           "  --ppu-warmup                       Enable the ppu warm up delay found on the NES-001(Will break some famicom games)\n"
+           "  --apu-swap-duty-cycles             Enable the use of swapped duty cycles for the square/pulse channels(Needed for older famiclone games)\n"
+           "  --sample-rate=\"sample-rate-mode\"   Set the audio device sample-rate: 0 = 44100Hz (default), 1 = 48000Hz, 2 = 96000Hz, 3 = 192000Hz\n");
 }
+
+static const int sample_rates[] = 
+{
+    44100,
+    48000,
+    96000,
+    192000
+};
 
 int main(int argc, char **argv)
 {
@@ -40,6 +50,7 @@ int main(int argc, char **argv)
         return EXIT_FAILURE;
     }
 
+    int sample_rate_mode = 0;
     bool ppu_warmup = false;
     bool swap_duty_cycles = false;
     bool override_audio_driver = false;
@@ -68,6 +79,25 @@ int main(int argc, char **argv)
         if (!strcmp((argv[i]), "--apu-swap-duty-cycles"))
             swap_duty_cycles = true;
 
+        if (strstr((argv[i]), "--sample-rate="))
+        {
+            char *delim_pos = strchr(argv[i], '=');
+            if (delim_pos != NULL)
+            {
+                char *sample_mode_str = delim_pos + 1;
+                char *end;
+                int new_sample_mode = (int)strtol(sample_mode_str, &end, 10);
+                if (new_sample_mode >= 0 && new_sample_mode <= (int)ARRAY_SIZE(sample_rates))
+                    sample_rate_mode = new_sample_mode;
+                else
+                {
+                    printf("Invalid sample rate mode!\n");
+                    Usage();
+                    return EXIT_FAILURE;
+                }
+            }
+        }
+
         if (strstr((argv[i]), "--sdl-audio-driver="))
         {
             char *delim_pos = strchr(argv[i], '=');
@@ -80,7 +110,10 @@ int main(int argc, char **argv)
         }
     }
 
+    const int sample_rate = sample_rates[sample_rate_mode];
+
     Nones nones;
-    NonesRun(&nones, ppu_warmup, swap_duty_cycles, argv[1], override_audio_driver ? audio_driver : NULL);
+    NonesRun(&nones, ppu_warmup, swap_duty_cycles, sample_rate, 
+            argv[1], override_audio_driver ? audio_driver : NULL);
     return EXIT_SUCCESS;
 }
