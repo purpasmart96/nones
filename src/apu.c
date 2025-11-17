@@ -701,14 +701,15 @@ static void ApuClockTimers(Apu *apu)
     }
 }
 
-float ComputeLowPassAlpha(float freq, float cutoff)
+// This and ApplyFilter are technically for LPF, but to simplify things; it is used for HPF as well
+static float ComputeFilterAlpha(float freq, float cutoff)
 {
     double dt = 1.0 / freq;
-    double RC = 1.0 / (2.0 * 3.14159 * cutoff);
-    return  dt / (RC + dt);
+    double rc = 1.0 / (2.0 * M_PI * cutoff);
+    return dt / (rc + dt);
 }
 
-float ApplyLowPass(float sample, float prev_sample, float alpha)
+static float ApplyFilter(float sample, float prev_sample, float alpha)
 {
     return alpha * sample + (1.0 - alpha) * prev_sample;
 }
@@ -726,12 +727,11 @@ static void ApuMixSample(Apu *apu)
     float tnd = 1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0));
     float tnd_out = 159.79 / (tnd + 100);
 #endif
-    float prev_sample = apu->mixer.sample;
     float raw_sample = pulse + tnd_out;
     // Apply a HPF to fix the the DC offset without affecting the FR too much
-    apu->mixer.hpf_accum = apu->mixer.hpf_accum + (0.0008 * (raw_sample - apu->mixer.hpf_accum));
-    // Apply a low pass just for the buffer used as the input for soxr, could also just make this lowpass cutoff at 14khz
-    apu->mixer.sample = ApplyLowPass(raw_sample - apu->mixer.hpf_accum, prev_sample, apu->mixer.lpf_alpha);
+    apu->mixer.hpf_sample = ApplyFilter(raw_sample, apu->mixer.hpf_sample, apu->mixer.hpf_alpha);
+    // Apply a LPF just for the buffer used as the input for soxr, could also just make this lowpass cutoff at 14khz
+    apu->mixer.sample = ApplyFilter(raw_sample - apu->mixer.hpf_sample, apu->mixer.sample, apu->mixer.lpf_alpha);
 }
 
 static void ApuGetClock(Apu *apu)
@@ -847,7 +847,8 @@ void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_ra
     apu->mixer.input_buffer = ArenaPush(arena, apu->mixer.input_size);
     apu->mixer.output_buffer = ArenaPush(arena, apu->mixer.output_size);
     const float max_cutoff = apu->mixer.sample_rate * soxr_sample_ratio * 0.45;
-    apu->mixer.lpf_alpha = ComputeLowPassAlpha(894886.5, max_cutoff);
+    apu->mixer.lpf_alpha = ComputeFilterAlpha(APU_FREQ, max_cutoff);
+    apu->mixer.hpf_alpha = ComputeFilterAlpha(APU_FREQ, 37);
 
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;

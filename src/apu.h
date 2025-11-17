@@ -166,8 +166,9 @@ typedef struct
         float sample_rate;
         float accum;
         float accum_delta;
-        float hpf_accum;
+        float hpf_sample;
         float lpf_alpha;
+        float hpf_alpha;
         int input_index;
         int input_len;
         int output_len;
@@ -280,6 +281,7 @@ typedef struct
     bool frame_interrupt;
 } SequenceStep;
 
+#define APU_FREQ 894886.5
 #define APU_CYCLES_PER_FRAME 14890.0f
 #define LOW_PASS_CUTOFF 14000
 
