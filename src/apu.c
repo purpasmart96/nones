@@ -701,6 +701,18 @@ static void ApuClockTimers(Apu *apu)
     }
 }
 
+float ComputeLowPassAlpha(float freq, float cutoff)
+{
+    double dt = 1.0 / freq;
+    double RC = 1.0 / (2.0 * 3.14159 * cutoff);
+    return  dt / (RC + dt);
+}
+
+float ApplyLowPass(float sample, float prev_sample, float alpha)
+{
+    return alpha * sample + (1.0 - alpha) * prev_sample;
+}
+
 static void ApuMixSample(Apu *apu)
 {
     float square1 = apu->pulse1.output * apu->pulse1.volume;
@@ -714,10 +726,12 @@ static void ApuMixSample(Apu *apu)
     float tnd = 1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0));
     float tnd_out = 159.79 / (tnd + 100);
 #endif
+    float prev_sample = apu->mixer.sample;
     float raw_sample = pulse + tnd_out;
     // Apply a HPF to fix the the DC offset without affecting the FR too much
-    apu->mixer.hpf_accum = apu->mixer.hpf_accum + (0.001 * (raw_sample - apu->mixer.hpf_accum));
-    apu->mixer.sample = raw_sample - apu->mixer.hpf_accum;
+    apu->mixer.hpf_accum = apu->mixer.hpf_accum + (0.0008 * (raw_sample - apu->mixer.hpf_accum));
+    // Apply a low pass just for the buffer used as the input for soxr, could also just make this lowpass cutoff at 14khz
+    apu->mixer.sample = ApplyLowPass(raw_sample - apu->mixer.hpf_accum, prev_sample, apu->mixer.lpf_alpha);
 }
 
 static void ApuGetClock(Apu *apu)
@@ -745,20 +759,24 @@ static void ApuPutClock(Apu *apu)
     ApuClockDmc(apu);
     ApuMixSample(apu);
 
-    apu->input_buffer[apu->mixer.input_index++] = apu->mixer.sample;
-    if (apu->mixer.input_index == APU_CYCLES_PER_FRAME)
+    if (++apu->mixer.accum >= apu->mixer.accum_delta)
     {
-        size_t odone;
-        error = soxr_process(
-            soxr,
-            apu->input_buffer, APU_CYCLES_PER_FRAME,
-            NULL,
-            apu->output_buffer, apu->mixer.samples_per_frame,
-            &odone
-        );
+        apu->mixer.accum -= apu->mixer.accum_delta;
 
-        apu->mixer.input_index = 0;
-        NonesPutSoundData(apu->output_buffer, apu->mixer.output_size);
+        apu->mixer.input_buffer[apu->mixer.input_index++] = apu->mixer.sample;
+        if (apu->mixer.input_index == apu->mixer.input_len)
+        {
+            size_t odone;
+            error = soxr_process(
+                soxr,
+                apu->mixer.input_buffer, apu->mixer.input_len,
+                NULL,
+                apu->mixer.output_buffer, apu->mixer.output_len,
+                &odone
+            );
+            apu->mixer.input_index = 0;
+            NonesPutSoundData(apu->mixer.output_buffer, apu->mixer.output_size);
+        }
     }
 }
 
@@ -816,10 +834,21 @@ void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_ra
 {
     memset(apu, 0, sizeof(*apu));
     ApuResetFrameCounter(apu);
+
     apu->mixer.sample_rate = sample_rate;
-    apu->mixer.samples_per_frame = apu->mixer.sample_rate / 60;
-    apu->mixer.output_size = apu->mixer.samples_per_frame * sizeof(int16_t);
-    apu->output_buffer = ArenaPush(arena, apu->mixer.output_size);
+    const int samples_per_frame = apu->mixer.sample_rate / 60;
+    // Set the sample ratio to be used by soxr, 
+    const int soxr_sample_ratio = 3;
+    apu->mixer.input_len = samples_per_frame * soxr_sample_ratio;
+    apu->mixer.output_len = samples_per_frame;
+    apu->mixer.accum_delta = APU_CYCLES_PER_FRAME / apu->mixer.input_len;
+    apu->mixer.input_size = apu->mixer.input_len * sizeof(float);
+    apu->mixer.output_size = apu->mixer.output_len * sizeof(int16_t);
+    apu->mixer.input_buffer = ArenaPush(arena, apu->mixer.input_size);
+    apu->mixer.output_buffer = ArenaPush(arena, apu->mixer.output_size);
+    const float max_cutoff = apu->mixer.sample_rate * soxr_sample_ratio * 0.45;
+    apu->mixer.lpf_alpha = ComputeLowPassAlpha(894886.5, max_cutoff);
+
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
@@ -829,7 +858,7 @@ void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_ra
     soxr_quality_spec_t q_spec = soxr_quality_spec(SOXR_HQ, SOXR_VR);
     soxr_io_spec_t io_spec = soxr_io_spec(SOXR_FLOAT32_I, SOXR_INT16_I);
 
-    soxr = soxr_create(APU_CYCLES_PER_FRAME, apu->mixer.samples_per_frame,
+    soxr = soxr_create(apu->mixer.input_len, apu->mixer.output_len,
                     1, &error, &io_spec, &q_spec, NULL);
 }
 

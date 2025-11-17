@@ -158,9 +158,22 @@ typedef union
 
 typedef struct
 {
-    float input_buffer[14890];
-    int16_t *output_buffer;
-    uint64_t cycles;
+    struct
+    {
+        float *input_buffer;
+        int16_t *output_buffer;
+        float sample;
+        float sample_rate;
+        float accum;
+        float accum_delta;
+        float hpf_accum;
+        float lpf_alpha;
+        int input_index;
+        int input_len;
+        int output_len;
+        int input_size;
+        int output_size;
+    } mixer;
 
     struct {
         ApuPulseReg reg;
@@ -241,20 +254,10 @@ typedef struct
         uint8_t output_level : 7;
     } dmc;
 
-    struct
-    {
-        float sample;
-        float sample_rate;
-        float hpf_accum;
-        int samples_per_frame;
-        int current_sample;
-        int input_index;
-        int output_size;
-    } mixer;
-
     ApuFrameCounter frame_counter;
     ApuStatus status;
 
+    uint64_t cycles;
     int alignment;
     bool clear_frame_irq;
     bool swap_duty_cycles;
