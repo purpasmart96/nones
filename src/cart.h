@@ -338,7 +338,7 @@ typedef struct
     uint8_t chr_bank0 : 4;
     // CHR A15..A12 (4 KiB bank) at PPU $1000
     uint8_t chr_bank1 : 4;
-} Ninja;
+} Nina;
 
 typedef union
 {

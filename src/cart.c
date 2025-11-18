@@ -72,7 +72,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         case MAPPER_MMC3:
         case MAPPER_AXROM:
         case MAPPER_COLORDREAMS:
-        case MAPPER_BNROM_NINJA:
+        case MAPPER_BNROM_NINA:
         case MAPPER_NANJING:
         case MAPPER_CAMERICA:
             break;

@@ -20,7 +20,7 @@ UxRom ux_rom;
 AxRom ax_rom;
 CnRom cn_rom;
 ColorDreams color_dreams;
-Ninja ninja;
+Nina nina;
 BnRom bn_rom;
 Nanjing nanjing;
 Camerica camerica;
@@ -304,9 +304,9 @@ static uint8_t ColorDreamsReadPrgRom(Cart *cart, const uint16_t addr)
     return cart->prg_rom.data[final_addr];
 }
 
-static uint8_t NinjaReadPrgRom(Cart *cart, const uint16_t addr)
+static uint8_t NinaReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    const uint32_t final_addr = GetPrgBankAddr(ninja.prg_bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
+    const uint32_t final_addr = GetPrgBankAddr(nina.prg_bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
     return cart->prg_rom.data[final_addr];
 }
 
@@ -455,9 +455,9 @@ static uint8_t ColorDreamsReadChrRom(Cart *cart, const uint16_t addr)
     return cart->chr_rom.data[((color_dreams.chr_bank * 0x2000) + (addr & 0x1FFF)) & cart->chr_rom.mask];
 }
 
-static uint8_t NinjaReadChrRom(Cart *cart, const uint16_t addr)
+static uint8_t NinaReadChrRom(Cart *cart, const uint16_t addr)
 {
-    const int bank = addr < 0x1000 ? ninja.chr_bank0 : ninja.chr_bank1;
+    const int bank = addr < 0x1000 ? nina.chr_bank0 : nina.chr_bank1;
     //printf("BANK: %d ADDR: 0x%X\n", bank, addr);
     return cart->chr_rom.data[((bank * 0x1000) + (addr & 0xFFF)) & cart->chr_rom.mask];
 }
@@ -677,22 +677,22 @@ static void ColorDreamsRegWrite(const uint16_t addr, const uint8_t data)
     color_dreams.raw = data;
 }
 
-static void NinjaRegWrite(const uint16_t addr, const uint8_t data)
+static void NinaRegWrite(const uint16_t addr, const uint8_t data)
 {
     switch (addr)
     {
         // PRG Bank Select ($7FFD, write);
         case 0x7FFD:
             //printf("PRG BANK addr: 0x%X data: 0x%X\n", addr, data);
-            ninja.prg_bank = data;
+            nina.prg_bank = data;
             break;
         // CHR Bank Select 0 ($7FFE, write)
         case 0x7FFE:
-            ninja.chr_bank0 = data;
+            nina.chr_bank0 = data;
             break;
         // CHR Bank Select 1 ($7FFF, write)
         case 0x7FFF:
-            ninja.chr_bank1 = data;
+            nina.chr_bank1 = data;
             break;
         default:
             //printf("UNK addr: 0x%X\n", addr);
@@ -1089,14 +1089,14 @@ void MapperInit(Cart *cart)
             SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             break;
-        case MAPPER_BNROM_NINJA:
+        case MAPPER_BNROM_NINA:
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
             if (cart->chr_rom.size > 0x2000)
             {
-                cart->PrgReadFn = NinjaReadPrgRom;
-                cart->ChrReadFn = NinjaReadChrRom;
+                cart->PrgReadFn = NinaReadPrgRom;
+                cart->ChrReadFn = NinaReadChrRom;
                 cart->ChrWriteFn = ChrWriteGeneric;
-                cart->RegWriteFn = NinjaRegWrite;
+                cart->RegWriteFn = NinaRegWrite;
                 SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
                 SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
                 SystemAddMemMapWrite(0x7FFD, 0x7FFF, MEM_REG_WRITE);
