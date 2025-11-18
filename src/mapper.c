@@ -641,11 +641,13 @@ static void CamericaRomRegWrite(const uint16_t addr, const uint8_t data)
     switch ((addr >> 13) & 0x3)
     {
         case 0:
-        //case 1:
-        //    camerica.outer_bank = (data >> 3) & 0x7;
+        {
             camerica.mirroring = data >> 4;
-            //PpuSetMirroring(2, camerica.mirroring);
+            if (addr >> 12 == 9)
+                PpuSetMirroring(2, camerica.mirroring);
             break;
+        }
+
         case 2:
         case 3:
             camerica.inner_bank = data & 0xF;
