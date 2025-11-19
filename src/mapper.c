@@ -482,13 +482,20 @@ static void NanjingWriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
     cart->chr_rom.data[GetNanjingChrAddr(cart, addr)] = data;
 }
 
-static const int mmc1_mirror_map[4] =
+static void Mmc1SetArrangement(const int arrangement)
 {
-    NAMETABLE_FOUR_SCREEN,
-    NAMETABLE_SINGLE_SCREEN,
-    NAMETABLE_VERTICAL,
-    NAMETABLE_HORIZONTAL
-};
+    switch (arrangement)
+    {
+        case 0:
+        case 1:
+            PpuSetArrangement(NAMETABLE_SINGLE_SCREEN, arrangement);
+            break;
+        case 2:
+        case 3:
+            PpuSetArrangement((arrangement - 1) & 1, 0);
+            break;
+    }
+}
 
 static void Mmc1RegWrite(const uint16_t addr, const uint8_t data)
 {
@@ -521,9 +528,9 @@ static void Mmc1RegWrite(const uint16_t addr, const uint8_t data)
     {
         case 0:
             mmc1.control.raw = reg;
-            PpuSetMirroring(mmc1_mirror_map[mmc1.control.name_table_setup], 0);
-            //printf("Set nametable mode to: %d\n", mmc1->control.name_table_setup);
-            //printf("Set prg rom bank mode to: %d\n", mmc1->control.prg_rom_bank_mode);
+            Mmc1SetArrangement(mmc1.control.name_table_setup);
+            //printf("Set nametable mode to: %d\n", mmc1.control.name_table_setup);
+            //printf("Set prg rom bank mode to: %d\n", mmc1.control.prg_rom_bank_mode);
             DEBUG_LOG("Set chr bank mode to %d\n", mmc1.control.chr_rom_bank_mode);
             break;
         case 1:
@@ -596,7 +603,7 @@ static void Mmc3RegWriteEven(const uint16_t addr, const uint8_t data)
         // Nametable arrangement ($A000-$BFFE, even)
         case 1:
             mmc3.name_table_arrgmnt = data & 1;
-            PpuSetMirroring(mmc3.name_table_arrgmnt ^ 1, 0);
+            PpuSetArrangement(mmc3.name_table_arrgmnt ^ 1, 0);
             //printf("Set MMC3 nametable mirroring mode: %d\n", !mmc3.name_table_arrgmnt);
             break;
         // IRQ latch ($C000-$DFFE, even)
@@ -644,7 +651,7 @@ static void CamericaRomRegWrite(const uint16_t addr, const uint8_t data)
         {
             camerica.mirroring = data >> 4;
             if (addr >> 12 == 9)
-                PpuSetMirroring(2, camerica.mirroring);
+                PpuSetArrangement(NAMETABLE_SINGLE_SCREEN, camerica.mirroring);
             break;
         }
 
@@ -660,7 +667,7 @@ static void AxRomRegWrite(const uint16_t addr, const uint8_t data)
     UNUSED(addr);
 
     ax_rom.raw = data;
-    PpuSetMirroring(2, ax_rom.page);
+    PpuSetArrangement(2, ax_rom.page);
 }
 
 static void CnRomRegWrite(const uint16_t addr, const uint8_t data)
@@ -748,11 +755,11 @@ static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
     switch (addr)
     {
         // 8x16 mode enable ($2000 = PPUCTRL)
-        case 0x2000:
+        case PPU_CTRL_REG:
             mmc5.sprite_mode = (data >> 5) & 1;
             break;
         // PPU Data Substitution Enable ($2001 = PPUMASK)
-        case 0x2001:
+        case PPU_MASK_REG:
             mmc5.sub_mode = (data >> 3) & 3;
             break;
         // PRG mode ($5100)
@@ -778,17 +785,17 @@ static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
             mmc5.ext_ram_mode = data;
             if (data & 1)
             {
-                PpuSetMirroring(2, 1);
+                PpuSetArrangement(2, 1);
             }
             //printf("MMC5 Ext-ram mode addr: 0x%X data: 0x%X\n", addr, data);
             break;
         // Nametable mapping ($5105)
         case 0x5105:
-            mmc5.mirroring.raw = data;
-            PpuSetNameTable(0, mmc5.mirroring.page0);
-            PpuSetNameTable(1, mmc5.mirroring.page1);
-            PpuSetNameTable(2, mmc5.mirroring.page2);
-            PpuSetNameTable(3, mmc5.mirroring.page3);
+            mmc5.mapping.raw = data;
+            PpuSetNameTable(0, mmc5.mapping.nt0_mode);
+            PpuSetNameTable(1, mmc5.mapping.nt1_mode);
+            PpuSetNameTable(2, mmc5.mapping.nt2_mode);
+            PpuSetNameTable(3, mmc5.mapping.nt3_mode);
             break;
         // Fill-mode tile ($5106)
         case 0x5106:
@@ -1041,7 +1048,6 @@ void MapperInit(Cart *cart)
             SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             break;
         case MAPPER_MMC3:
-        {
             cart->PrgReadFn = Mmc3ReadPrgRom;
             cart->ChrReadFn = Mmc3ReadChr;
             cart->ChrWriteFn = Mmc3WriteChr;
@@ -1052,7 +1058,6 @@ void MapperInit(Cart *cart)
             SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_8KIB);
             break;
-        }
         case MAPPER_MMC5:
             mmc5.prg_mode = 3;
             mmc5.chr_mode = 3;

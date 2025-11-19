@@ -501,20 +501,19 @@ void PpuSetNameTable(int nt, int mode)
     }
 }
 
-// Set the mirroring mode for the nametables
-// Note that mirroring is the opposite of arrangement
-void PpuSetMirroring(NameTableMirror mode, int page)
+// Set the arrangement mode for the nametables
+// Note that arrangement is the inverse of mirroring
+void PpuSetArrangement(NameTableArrangement mode, int page)
 {
     switch (mode)
     {
-        case NAMETABLE_HORIZONTAL:
+        case NAMETABLE_VERTICAL:
             nametables[0] = &vram[0x000];  // NT0 (0x2000)
             nametables[1] = &vram[0x000];  // NT0 (Mirrored at 0x2400)
             nametables[2] = &vram[0x400];  // NT1 (0x2800)
             nametables[3] = &vram[0x400];  // NT1 (Mirrored at 0x2C00)
             break;
-        
-        case NAMETABLE_VERTICAL:
+        case NAMETABLE_HORIZONTAL:
             nametables[0] = &vram[0x000];  // NT0 (0x2000)
             nametables[1] = &vram[0x400];  // NT1 (0x2400)
             nametables[2] = &vram[0x000];  // NT0 (Mirrored at 0x2800)
@@ -533,16 +532,16 @@ void PpuSetMirroring(NameTableMirror mode, int page)
             nametables[3] = &mmc5.ext_ram[0x400];  // NT1 (0x2C00)
             break;
         default:
-            printf("Unimplemented Nametable mirroring mode %d detected!\n", mode);
+            printf("Unimplemented Nametable arrangement mode %d detected!\n", mode);
             break;
     }
 }
 
-void PPU_Init(Ppu *ppu, int mirroring, bool warmup, uint32_t **buffers, const uint32_t buffer_size)
+void PPU_Init(Ppu *ppu, int arrangement, bool warmup, uint32_t **buffers, const uint32_t buffer_size)
 {
     memset(ppu, 0, sizeof(*ppu));
-    ppu->mirroring = mirroring;
-    PpuSetMirroring(ppu->mirroring, 0);
+    ppu->arrangement = arrangement;
+    PpuSetArrangement(ppu->arrangement, 0);
     ppu->rendering = false;
     ppu->buffers[0] = buffers[0];
     ppu->buffers[1] = buffers[1];

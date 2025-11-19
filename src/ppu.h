@@ -40,11 +40,11 @@ typedef enum
 
 typedef enum
 {
-    NAMETABLE_HORIZONTAL,
     NAMETABLE_VERTICAL,
+    NAMETABLE_HORIZONTAL,
     NAMETABLE_SINGLE_SCREEN,
     NAMETABLE_FOUR_SCREEN,
-} NameTableMirror;
+} NameTableArrangement;
 
 typedef enum
 {
@@ -254,7 +254,7 @@ typedef struct
         bool w;
     };
 
-    NameTableMirror mirroring;
+    NameTableArrangement arrangement;
     int ext_input;
 
     ShiftReg bg_shift_low;
@@ -304,13 +304,13 @@ typedef struct
     uint8_t io_bus;
 } Ppu;
 
-void PPU_Init(Ppu *ppu, int mirroring, bool warmup, uint32_t **buffers, uint32_t buffer_size);
+void PPU_Init(Ppu *ppu, int arrangement, bool warmup, uint32_t **buffers, uint32_t buffer_size);
 void PPU_Tick(Ppu *ppu);
 void PPU_Reset(Ppu *ppu);
 void PpuUpdateRenderingState(Ppu *ppu);
 uint8_t ReadPPURegister(Ppu *ppu, const uint16_t addr);
 void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data);
-void PpuSetMirroring(NameTableMirror mode, int page);
+void PpuSetArrangement(NameTableArrangement mode, int page);
 void PpuSetNameTable(int nt, int mode);
 
 #endif

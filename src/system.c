@@ -39,7 +39,7 @@ int SystemLoadCart(Arena *arena, System *system, const char *path)
 void SystemInit(System *system, Arena *arena, bool ppu_warmup, bool swap_duty_cycles,
                 int sample_rate, uint32_t **buffers, const uint32_t buffer_size)
 {
-    PPU_Init(system->ppu, system->cart->mirroring, ppu_warmup, buffers, buffer_size);
+    PPU_Init(system->ppu, system->cart->arrangement, ppu_warmup, buffers, buffer_size);
     APU_Init(system->apu, arena, swap_duty_cycles, sample_rate);
     CPU_Init(system->cpu);
 }

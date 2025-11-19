@@ -151,13 +151,13 @@ typedef union
         // DDCC BBAA
         // |||| ||||
         // |||| ||++- Select nametable at PPU $2000-$23FF
-        uint8_t page0 : 2;
+        uint8_t nt0_mode : 2;
         // |||| ++--- Select nametable at PPU $2400-$27FF
-        uint8_t page1 : 2;
+        uint8_t nt1_mode : 2;
         // ||++------ Select nametable at PPU $2800-$2BFF
-        uint8_t page2 : 2;
+        uint8_t nt2_mode : 2;
         // ++-------- Select nametable at PPU $2C00-$2FFF
-        uint8_t page3 : 2;
+        uint8_t nt3_mode : 2;
     };
 
 } Mmc5NtReg;
@@ -210,7 +210,7 @@ typedef struct
     Mmc5PrgBankReg prg_bank[5];
     Mmc5PrgRamReg prg_ram[3];
     uint16_t prev_addr;
-    Mmc5NtReg mirroring;
+    Mmc5NtReg mapping;
     Mmc5IrqStatusReg irq_status;
     uint8_t target_scanline;
     uint8_t scanline;
@@ -225,6 +225,11 @@ typedef struct
     // 2 - One 16KB bank ($8000-$BFFF) and two 8KB banks ($C000-$DFFF and $E000-$FFFF);
     // 3 - Four 8KB banks;
     uint8_t prg_mode : 2;
+    // CHR mode
+    // 0 - 8KB CHR pages
+    // 1 - 4KB CHR pages
+    // 2 - 2KB CHR pages
+    // 3 - 1KB CHR pages
     uint8_t chr_mode : 2;
     uint8_t chr_high : 2;
     uint8_t sprite_mode : 1;

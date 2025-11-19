@@ -55,7 +55,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     printf("ID String: %s\n", hdr.id_string);
     printf("PRG Rom Size in 16 KiB units: %d\n", hdr.prg_rom_size_lsb);
     printf("CHR Rom Size in 8 KiB units: %d\n", hdr.chr_rom_size_lsb);
-    printf("Nametable layout: %d\n", hdr.name_table_layout);
+    printf("Nametable arrangement: %d\n", hdr.name_table_arrangement);
     printf("Battery: %d\n", hdr.battery);
     printf("Trainer: %d\n", hdr.trainer_area_512);
     printf("Alt nametable layout: %d\n", hdr.alt_name_tables);
@@ -93,7 +93,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     cart->prg_rom.size = hdr.prg_rom_size_lsb * 0x4000;
     cart->prg_rom.mask = cart->prg_rom.size - 1;
     cart->chr_rom.size = hdr.chr_rom_size_lsb * 0x2000;
-    cart->mirroring = hdr.name_table_layout;
+    cart->arrangement = hdr.name_table_arrangement;
     cart->battery = hdr.battery;
     cart->mapper_num = mapper_number;
 

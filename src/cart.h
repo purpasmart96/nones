@@ -8,7 +8,7 @@ typedef struct
     char id_string[4];
     uint8_t prg_rom_size_lsb;
     uint8_t chr_rom_size_lsb;
-    uint8_t name_table_layout : 1;
+    uint8_t name_table_arrangement : 1;
     uint8_t battery : 1;
     uint8_t trainer_area_512 : 1;
     uint8_t alt_name_tables : 1;
@@ -58,7 +58,7 @@ typedef struct Cart {
     // WRAM or SRAM
     uint8_t *ram;
     int mapper_num;
-    int mirroring;
+    int arrangement;
     const char *name;
     bool battery;
     uint8_t (*PrgReadFn)(struct Cart *cart, const uint16_t addr);
