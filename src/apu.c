@@ -846,8 +846,8 @@ void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_ra
     apu->mixer.output_size = apu->mixer.output_len * sizeof(int16_t);
     apu->mixer.input_buffer = ArenaPush(arena, apu->mixer.input_size);
     apu->mixer.output_buffer = ArenaPush(arena, apu->mixer.output_size);
-    const float max_cutoff = apu->mixer.sample_rate * soxr_sample_ratio * 0.45;
-    apu->mixer.lpf_alpha = ComputeFilterAlpha(APU_FREQ, max_cutoff);
+    //const float max_cutoff = apu->mixer.sample_rate * soxr_sample_ratio * 0.45;
+    apu->mixer.lpf_alpha = ComputeFilterAlpha(APU_FREQ, 14000);
     apu->mixer.hpf_alpha = ComputeFilterAlpha(APU_FREQ, 37);
 
     apu->noise.shift_reg.raw = 1;
