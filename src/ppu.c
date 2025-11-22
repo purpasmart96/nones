@@ -454,20 +454,17 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             break;
         case OAM_DATA:
         {
-            if (!ppu->rendering || (ppu->scanline > 239 && ppu->scanline < 261))
+            if (ppu->rendering && (ppu->scanline < 240 || ppu->scanline == 261))
             {
-                ppu->oam1[ppu->oam1_addr >> 2].raw[ppu->oam1_addr & 3] = data;
-                ppu->sprite_eval_done |= ppu->oam1_addr == 255;
-                ++ppu->oam1_addr;
+                ppu->sprite_eval.done |= ppu->oam1_addr > 251;
+                ppu->oam1_addr += 4;
+                ppu->oam1_addr &= 0xFC;
             }
             else
             {
-                ppu->sprite_eval_done |= ppu->oam1_addr > 251;
-                ppu->oam1_addr += 4;
-                if (ppu->rendering && (ppu->scanline < 240 || ppu->scanline == 261))
-                {
-                    ppu->oam1_addr &= 0xFC;
-                }
+                ppu->oam1[ppu->oam1_addr >> 2].raw[ppu->oam1_addr & 3] = data;
+                ppu->sprite_eval.done |= ppu->oam1_addr == 255;
+                ++ppu->oam1_addr;
             }
             break;
         }
@@ -564,10 +561,10 @@ static void PpuResetOAM2(Ppu *ppu)
 {
     ppu->oam_buffer = 0xFF;
     memset(ppu->oam2, 0xFF, sizeof(ppu->oam2));
-    ppu->sprite_eval_done = false;
-    ppu->oam2_addr_overflow = false;
+    ppu->sprite_eval.done = false;
+    ppu->sprite_eval.oam2_overflow = false;
     ppu->oam2_addr = 0;
-    ppu->sprite_timer = 0;
+    ppu->sprite_eval.timer = 0;
     ppu->sprite_in_range = false;
 }
 
@@ -580,65 +577,47 @@ static void PpuSpriteRangeCheck(Ppu *ppu)
 
 static void PpuSpritesEval(Ppu *ppu)
 {
-    const int sprite_num = ppu->oam1_addr >> 2;
-    Sprite *curr_sprite = &ppu->oam1[sprite_num];
-
     if (ppu->cycle_counter & 1)
     {
-        ppu->oam_buffer = curr_sprite->raw[ppu->oam1_addr & 3];
+        ppu->oam_buffer = ppu->oam1[ppu->oam1_addr >> 2].raw[ppu->oam1_addr & 3];
     }
     else
     {
         PpuSpriteRangeCheck(ppu);
-        if (ppu->sprite_eval_done || ppu->oam2_addr_overflow || ppu->found_sprites == 8)
+        if (ppu->sprite_eval.done || ppu->sprite_eval.oam2_overflow)
         {
-            ppu->oam_buffer = ppu->oam2[ppu->oam2_addr & 7].raw[ppu->oam2_addr & 3];
+            ppu->oam_buffer = ppu->oam2[ppu->oam2_addr >> 2].raw[ppu->oam2_addr & 3];
         }
         else
         {
-            ppu->oam2[ppu->found_sprites].raw[ppu->oam2_addr & 3] = ppu->oam_buffer;
+            ppu->oam2[ppu->oam2_addr >> 2].raw[ppu->oam2_addr & 3] = ppu->oam_buffer;
         }
 
-        if (ppu->sprite_in_range && !ppu->sprite_eval_done)
+        // Are we doing a +4 increment or a +1 increment?
+        if ((ppu->sprite_in_range || ppu->sprite_eval.timer) && !ppu->sprite_eval.done)
         {
-            //printf("Found sprite %d: x: %d y: %d dot: %d\n", sprite_num, curr_sprite->x, curr_sprite->y, ppu->cycle_counter);
-            if (ppu->found_sprites == 8)
+            if (ppu->found_sprites == 8 && ppu->sprite_in_range)
             {
                 ppu->status.sprite_overflow = 1;
-                ppu->sprite_eval_done = true;
-                //printf("Sprite Overflow! %d: x: %d y: %d dot: %d\n", sprite_num, curr_sprite->x, curr_sprite->y, ppu->cycle_counter);
-                //ppu->oam1_addr += 4;
-                return;
+                ppu->sprite_eval.done = true;
             }
 
-            if (ppu->cycle_counter == 66)
-                ppu->sprite0_loaded = true;
-
-            ppu->sprite_eval_done |= ppu->oam1_addr == 255;
-            ppu->oam2_addr_overflow |= ppu->oam2_addr == 255;
-            ++ppu->oam1_addr;
-            ++ppu->oam2_addr;
-            ++ppu->sprite_timer;
-            ppu->sprite_timer &= 3;
-            if (!ppu->sprite_timer)
-                ++ppu->found_sprites;
-        }
-        else if (ppu->sprite_timer)
-        {
-            ppu->sprite_eval_done |= ppu->oam1_addr == 255;
-            ppu->oam2_addr_overflow |= ppu->oam2_addr == 255;
+            ppu->sprite0_loaded |= ppu->cycle_counter == 66;
+            ppu->sprite_eval.done |= ppu->oam1_addr == 255;
+            ppu->sprite_eval.oam2_overflow |= ppu->oam2_addr == 31;
 
             ++ppu->oam1_addr;
-            ++ppu->oam2_addr;
-            ++ppu->sprite_timer;
-            ppu->sprite_timer &= 3;
-            if (!ppu->sprite_timer)
+            ppu->oam2_addr = (ppu->oam2_addr + 1) & 0x1F;
+            ++ppu->sprite_eval.timer;
+            ppu->sprite_eval.timer &= 3;
+            if (!ppu->sprite_eval.timer)
                 ++ppu->found_sprites;
         }
         else
         {
-            ppu->sprite_eval_done |= ppu->oam1_addr > 251;
+            ppu->sprite_eval.done |= ppu->oam1_addr > 251;
             ppu->oam1_addr += 4;
+            ppu->oam1_addr &= 0xFC;
         }
     }
 }

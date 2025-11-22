@@ -254,6 +254,13 @@ typedef struct
         bool w;
     };
 
+    struct
+    {
+        uint8_t timer;
+        bool oam2_overflow;
+        bool done;
+    } sprite_eval;
+
     NameTableArrangement arrangement;
     int ext_input;
 
@@ -287,9 +294,6 @@ typedef struct
     PpuStatus status;
     uint8_t oam1_addr;
     uint8_t oam2_addr;
-    bool oam2_addr_overflow;
-    bool sprite_eval_done;
-    uint8_t sprite_timer;
     uint8_t oam_buffer;
     // Read buffer for $2007
     uint8_t buffered_data;
