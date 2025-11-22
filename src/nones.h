@@ -33,6 +33,8 @@ typedef struct {
     SDL_Gamepad *gamepad1;
     SDL_Gamepad *gamepad2;
     SDL_JoystickID *gamepads;
+    SDL_Joystick *joystick1;
+    SDL_Joystick *joystick2;
     int num_gamepads;
     bool debug_info;
     bool quit;

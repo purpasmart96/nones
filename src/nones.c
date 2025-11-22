@@ -82,6 +82,30 @@ static void NonesHandleInput(Nones *nones)
         nones->buttons[5] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
         nones->buttons[6] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_START);
         nones->buttons[7] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_BACK);
+
+        int16_t axis_x = SDL_GetJoystickAxis(nones->joystick1, SDL_GAMEPAD_AXIS_LEFTX);
+        int16_t axis_y = SDL_GetJoystickAxis(nones->joystick1, SDL_GAMEPAD_AXIS_LEFTY);
+
+        if (axis_x || axis_y)
+        {
+            if (axis_y <= -16000)
+            {
+                nones->buttons[2] = true;
+            }
+            else if (axis_y >= 16000)
+            {
+                nones->buttons[3] = true;
+            }
+
+            if (axis_x <= -16000)
+            {
+                nones->buttons[4] = true;
+            }
+            else if (axis_x >= 16000)
+            {
+                nones->buttons[5] = true;
+            }
+        }
     }
 
     if (nones->gamepad2)
@@ -94,6 +118,30 @@ static void NonesHandleInput(Nones *nones)
         nones->buttons[13] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_DPAD_RIGHT);
         nones->buttons[14] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_START);
         nones->buttons[15] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_BACK);
+
+        int16_t axis_x = SDL_GetJoystickAxis(nones->joystick2, SDL_GAMEPAD_AXIS_LEFTX);
+        int16_t axis_y = SDL_GetJoystickAxis(nones->joystick2, SDL_GAMEPAD_AXIS_LEFTY);
+
+        if (axis_x || axis_y)
+        {
+            if (axis_y <= -16000)
+            {
+                nones->buttons[10] = true;
+            }
+            else if (axis_y >= 16000)
+            {
+                nones->buttons[11] = true;
+            }
+
+            if (axis_x <= -16000)
+            {
+                nones->buttons[12] = true;
+            }
+            else if (axis_x >= 16000)
+            {
+                nones->buttons[13] = true;
+            }
+        }
     }
 
     SystemUpdateJPButtons(nones->system, nones->buttons);
@@ -165,6 +213,7 @@ static void NonesInit(Nones *nones, const char *path, const char *audio_driver, 
     if (nones->gamepads)
     {
         nones->gamepad1 = SDL_OpenGamepad(nones->gamepads[0]);
+        nones->joystick1 = SDL_GetGamepadJoystick(nones->gamepad1);
         char *gamepad1_info = SDL_GetGamepadMapping(nones->gamepad1);
         printf("Gamepad1: %s\n", gamepad1_info);
         SDL_free(gamepad1_info);
@@ -172,6 +221,7 @@ static void NonesInit(Nones *nones, const char *path, const char *audio_driver, 
         if (nones->num_gamepads > 1)
         {
             nones->gamepad2 = SDL_OpenGamepad(nones->gamepads[1]);
+            nones->joystick2 = SDL_GetGamepadJoystick(nones->gamepad2);
             char *gamepad2_info = SDL_GetGamepadMapping(nones->gamepad2);
             printf("Gamepad2: %s\n", gamepad2_info);
             SDL_free(gamepad2_info);
