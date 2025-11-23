@@ -158,6 +158,26 @@ typedef union
 
 typedef struct
 {
+    ApuEnvelope envelope;
+    uint16_t sweep_counter;
+    uint16_t target_period;
+    uint16_t volume;
+    uint16_t output;
+    uint16_t length_counter;
+    int16_t duty_step;
+    // External
+    ApuTimer timer_period;
+    // Internal timer
+    ApuTimer timer;
+    ApuPulseReg reg;
+    ApuPulseSweepReg sweep_reg;
+    bool reload;
+    bool muting;
+    uint8_t length_counter_load : 5;
+} ApuPulse;
+
+typedef struct
+{
     struct
     {
         float *input_buffer;
@@ -176,41 +196,8 @@ typedef struct
         int output_size;
     } mixer;
 
-    struct {
-        ApuPulseReg reg;
-        ApuPulseSweepReg sweep_reg;
-        // External
-        ApuTimer timer_period;
-        // Internal timer
-        ApuTimer timer;
-        ApuEnvelope envelope;
-        bool reload;
-        uint16_t sweep_counter;
-        uint16_t target_period;
-        bool muting;
-        uint16_t volume;
-        uint16_t output;
-        int duty_step;
-        uint16_t length_counter;
-        uint8_t length_counter_load : 5;
-    } pulse1;
-
-    struct {
-        ApuPulseReg reg;
-        ApuPulseSweepReg sweep_reg;
-        ApuTimer timer_period;
-        ApuTimer timer;
-        ApuEnvelope envelope;
-        bool reload;
-        uint16_t sweep_counter;
-        uint16_t target_period;
-        bool muting;
-        uint16_t volume;
-        uint16_t output;
-        int duty_step;
-        uint16_t length_counter;
-        uint8_t length_counter_load : 5;
-    } pulse2;
+    ApuPulse pulse1;
+    ApuPulse pulse2;
 
     struct {
         ApuTriangleLinearCounter reg;

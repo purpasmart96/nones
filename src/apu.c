@@ -235,55 +235,30 @@ static void ApuClockLinearCounters(Apu *apu)
     //printf("Triangle linear counter: %d\n", apu->triangle.linear_counter);
 }
 
-static void UpdateTargetPeriod1(Apu *apu)
+static void ApuUpdatePulseTargetPeriod(ApuPulse *pulse, const bool pulse1)
 {
-    int delta = apu->pulse1.timer_period.raw >> apu->pulse1.sweep_reg.shift_count;
-    int target = apu->pulse1.timer_period.raw;
-    if (apu->pulse1.sweep_reg.negate)
+    const int delta = pulse->timer_period.raw >> pulse->sweep_reg.shift_count;
+    int target = pulse->timer_period.raw;
+
+    if (pulse->sweep_reg.negate)
     {
-        target -= (delta + 1); 
+        target -= (delta + pulse1); 
     }
     else
     {
         target += delta;
     }
 
-    if (target > 0x7FF || apu->pulse1.timer_period.raw < 8)
+    if (target > 0x7FF || pulse->timer_period.raw < 8)
     {
-        apu->pulse1.muting = true;
+        pulse->muting = true;
     }
     else
     {
-        apu->pulse1.muting = false;
+        pulse->muting = false;
     }
 
-    apu->pulse1.target_period = MAX(0, target);
-}
-
-static void UpdateTargetPeriod2(Apu *apu)
-{
-    int delta = apu->pulse2.timer_period.raw >> apu->pulse2.sweep_reg.shift_count;
-    int target = apu->pulse2.timer_period.raw;
-
-    if (apu->pulse2.sweep_reg.negate)
-    {
-        target -= delta;
-    }
-    else
-    {
-        target += delta;
-    }
-
-    if (target > 0x7FF || apu->pulse2.timer_period.raw < 8)
-    {
-        apu->pulse2.muting = true;
-    }
-    else
-    {
-        apu->pulse2.muting = false;
-    }
-
-    apu->pulse2.target_period = MAX(0, target);
+    pulse->target_period = MAX(0, target);
 }
 
 static void ApuWriteDmcControl(Apu *apu, uint8_t data)
@@ -302,13 +277,13 @@ static void ApuClockSweeps(Apu *apu)
     if (!apu->pulse1.sweep_counter && apu->pulse1.sweep_reg.enabled && apu->pulse1.sweep_reg.shift_count && !apu->pulse1.muting)
     {
         apu->pulse1.timer_period.raw = apu->pulse1.target_period;
-        UpdateTargetPeriod1(apu);
+        ApuUpdatePulseTargetPeriod(&apu->pulse1, true);
     }
     if (!apu->pulse1.sweep_counter || apu->pulse1.reload)
     {
         apu->pulse1.sweep_counter = apu->pulse1.sweep_reg.devider_period;
         apu->pulse1.reload = false;
-        UpdateTargetPeriod1(apu);
+        ApuUpdatePulseTargetPeriod(&apu->pulse1, true);
     }
     else
     {
@@ -321,17 +296,16 @@ static void ApuClockSweeps(Apu *apu)
     //    printf("After Pulse 1 timer raw: %d\n", apu->pulse1.timer.raw);
     //}
 
-    //UpdateTargetPeriod2(apu);
     if (!apu->pulse2.sweep_counter && apu->pulse2.sweep_reg.enabled && apu->pulse2.sweep_reg.shift_count && !apu->pulse2.muting)
     {
         apu->pulse2.timer_period.raw = apu->pulse2.target_period;
-        UpdateTargetPeriod2(apu);
+        ApuUpdatePulseTargetPeriod(&apu->pulse2, false);
     }
     if (!apu->pulse2.sweep_counter || apu->pulse2.reload)
     {
         apu->pulse2.sweep_counter = apu->pulse2.sweep_reg.devider_period;
         apu->pulse2.reload = false;
-        UpdateTargetPeriod2(apu);
+        ApuUpdatePulseTargetPeriod(&apu->pulse2, false);
     }
     else
     {
@@ -492,7 +466,7 @@ static void ApuWritePulse1Sweep(Apu *apu, const uint8_t data)
 {
     apu->pulse1.sweep_reg.raw = data;
     apu->pulse1.reload = true;
-    UpdateTargetPeriod1(apu);
+    ApuUpdatePulseTargetPeriod(&apu->pulse1, true);
 
     //printf("Set pulse 1 sweep enabled: %d\n", apu->pulse1.sweep_reg.enabled);
     //printf("Set pulse 1 sweep shift count: %d\n", apu->pulse1.sweep_reg.shift_count);
@@ -504,7 +478,7 @@ static void ApuWritePulse2Sweep(Apu *apu, const uint8_t data)
 {
     apu->pulse2.sweep_reg.raw = data;
     apu->pulse2.reload = true;
-    UpdateTargetPeriod2(apu);
+    ApuUpdatePulseTargetPeriod(&apu->pulse2, false);
 
     //printf("Set pulse 2 sweep enabled: %d\n", apu->pulse2.sweep.enabled);
     //printf("Set pulse 2 sweep shift count: %d\n", apu->pulse2.sweep.shift_count);
@@ -544,12 +518,12 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             break;
         case APU_PULSE_1_TIMER_LOW:
             apu->pulse1.timer_period.low = data;
-            UpdateTargetPeriod1(apu);
+            ApuUpdatePulseTargetPeriod(&apu->pulse1, true);
             break;
         case APU_PULSE_1_TIMER_HIGH:
             apu->pulse1.timer_period.high = data & 0x7;
             ApuWritePulse1LengthCounter(apu, data >> 3);
-            UpdateTargetPeriod1(apu);
+            ApuUpdatePulseTargetPeriod(&apu->pulse1, true);
             apu->pulse1.envelope.start = true;
             apu->pulse1.duty_step = 0;
             break;
@@ -561,12 +535,12 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data)
             break;
         case APU_PULSE_2_TIMER_LOW:
             apu->pulse2.timer_period.low = data;
-            UpdateTargetPeriod2(apu);
+            ApuUpdatePulseTargetPeriod(&apu->pulse2, false);
             break;
         case APU_PULSE_2_TIMER_HIGH:
             apu->pulse2.timer_period.high = data & 0x7;
             ApuWritePulse2LengthCounter(apu, data >> 3);
-            UpdateTargetPeriod2(apu);
+            ApuUpdatePulseTargetPeriod(&apu->pulse2, false);
             apu->pulse2.envelope.start = true;
             apu->pulse2.duty_step = 0;
             break;
@@ -646,7 +620,7 @@ static void ApuClockTimers(Apu *apu)
         apu->pulse1.duty_step = (apu->pulse1.duty_step - 1) & 7;
     }
 
-    if (apu->pulse1.length_counter == 0 || apu->pulse1.muting)
+    if (!apu->pulse1.length_counter || apu->pulse1.muting)
     {
         apu->pulse1.output = 0;
     }
@@ -663,7 +637,7 @@ static void ApuClockTimers(Apu *apu)
         apu->pulse2.duty_step = (apu->pulse2.duty_step - 1) & 7;
     }
 
-    if (apu->pulse2.length_counter == 0 || apu->pulse2.muting)
+    if (!apu->pulse2.length_counter || apu->pulse2.muting)
     {
         apu->pulse2.output = 0;
     }
