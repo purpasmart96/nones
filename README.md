@@ -35,6 +35,9 @@ Games that use the following mapper chips are supported:
         <td align="center">Nina + BNROM</td><td align="center">34</td>
     </tr>
     <tr>
+        <td align="center">Camerica</td><td align="center">71</td>
+    </tr>
+    <tr>
         <td align="center">Nanjing</td><td align="center">163</td>
     </tr>
 </table>
