@@ -14,6 +14,7 @@
 #include "utils.h"
 
 Mmc1 mmc1;
+Mmc2 mmc2;
 Mmc3 mmc3;
 Mmc5 mmc5;
 UxRom ux_rom;
@@ -174,6 +175,39 @@ static uint8_t Mmc3ReadPrgRom(Cart *cart, const uint16_t addr)
     return 0;
 }
 
+static uint8_t Mmc2ReadPrgRom(Cart *cart, const uint16_t addr)
+{
+    switch ((addr >> 13) & 0x3)
+    {
+        case 0:
+        {
+            // Read from second to last bank
+            uint32_t final_addr = GetPrgBankAddr(mmc2.bank_sel.select, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
+            //printf("0i, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+        case 1:
+        {
+            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 3, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
+            //printf("2, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+        case 2:
+        {
+            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 2, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
+            //printf("2, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+        case 3:
+        {
+            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
+            //printf("3, Reading from addr: 0x%X\n", final_addr);
+            return cart->prg_rom.data[final_addr];
+        }
+    }
+    return 0;
+}
+
 // PRG mode 0
 // CPU $6000-$7FFF: 8 KB switchable PRG RAM bank (Ignored here)
 // CPU $8000-$FFFF: 32 KB switchable PRG ROM bank
@@ -281,11 +315,11 @@ static uint8_t CarmericaReadPrgRom(Cart *cart, const uint16_t addr)
     {
         case 0:
         case 1:
-            final_addr = GetPrgBankAddr(camerica.inner_bank, addr,PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            final_addr = GetPrgBankAddr(camerica.inner_bank, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
             break;
         case 2:
         case 3:
-            final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr,PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
             break;
     }
 
@@ -346,6 +380,125 @@ static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
     uint32_t final_addr = ((bank * bank_size) + (addr & (bank_size - 1)));
 
     return cart->chr_rom.data[final_addr & cart->chr_rom.mask];
+}
+
+static uint32_t GetMmc2ChrAddr(Cart *cart, uint16_t addr, bool read)
+{
+    uint32_t final_addr = 0;
+
+    uint8_t low = addr & 0xFF;
+
+    if (addr < 0x1000)
+    {
+        if (mmc2.latches[1] == 0xFD)
+        {
+            final_addr = ((mmc2.chr_bank_regs[0].bank * 0x1000) + (addr & 0xFFF));
+        }
+        else
+        {
+            final_addr = ((mmc2.chr_bank_regs[1].bank * 0x1000) + (addr & 0xFFF));
+        }
+
+        //if (read)
+        //{
+            switch (low)
+            {
+                case 0xD0:
+                //case 0xD1:
+                //case 0xD2:
+                //case 0xD3:
+                //case 0xD4:
+                //case 0xD5:
+                //case 0xD6:
+                //case 0xD7:
+                case 0xD8:
+                //case 0xD9:
+                //case 0xDA:
+                //case 0xDB:
+                //case 0xDC:
+                //case 0xDD:
+                //case 0xDE:
+                //case 0xDF:
+                    mmc2.latches[0] = 0xFD;
+                    break;
+                case 0xE0:
+                //case 0xE1:
+                //case 0xE2:
+                //case 0xE3:
+                //case 0xE4:
+                //case 0xE5:
+                //case 0xE6:
+                //case 0xE7:
+                //case 0xE8:
+                //case 0xE9:
+                //case 0xEA:
+                //case 0xEB:
+                //case 0xEC:
+                //case 0xED:
+                //case 0xEE:
+                //case 0xEF:
+                    mmc2.latches[0] = 0xFE;
+                    break;
+            }
+            //if ((addr & 0xFF) == 0xD8)
+            //    mmc2.latches[1] = 0xFD;
+            //else if ((addr & 0xFF) == 0xE8)
+            //{
+            //    mmc2.latches[1] = 0xFE;
+            //}
+        //}
+    }
+    else
+    {
+        //uint8_t new_latch = addr & 0xFF;
+        if (mmc2.latches[1] == 0xFD)
+        {
+            final_addr = ((mmc2.chr_bank_regs[2].bank * 0x1000) + (addr & 0xFFF));
+        }
+        else
+        {
+            final_addr = ((mmc2.chr_bank_regs[3].bank * 0x1000) + (addr & 0xFFF));
+        }
+
+        if (read)
+        {
+            switch (low)
+            {
+                case 0xD8:
+                case 0xD9:
+                case 0xDA:
+                case 0xDB:
+                case 0xDC:
+                case 0xDD:
+                case 0xDE:
+                case 0xDF:
+                    mmc2.latches[1] = 0xFD;
+                    break;
+                case 0xE8:
+                case 0xE9:
+                case 0xEA:
+                case 0xEB:
+                case 0xEC:
+                case 0xED:
+                case 0xEE:
+                case 0xEF:
+                    mmc2.latches[1] = 0xFE;
+                    break;
+            }
+        }
+    }
+
+    return final_addr & cart->chr_rom.mask;
+}
+
+static uint8_t Mmc2ReadChr(Cart *cart, const uint16_t addr)
+{
+    return cart->chr_rom.data[GetMmc2ChrAddr(cart, addr, true)];
+}
+
+static void Mmc2WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    cart->chr_rom.data[GetMmc2ChrAddr(cart, addr, false)] = data;
 }
 
 static inline uint32_t GetMmc3ChrAddr(Cart *cart, const uint16_t addr)
@@ -548,6 +701,44 @@ static void Mmc1RegWrite(const uint16_t addr, const uint8_t data)
     }
     mmc1.shift.raw = 0x10;
     mmc1.shift_count = 0;
+}
+
+static void Mmc2RegWrite(const uint16_t addr, const uint8_t data)
+{
+    switch ((addr >> 12) & 7)
+    {
+        case 2:
+        {
+            mmc2.bank_sel.raw = data;
+            break;
+        }
+        case 3:
+        {
+            mmc2.chr_bank_regs[0].raw = data;
+            break;
+        }
+        case 4:
+        {
+            mmc2.chr_bank_regs[1].raw = data;
+            break;
+        }
+        case 5:
+        {
+            mmc2.chr_bank_regs[2].raw = data;
+            break;
+        }
+        case 6:
+        {
+            mmc2.chr_bank_regs[3].raw = data;
+            break;
+        }
+        case 7:
+        {
+            mmc2.arrangement = data;
+            PpuSetArrangement(mmc2.arrangement ^ 1, 0);
+            break;
+        }
+    }
 }
 
 static void Mmc3RegWriteOdd(const uint16_t addr, const uint8_t data)
@@ -1084,6 +1275,18 @@ void MapperInit(Cart *cart)
             SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
             SystemAddMemMapWrite(0x8000, 0xFFFF, MEM_REG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_32KIB);
+            break;
+        case MAPPER_MMC2:
+            cart->PrgReadFn = Mmc2ReadPrgRom;
+            cart->ChrReadFn = Mmc2ReadChr;
+            cart->ChrWriteFn = Mmc2WriteChr;
+            cart->RegWriteFn = Mmc2RegWrite;
+            mmc2.latches[1] = 0xFD;
+            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
+            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
+            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(0xA000, 0xFFFF, MEM_REG_WRITE);
+            cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_8KIB);
             break;
         case MAPPER_COLORDREAMS:
             cart->PrgReadFn = ColorDreamsReadPrgRom;

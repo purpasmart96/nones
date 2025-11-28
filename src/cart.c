@@ -68,13 +68,14 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
         case MAPPER_MMC1:
         case MAPPER_UXROM:
         case MAPPER_CNROM:
-        case MAPPER_MMC5:
         case MAPPER_MMC3:
+        case MAPPER_MMC5:
         case MAPPER_AXROM:
+        case MAPPER_MMC2:
         case MAPPER_COLORDREAMS:
         case MAPPER_BNROM_NINA:
-        case MAPPER_NANJING:
         case MAPPER_CAMERICA:
+        case MAPPER_NANJING:
             break;
         default:
             printf("Mapper %d is not supported yet!\n", mapper_number);

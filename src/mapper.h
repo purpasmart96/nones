@@ -81,6 +81,42 @@ typedef union
     uint8_t raw;
     struct
     {
+        uint8_t select : 4;
+    };
+
+} Mmc2PrgBankReg;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
+        uint8_t bank : 5;
+    };
+
+} Mmc2ChrBankReg;
+
+typedef struct 
+{
+    // Select 4 KB CHR ROM bank for PPU $0000-$0FFF
+    // used when latch 0 = $FD
+    // Select 4 KB CHR ROM bank for PPU $0000-$0FFF
+    // used when latch 0 = $FE
+    // Select 4 KB CHR ROM bank for PPU $1000-$1FFF
+    // used when latch 1 = $FD
+    // Select 4 KB CHR ROM bank for PPU $1000-$1FFF
+    // used when latch 1 = $FE
+    Mmc2ChrBankReg chr_bank_regs[4];
+    uint8_t latches[2];
+    Mmc2PrgBankReg bank_sel;
+    uint8_t arrangement : 1;
+} Mmc2;
+
+typedef union
+{
+    uint8_t raw;
+    struct
+    {
         // Specify which bank register to update on next write to Bank Data register:
         // 000: R0: Select 2 KB CHR bank at PPU $0000-$07FF (or $1000-$17FF);
         // 001: R1: Select 2 KB CHR bank at PPU $0800-$0FFF (or $1800-$1FFF);
@@ -367,6 +403,7 @@ typedef enum
     MAPPER_MMC3,
     MAPPER_MMC5,
     MAPPER_AXROM = 7,
+    MAPPER_MMC2 = 9,
     MAPPER_COLORDREAMS = 11,
     MAPPER_BNROM_NINA = 34,
     MAPPER_CAMERICA = 71,
@@ -410,6 +447,7 @@ void MapperReset(Cart *cart);
 void MapperInit(Cart *cart);
 
 extern Mmc1 mmc1;
+extern Mmc2 mmc2;
 extern Mmc3 mmc3;
 extern Mmc5 mmc5;
 extern UxRom ux_rom;
