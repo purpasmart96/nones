@@ -108,7 +108,7 @@ typedef struct
     // used when latch 1 = $FE
     Mmc2ChrBankReg chr_bank_regs[4];
     uint8_t latches[2];
-    Mmc2PrgBankReg bank_sel;
+    Mmc2PrgBankReg prg_bank;
     uint8_t arrangement : 1;
 } Mmc2;
 
