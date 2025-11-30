@@ -29,6 +29,9 @@ Games that use the following mapper chips are supported:
         <td align="center">AxROM</td><td align="center">7</td>
     </tr>
     <tr>
+        <td align="center">MMC2</td><td align="center">9</td>
+    </tr>
+    <tr>
         <td align="center">Color Dreams</td><td align="center">11</td>
     </tr>
     <tr>
