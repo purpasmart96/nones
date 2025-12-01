@@ -79,13 +79,13 @@ static bool ExplicitAbortDmcDma(System *system)
     return !system->apu->status.dmc;
 }
 
-static void SystemStartOamDma(System *system, const uint8_t page_num, const uint16_t addr)
+static void SystemStartOamDma(System *system, const uint8_t page_num)
 {
     system->oam_dma_triggered = false;
     uint16_t base_addr = (page_num * 0x100);
     // Add cpu halt cycle
     SystemTick();
-    BusRead(addr);
+    BusRead(system->cpu_addr);
 
     bool single_dma_cycle = false;
     system->oam_dma_bytes_remaining = 256;
@@ -95,7 +95,7 @@ static void SystemStartOamDma(System *system, const uint8_t page_num, const uint
         if (system->cpu->cycles & 1)
         {
             SystemTick();
-            BusRead(addr);
+            BusRead(system->cpu_addr);
         }
 
         SystemTick();
@@ -122,13 +122,13 @@ static void SystemStartOamDma(System *system, const uint8_t page_num, const uint
     {
         // DMC DMA dummy cycle
         SystemTick();
-        BusRead(addr);
+        BusRead(system->cpu_addr);
 
         // DMC Dma Alignment cycle if needed
         if (system->cpu->cycles & 1)
         {
             SystemTick();
-            BusRead(addr);
+            BusRead(system->cpu_addr);
         }
 
         SystemTick();
@@ -143,11 +143,11 @@ static void SystemStartOamDma(System *system, const uint8_t page_num, const uint
     }
 }
 
-static void SystemStartDmcDma(System *system, const uint16_t addr)
+static void SystemStartDmcDma(System *system)
 {
     // Add cpu halt cycle
     SystemTick();
-    BusRead(addr);
+    BusRead(system->cpu_addr);
 
     if (ExplicitAbortDmcDma(system))
     {
@@ -157,13 +157,13 @@ static void SystemStartDmcDma(System *system, const uint16_t addr)
 
     // Add cpu dummy cycle
     SystemTick();
-    BusRead(addr);
+    BusRead(system->cpu_addr);
 
     // Alignment cycle if needed
     if (system->cpu->cycles & 1)
     {
         SystemTick();
-        BusRead(addr);
+        BusRead(system->cpu_addr);
     }
 
     SystemTick();
@@ -225,22 +225,27 @@ void SystemAddMemMapWrite(const uint16_t start_addr, const uint16_t end_addr, Me
     mem_map->op = op;
 }
 
+static void SystemHandleDMA(System *system)
+{
+    if (!system->dma_pending)
+        return;
+
+    if (system_ptr->dmc_dma_triggered && !system_ptr->oam_dma_triggered)
+    {
+        SystemStartDmcDma(system);
+    }
+    else if (system_ptr->oam_dma_triggered)
+    {
+        SystemStartOamDma(system_ptr, system_ptr->bus_data);
+    }
+
+    system_ptr->dma_pending = false;
+}
+
 uint8_t SystemRead(const uint16_t addr)
 {
     system_ptr->cpu_addr = addr;
-    if (system_ptr->dma_pending)
-    {
-        if (system_ptr->dmc_dma_triggered && !system_ptr->oam_dma_triggered)
-        {
-            SystemStartDmcDma(system_ptr, addr);
-        }
-        else if (system_ptr->oam_dma_triggered)
-        {
-            SystemStartOamDma(system_ptr, system_ptr->bus_data, addr);
-        }
-        system_ptr->dma_pending = false;
-    }
-
+    SystemHandleDMA(system_ptr);
     SystemTick();
     return BusRead(addr);
 }
