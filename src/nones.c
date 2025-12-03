@@ -59,6 +59,39 @@ static void NonesSetIntegerScale(Nones *nones, int scale)
     SDL_SetWindowPosition(nones->window,  SDL_WINDOWPOS_CENTERED,  SDL_WINDOWPOS_CENTERED);
 }
 
+static const int joystick_button_table[2][4] =
+{
+    { 2,  3,  4,  5  },
+    { 10, 11, 12, 13 }
+};
+
+static void NonesUpdateJoyStick(Nones *nones, SDL_Joystick *joystick, bool player2)
+{
+    const int16_t axis_x = SDL_GetJoystickAxis(joystick, SDL_GAMEPAD_AXIS_LEFTX);
+    const int16_t axis_y = SDL_GetJoystickAxis(joystick, SDL_GAMEPAD_AXIS_LEFTY);
+
+    if (axis_x || axis_y)
+    {
+        if (axis_y <= -16000)
+        {
+            nones->buttons[joystick_button_table[player2][0]] = true;
+        }
+        else if (axis_y >= 16000)
+        {
+            nones->buttons[joystick_button_table[player2][1]] = true;
+        }
+    
+        if (axis_x <= -16000)
+        {
+            nones->buttons[joystick_button_table[player2][2]] = true;
+        }
+        else if (axis_x >= 16000)
+        {
+            nones->buttons[joystick_button_table[player2][3]] = true;
+        }
+    }
+}
+
 static void NonesHandleInput(Nones *nones)
 {
     const bool *kb_state  = SDL_GetKeyboardState(NULL);
@@ -83,29 +116,7 @@ static void NonesHandleInput(Nones *nones)
         nones->buttons[6] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_START);
         nones->buttons[7] |= SDL_GetGamepadButton(nones->gamepad1, SDL_GAMEPAD_BUTTON_BACK);
 
-        int16_t axis_x = SDL_GetJoystickAxis(nones->joystick1, SDL_GAMEPAD_AXIS_LEFTX);
-        int16_t axis_y = SDL_GetJoystickAxis(nones->joystick1, SDL_GAMEPAD_AXIS_LEFTY);
-
-        if (axis_x || axis_y)
-        {
-            if (axis_y <= -16000)
-            {
-                nones->buttons[2] = true;
-            }
-            else if (axis_y >= 16000)
-            {
-                nones->buttons[3] = true;
-            }
-
-            if (axis_x <= -16000)
-            {
-                nones->buttons[4] = true;
-            }
-            else if (axis_x >= 16000)
-            {
-                nones->buttons[5] = true;
-            }
-        }
+        NonesUpdateJoyStick(nones, nones->joystick1, false);
     }
 
     if (nones->gamepad2)
@@ -119,29 +130,7 @@ static void NonesHandleInput(Nones *nones)
         nones->buttons[14] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_START);
         nones->buttons[15] = SDL_GetGamepadButton(nones->gamepad2, SDL_GAMEPAD_BUTTON_BACK);
 
-        int16_t axis_x = SDL_GetJoystickAxis(nones->joystick2, SDL_GAMEPAD_AXIS_LEFTX);
-        int16_t axis_y = SDL_GetJoystickAxis(nones->joystick2, SDL_GAMEPAD_AXIS_LEFTY);
-
-        if (axis_x || axis_y)
-        {
-            if (axis_y <= -16000)
-            {
-                nones->buttons[10] = true;
-            }
-            else if (axis_y >= 16000)
-            {
-                nones->buttons[11] = true;
-            }
-
-            if (axis_x <= -16000)
-            {
-                nones->buttons[12] = true;
-            }
-            else if (axis_x >= 16000)
-            {
-                nones->buttons[13] = true;
-            }
-        }
+        NonesUpdateJoyStick(nones, nones->joystick2, true);
     }
 
     SystemUpdateJPButtons(nones->system, nones->buttons);
@@ -314,6 +303,8 @@ void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const int sa
     uint64_t current_time = 0;
     uint64_t accumulator = 0;
 
+    float accum_delta = FRAME_TIME_NS;
+
     while (!nones->quit)
     {
         uint64_t start_time = SDL_GetTicksNS();
@@ -354,11 +345,11 @@ void NonesRun(Nones *nones, bool ppu_warmup, bool swap_duty_cycles, const int sa
 
         NonesHandleInput(nones);
 
-        while (accumulator >= FRAME_TIME_NS)
+        while (accumulator >= accum_delta)
         {
             SystemRun(nones->system, nones->debug_info);
 
-            accumulator -= FRAME_TIME_NS;
+            accumulator -= accum_delta;
             ++info.updates;
         }
 
