@@ -1921,8 +1921,10 @@ void CPU_Update(Cpu *cpu, bool debug_info)
 
 void CPU_Reset(Cpu *cpu)
 {
-    cpu->cycles = 0;
+    cpu->cycles = -1;
     cpu->pc = 0xFF;
+    // Dummy read
+    CpuRead8(cpu->pc);
     // Dummy read
     CpuRead8(cpu->pc);
     // Another dummy read
@@ -1936,7 +1938,7 @@ void CPU_Reset(Cpu *cpu)
     // Read the reset vector from 0xFFFC (little-endian)
     uint16_t reset_vector = CpuReadVector(RESET_VECTOR); 
     
-    printf("CPU Reset: Loading reset vector PC: 0x%04X\n", reset_vector);
+    printf("CPU Reset: Loading reset vector PC: 0x%04X PPU: cycles %d\n", reset_vector, SystemGetPpu()->cycle_counter);
 
     // Set PC to the reset vector address
     cpu->pc = reset_vector;

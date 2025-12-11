@@ -51,7 +51,7 @@ typedef union
 typedef struct
 {
     char debug_msg[128];
-    uint64_t cycles;
+    int64_t cycles;
     uint16_t pc;
     uint8_t a;
     uint8_t x;

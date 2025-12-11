@@ -448,6 +448,7 @@ void WritePPURegister(Ppu *ppu, const uint16_t addr, const uint8_t data)
             break;
         case PPU_MASK:
             ppu->mask.raw = data;
+            //printf("PPU Mask set at scanline: %d cycle: %d frame: %lu cpu cycles: %ld\n", ppu->scanline, ppu->cycle_counter, ppu->frames, SystemGetCpu()->cycles);
             break;
         case OAM_ADDR:
             ppu->oam1_addr = data;
@@ -724,20 +725,18 @@ static void PpuRender(Ppu *ppu, int scanline)
             ppu->attrib_data = (attrib_data >> shift) & 0x3;
             break;
         }
-        case 4:
-        {
+        case 3:
             // Get pattern table address for this tile
             ppu->bg_addr = bank + (ppu->tile_id << 4) + ppu->v.scrolling.fine_y;
+            break;
+        case 4:
             // Bitplane 0
             ppu->bg_lsb = PpuReadChr(ppu, ppu->bg_addr);
             break;
-        }
         case 6:
-        {
             // Bitplane 1
             ppu->bg_msb = PpuReadChr(ppu, ppu->bg_addr + 8);
             break;
-        }
         case 7:
         {
             if (ppu->rendering)
