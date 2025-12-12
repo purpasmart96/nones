@@ -966,6 +966,7 @@ void PPU_Tick(Ppu *ppu)
         }
     }
 
+    PpuUpdateRenderingState(ppu);
     PpuCycleUpdate(ppu);
 }
 

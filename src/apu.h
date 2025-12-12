@@ -245,7 +245,6 @@ typedef struct
     ApuFrameCounter frame_counter;
     ApuStatus status;
 
-    uint64_t cycles;
     int alignment;
     bool clear_frame_irq;
     bool swap_duty_cycles;
@@ -303,7 +302,7 @@ void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
 void ApuDmcDmaUpdate(Apu *apu);
 void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_rate);
-void APU_Tick(Apu *apu);
+void APU_Tick(Apu *apu, bool put_cycle);
 void APU_Reset(Apu *apu);
 void APU_Shutdown(Apu *apu);
 

@@ -754,7 +754,7 @@ static void ApuPutClock(Apu *apu)
     }
 }
 
-void APU_Tick(Apu *apu)
+void APU_Tick(Apu *apu, bool put_cycle)
 {
     SequenceStep step = sequence_table[apu->frame_counter.control.seq_mode][apu->frame_counter.step];
 
@@ -790,7 +790,7 @@ void APU_Tick(Apu *apu)
 
     ApuClockTriangle(apu);
 
-    if (!((apu->cycles & 1) + apu->alignment))
+    if (!put_cycle)
     {
         ApuGetClock(apu);
     }
@@ -801,7 +801,6 @@ void APU_Tick(Apu *apu)
 
     apu->frame_counter.timer %= apu->frame_counter.reload;
     ++apu->frame_counter.timer;
-    ++apu->cycles;
 }
 
 void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_rate)
@@ -847,7 +846,6 @@ void APU_Reset(Apu *apu)
 {
     ApuWriteStatus(apu, 0x0);
     ApuResetFrameCounter(apu);
-    apu->cycles = 0;
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;

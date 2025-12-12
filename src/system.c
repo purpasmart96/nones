@@ -230,16 +230,16 @@ static void SystemHandleDMA(System *system)
     if (!system->dma_pending)
         return;
 
-    if (system_ptr->dmc_dma_triggered && !system_ptr->oam_dma_triggered)
+    if (system->dmc_dma_triggered && !system->oam_dma_triggered)
     {
         SystemStartDmcDma(system);
     }
-    else if (system_ptr->oam_dma_triggered)
+    else if (system->oam_dma_triggered)
     {
-        SystemStartOamDma(system_ptr, system_ptr->bus_data);
+        SystemStartOamDma(system, system->bus_data);
     }
 
-    system_ptr->dma_pending = false;
+    system->dma_pending = false;
 }
 
 uint8_t SystemRead(const uint16_t addr)
@@ -483,13 +483,12 @@ static void SystemPollNmi(System *system)
 
 void SystemTick(void)
 {
-    APU_Tick(system_ptr->apu);
+    APU_Tick(system_ptr->apu, system_ptr->cpu->cycles & 1);
 
     PPU_Tick(system_ptr->ppu);
     SystemPollNmi(system_ptr);
     PPU_Tick(system_ptr->ppu);
     PPU_Tick(system_ptr->ppu);
-    PpuUpdateRenderingState(system_ptr->ppu);
 }
 
 void SystemAddCpuCycles(uint32_t cycles)
