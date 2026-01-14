@@ -6,6 +6,7 @@
 
 #include "arena.h"
 #include "cart.h"
+#include "ppu.h"
 #include "mapper.h"
 
 static void CartLoadSram(Cart *cart)

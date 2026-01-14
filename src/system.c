@@ -423,12 +423,12 @@ void PpuClockMMC3(void)
     Mmc3ClockIrqCounter(system_ptr->cart);
 }
 
-void PpuClockMMC5(const uint16_t addr)
+uint8_t ExtNameTableRead(Ppu *ppu, const uint16_t addr, const bool tile_fetch)
 {
     if (system_ptr->cart->mapper_num != MAPPER_MMC5)
-        return;
+        return PpuNametableRead(ppu, addr);
 
-    Mmc5ClockIrqCounter(system_ptr->cart, addr);
+    return Mmc5ReadNameTable(ppu, addr, tile_fetch);
 }
 
 void SystemUpdateState(System *system, SystemState state)

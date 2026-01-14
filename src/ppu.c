@@ -179,7 +179,6 @@ static void PpuUpdateBus(Ppu *ppu, const uint16_t addr)
 static uint8_t PpuReadChr(Ppu *ppu, const uint16_t addr)
 {
     PpuUpdateBus(ppu, addr);
-    mmc5.prev_addr = addr;
     return PpuBusReadChrRom(addr);
 }
 
@@ -217,9 +216,8 @@ static void PpuNametableWrite(Ppu *ppu, uint16_t addr, uint8_t data)
     nametables[ppu->v.scrolling.name_table_sel][addr & 0x3FF] = data;
 }
 
-static uint8_t PpuNametableRead(Ppu *ppu, uint16_t addr)
+uint8_t PpuNametableRead(Ppu *ppu, uint16_t addr)
 {
-    PpuClockMMC5(addr);
     return nametables[ppu->v.scrolling.name_table_sel][addr & 0x3FF];
 }
 
@@ -374,11 +372,11 @@ uint8_t PPU_ReadData(Ppu *ppu)
             {
                 // Return stale buffer value
                 data = ppu->buffered_data;
-                ppu->buffered_data = PpuNametableRead(ppu, addr);
+                ppu->buffered_data = ExtNameTableRead(ppu, addr, true);
             }
             else
             {
-                ppu->buffered_data = PpuNametableRead(ppu, addr);
+                ppu->buffered_data = ExtNameTableRead(ppu, addr, true);
                 data = (ppu->palettes[addr & 0x1F] & 0x3F) | (ppu->io_bus & 0xC0);
             }
             break;
@@ -713,14 +711,14 @@ static void PpuRender(Ppu *ppu, int scanline)
         {
             PpuFetchShifters(ppu);
             // TODO: should set the ppu bus addr here
-            ppu->tile_id = PpuNametableRead(ppu, (0x2000 | (ppu->v.raw & 0x0FFF)));
+            ppu->tile_id = ExtNameTableRead(ppu, (0x2000 | (ppu->v.raw & 0x0FFF)), true);
             break;
         }
         case 2:
         {
             // TODO: should set the ppu bus addr here
             const uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-            uint8_t attrib_data = PpuNametableRead(ppu, attrib_addr);
+            uint8_t attrib_data = ExtNameTableRead(ppu, attrib_addr, false);
             uint8_t shift = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
             ppu->attrib_data = (attrib_data >> shift) & 0x3;
             break;
@@ -801,12 +799,12 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
     {
         case 1:
         {
-            PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+            ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), true);
             break;
         }
         case 3:
         {
-            PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+            ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), false);
             ppu->fifo[sprite_num].attribs = curr_sprite->attribs;
             ppu->fifo[sprite_num].x = curr_sprite->x;
             break;
@@ -913,7 +911,7 @@ void PPU_Tick(Ppu *ppu)
 
             if (ppu->cycle_counter == 337 || ppu->cycle_counter == 339)
             {
-                uint8_t nt_fetch = PpuNametableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF));
+                uint8_t nt_fetch = ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), true);
                 if (ppu->cycle_counter == 337)
                     ppu->tile_id = nt_fetch;
                 if (ppu->cycle_counter == 339 && ppu->frames & 1 && ppu->scanline == 261)

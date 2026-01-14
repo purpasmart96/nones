@@ -242,7 +242,7 @@ typedef union
 typedef struct
 {
     uint8_t ext_ram[0x400];
-    uint8_t chr_select[12];
+    uint8_t chr_bank[12];
     Mmc5PrgBankReg prg_bank[5];
     Mmc5PrgRamReg prg_ram[3];
     uint16_t prev_addr;
@@ -251,7 +251,9 @@ typedef struct
     uint8_t target_scanline;
     uint8_t scanline;
     uint8_t matches;
+    uint8_t fillmode_tile;
     bool ppu_reading;
+    uint8_t fillmode_color : 2;
     uint8_t ext_ram_mode : 2;
     // 1,2,3: Substitutions enabled; 0: substitutions disabled
     uint8_t sub_mode : 2;
@@ -269,7 +271,7 @@ typedef struct
     uint8_t chr_mode : 2;
     uint8_t chr_high : 2;
     uint8_t sprite_mode : 1;
-    uint8_t irq_enable : 1; 
+    uint8_t irq_enable : 1;
 } Mmc5;
 
 typedef struct
@@ -441,7 +443,7 @@ void MapperWriteChrRam(Cart *cart, const uint16_t addr, const uint8_t data);
 void MapperWriteReg(Cart *cart, const uint16_t addr, uint8_t data);
 
 void Mmc3ClockIrqCounter(Cart *cart);
-void Mmc5ClockIrqCounter(Cart *cart, uint16_t addr);
+uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr, const bool tile_fetch);
 bool PollMapperIrq(void);
 void MapperReset(Cart *cart);
 void MapperInit(Cart *cart);
