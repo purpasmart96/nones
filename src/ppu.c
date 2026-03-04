@@ -691,13 +691,13 @@ static inline void PpuFetchShifters(Ppu *ppu)
     const bool latch_low = ppu->attrib_data & 1;
     const bool latch_high = (ppu->attrib_data >> 1) & 1;
 
-    ppu->attrib_shift_low.low = latch_low ? 0xFF : 0x00;
-    ppu->attrib_shift_high.low = latch_high ? 0xFF : 0x00;
+    ppu->attrib_shift_low.low = latch_low * 0xFF;
+    ppu->attrib_shift_high.low = latch_high * 0xFF;
 }
 
 static void PpuRender(Ppu *ppu, int scanline)
 {
-    const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
+    const uint16_t bank = ppu->ctrl.bg_pat_table_addr * 0x1000;
 
     // The effective x positon is the current cycle - 1, since cycle 0 is a dummy cycle
     const int xpos = ppu->cycle_counter - 1;
@@ -775,15 +775,15 @@ static uint16_t PpuGetSpriteAddr(Ppu *ppu, Sprite *curr_sprite)
 
     if (ppu->ctrl.sprite_size)
     {
-        int bank = (curr_sprite->tile_id & 1) ? 0x1000 : 0x0;
+        int bank = (curr_sprite->tile_id & 1) * 0x1000;
         int tile_id = curr_sprite->tile_id & 0xFE;
-        int tile_part = (y_offset < 8) ^ !flip_vert;
+        const bool tile_offset = (y_offset < 8) ^ !flip_vert;
 
-        return (bank + (tile_id + (tile_part)) * 16) | tile_row;
+        return (bank + (tile_id + tile_offset) * 16) | tile_row;
     }
     else
     {
-        int bank = ppu->ctrl.sprite_pat_table_addr ? 0x1000 : 0x0;
+        int bank = ppu->ctrl.sprite_pat_table_addr * 0x1000;
         return (bank + (curr_sprite->tile_id * 16)) | tile_row;
     }
 

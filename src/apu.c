@@ -612,6 +612,10 @@ uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data)
 
 static void ApuClockTimers(Apu *apu)
 {
+    apu->pulse1.output = 0;
+    apu->pulse2.output = 0;
+    apu->noise.output = 0;
+
     if (apu->pulse1.timer.raw > 0)
         --apu->pulse1.timer.raw;
     else
@@ -620,30 +624,12 @@ static void ApuClockTimers(Apu *apu)
         apu->pulse1.duty_step = (apu->pulse1.duty_step - 1) & 7;
     }
 
-    if (!apu->pulse1.length_counter || apu->pulse1.muting)
-    {
-        apu->pulse1.output = 0;
-    }
-    else
-    {
-        apu->pulse1.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse1.reg.duty][apu->pulse1.duty_step];
-    }
-
     if (apu->pulse2.timer.raw > 0)
         --apu->pulse2.timer.raw;
     else
     {
         apu->pulse2.timer.raw = apu->pulse2.timer_period.raw;
         apu->pulse2.duty_step = (apu->pulse2.duty_step - 1) & 7;
-    }
-
-    if (!apu->pulse2.length_counter || apu->pulse2.muting)
-    {
-        apu->pulse2.output = 0;
-    }
-    else
-    {
-        apu->pulse2.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse2.reg.duty][apu->pulse2.duty_step];
     }
 
     if (apu->noise.timer.raw > 0)
@@ -665,11 +651,17 @@ static void ApuClockTimers(Apu *apu)
         apu->noise.shift_reg.bit14 = feedback;
     }
 
-    if (apu->noise.length_counter == 0 || apu->noise.shift_reg.bit0)
+    if (apu->pulse1.length_counter && !apu->pulse1.muting)
     {
-        apu->noise.output = 0;
+        apu->pulse1.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse1.reg.duty][apu->pulse1.duty_step];
     }
-    else
+
+    if (apu->pulse2.length_counter && !apu->pulse2.muting)
+    {
+        apu->pulse2.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse2.reg.duty][apu->pulse2.duty_step];
+    }
+
+    if (apu->noise.length_counter && !apu->noise.shift_reg.bit0)
     {
         apu->noise.output = apu->noise.volume;
     }
@@ -820,8 +812,8 @@ void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_ra
     apu->mixer.input_buffer = ArenaPush(arena, apu->mixer.input_size);
     apu->mixer.output_buffer = ArenaPush(arena, apu->mixer.output_size);
     //const float max_cutoff = apu->mixer.sample_rate * soxr_sample_ratio * 0.45;
-    apu->mixer.lpf_alpha = ComputeFilterAlpha(APU_FREQ, 14000);
-    apu->mixer.hpf_alpha = ComputeFilterAlpha(APU_FREQ, 37);
+    apu->mixer.lpf_alpha = ComputeFilterAlpha(APU_FREQ, LPF_CUTOFF);
+    apu->mixer.hpf_alpha = ComputeFilterAlpha(APU_FREQ, HPF_CUTOFF);
 
     apu->noise.shift_reg.raw = 1;
     apu->dmc.sample_length = 1;
@@ -850,4 +842,3 @@ void APU_Reset(Apu *apu)
     apu->dmc.sample_length = 1;
     apu->dmc.empty = true;
 }
-
