@@ -309,7 +309,7 @@ static inline void ShiftOneRight(Cpu *cpu, uint8_t *operand)
 {
     // Store bit 0 in carry before shifting
     cpu->status.c = *operand & 1;
-    // Shift all bits left by one position
+    // Shift all bits right by one position
     *operand >>= 1;
     // Clear N flag 
     cpu->status.n = 0;
@@ -324,7 +324,7 @@ static inline uint8_t ShiftOneRightFromMem(Cpu *cpu, const uint16_t operand_addr
     CpuWrite8(operand_addr, operand);
     // Store bit 0 in carry before shifting
     cpu->status.c = operand & 1;
-    // Shift all bits left by one position
+    // Shift all bits right by one position
     operand >>= 1;
     // IRQ polling before last cycle
     CpuPollIRQ(cpu);
@@ -396,10 +396,11 @@ static inline void BranchHandler(Cpu *cpu, const bool flag_cmp)
         bool page_cross = PageCross(cpu->pc, final_addr);
         if (page_cross)
         {
-            // Opcode of next instruction
-            CpuRead8(cpu->pc);
+            // Dummy read 1
+            CpuRead8(final_addr + PAGE_SIZE);
             CpuPollIRQ(cpu);
-            CpuRead8(final_addr - PAGE_SIZE);
+            // Dummy read 2
+            CpuRead8(final_addr);
         }
         else
         {
