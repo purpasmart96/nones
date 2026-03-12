@@ -174,6 +174,35 @@ typedef union
 
 } PpuAddrReg;
 
+typedef enum
+{
+    PICTURE_MODE_BG,
+    PICTURE_MODE_SPRITES_8x8,
+    PICTURE_MODE_SPRITES_8x16
+} PictureAddrMode;
+
+typedef union
+{
+    uint16_t raw;
+
+    struct
+    {
+        uint16_t line : 3;
+        // Toggle high or low bitplane;
+        uint16_t bitplane : 1;
+        uint16_t tile_index : 8;
+        uint16_t bank : 1;
+    };
+
+    struct
+    {
+        uint16_t : 4;
+        uint16_t tile_index_bit0 : 1;
+        uint16_t tile_index : 7;
+    } ext_sprite;
+
+} PictureAddrReg;
+
 typedef union
 {
     uint16_t raw;
@@ -243,6 +272,7 @@ typedef struct
 
     // PPU internel regs
     struct {
+        PictureAddrReg par;
         // vram addr or scroll position
         PpuAddrReg v;
         // When rendering, the coarse-x scroll for the next scanline and the starting y scroll for the screen.
@@ -271,8 +301,6 @@ typedef struct
 
     uint16_t copy_t_delay;
     uint16_t delayed_vram_inc;
-    uint16_t sprite_addr;
-    uint16_t bg_addr;
 
     // Per scanline
     int found_sprites;

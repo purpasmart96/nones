@@ -567,9 +567,9 @@ static void PpuResetOAM2(Ppu *ppu)
     ppu->sprite_in_range = false;
 }
 
-static void PpuSpriteRangeCheck(Ppu *ppu)
+static void PpuSpriteRangeCheck(Ppu *ppu, const uint8_t sprite_byte)
 {
-    const int y_offset = ((uint8_t)ppu->scanline - ppu->oam_buffer);
+    const int y_offset = ((uint8_t)ppu->scanline - sprite_byte);
     ppu->sprite_in_range = y_offset >= 0 && y_offset < (ppu->ctrl.sprite_size ? 16 : 8);
     ppu->sprite_y_offset = y_offset & 0xF;
 }
@@ -582,7 +582,7 @@ static void PpuSpritesEval(Ppu *ppu)
     }
     else
     {
-        PpuSpriteRangeCheck(ppu);
+        PpuSpriteRangeCheck(ppu, ppu->oam_buffer);
         if (ppu->sprite_eval.done || ppu->sprite_eval.oam2_overflow)
         {
             ppu->oam_buffer = ppu->oam2[ppu->oam2_addr >> 2].raw[ppu->oam2_addr & 3];
@@ -617,6 +617,47 @@ static void PpuSpritesEval(Ppu *ppu)
             ppu->sprite_eval.done |= ppu->oam1_addr > 251;
             ppu->oam1_addr += 4;
             ppu->oam1_addr &= 0xFC;
+        }
+    }
+}
+
+static void PpuUpdatePAR(Ppu *ppu, PictureAddrMode mode, Sprite *curr_sprite)
+{
+    switch (mode)
+    {
+        case PICTURE_MODE_BG:
+        {
+            ppu->par.line = ppu->v.scrolling.fine_y;
+            ppu->par.bitplane = 0;
+            ppu->par.tile_index = ppu->tile_id;
+            ppu->par.bank = ppu->ctrl.bg_pat_table_addr;
+            break;
+        }
+
+        case PICTURE_MODE_SPRITES_8x8:
+        {
+            PpuSpriteRangeCheck(ppu, curr_sprite->y);
+            const int y_offset = ppu->sprite_y_offset;
+
+            ppu->par.line = (curr_sprite->attribs.vert_flip ? ~y_offset : y_offset) & 7;
+            ppu->par.bitplane = 0;
+            ppu->par.tile_index = curr_sprite->tile_id;
+            ppu->par.bank = ppu->ctrl.sprite_pat_table_addr;
+            break;
+        }
+
+        case PICTURE_MODE_SPRITES_8x16:
+        {
+            PpuSpriteRangeCheck(ppu, curr_sprite->y);
+            const int y_offset = ppu->sprite_y_offset;
+            uint8_t output = (curr_sprite->attribs.vert_flip ? ~y_offset : y_offset);
+
+            ppu->par.line = output & 7;
+            ppu->par.bitplane = 0;
+            ppu->par.ext_sprite.tile_index_bit0 = output >> 3;
+            ppu->par.ext_sprite.tile_index = curr_sprite->tile_id >> 1;
+            ppu->par.bank = curr_sprite->tile_id & 1;
+            break;
         }
     }
 }
@@ -697,8 +738,6 @@ static inline void PpuFetchShifters(Ppu *ppu)
 
 static void PpuRender(Ppu *ppu, int scanline)
 {
-    const uint16_t bank = ppu->ctrl.bg_pat_table_addr * 0x1000;
-
     // The effective x positon is the current cycle - 1, since cycle 0 is a dummy cycle
     const int xpos = ppu->cycle_counter - 1;
 
@@ -714,7 +753,14 @@ static void PpuRender(Ppu *ppu, int scanline)
             ppu->tile_id = ExtNameTableRead(ppu, (0x2000 | (ppu->v.raw & 0x0FFF)), true);
             break;
         }
-        case 2:
+
+        case 1:
+        {
+            PpuUpdatePAR(ppu, PICTURE_MODE_BG, NULL);
+            break;
+        }
+
+        case 3:
         {
             // TODO: should set the ppu bus addr here
             const uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
@@ -723,20 +769,19 @@ static void PpuRender(Ppu *ppu, int scanline)
             ppu->attrib_data = (attrib_data >> shift) & 0x3;
             break;
         }
-        case 3:
-            // Get pattern table address for this tile
-            ppu->bg_addr = bank + (ppu->tile_id << 4) + ppu->v.scrolling.fine_y;
-            break;
-        case 4:
+
+        case 5:
+        {
             // Bitplane 0
-            ppu->bg_lsb = PpuReadChr(ppu, ppu->bg_addr);
+            ppu->bg_lsb = PpuReadChr(ppu, ppu->par.raw);
             break;
-        case 6:
-            // Bitplane 1
-            ppu->bg_msb = PpuReadChr(ppu, ppu->bg_addr + 8);
-            break;
+        }
+
         case 7:
         {
+            ppu->par.bitplane = 1;
+            // Bitplane 1
+            ppu->bg_msb = PpuReadChr(ppu, ppu->par.raw);
             if (ppu->rendering)
                 PpuIncrementScrollX(ppu);
             break;
@@ -765,31 +810,6 @@ static void PpuRender(Ppu *ppu, int scanline)
     }
 }
 
-static uint16_t PpuGetSpriteAddr(Ppu *ppu, Sprite *curr_sprite)
-{
-    const int y_offset = ((uint8_t)ppu->scanline - curr_sprite->y);
-    ppu->sprite_in_range = y_offset >= 0 && (y_offset < (ppu->ctrl.sprite_size ? 16 : 8));
-
-    const bool flip_vert = curr_sprite->attribs.vert_flip;
-    const uint8_t tile_row = (flip_vert ? 7 - y_offset : y_offset) & 7;
-
-    if (ppu->ctrl.sprite_size)
-    {
-        int bank = (curr_sprite->tile_id & 1) * 0x1000;
-        int tile_id = curr_sprite->tile_id & 0xFE;
-        const bool tile_offset = (y_offset < 8) ^ !flip_vert;
-
-        return (bank + (tile_id + tile_offset) * 16) | tile_row;
-    }
-    else
-    {
-        int bank = ppu->ctrl.sprite_pat_table_addr * 0x1000;
-        return (bank + (curr_sprite->tile_id * 16)) | tile_row;
-    }
-
-    ppu->sprite_y_offset = y_offset & 0xF;
-}
-
 static void PpuFetchSprite(Ppu *ppu, int sprite_num)
 {
     Sprite *curr_sprite = &ppu->oam2[sprite_num];
@@ -802,6 +822,11 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
             ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), true);
             break;
         }
+        case 2:
+        {
+            PpuUpdatePAR(ppu, PICTURE_MODE_SPRITES_8x8 + ppu->ctrl.sprite_size, curr_sprite);
+            break;
+        }
         case 3:
         {
             ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), false);
@@ -812,14 +837,14 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
         case 5:
         {
             // Bitplane 0
-            ppu->sprite_addr = PpuGetSpriteAddr(ppu, curr_sprite);
-            ppu->fifo[sprite_num].shift.low = PpuReadChr(ppu, ppu->sprite_addr) * ppu->sprite_in_range;
+            ppu->fifo[sprite_num].shift.low = PpuReadChr(ppu, ppu->par.raw) * ppu->sprite_in_range;
             break;
         }
         case 7:
         {
             // Bitplane 1
-            ppu->fifo[sprite_num].shift.high = PpuReadChr(ppu, ppu->sprite_addr + 8) * ppu->sprite_in_range;
+            ppu->par.bitplane = 1;
+            ppu->fifo[sprite_num].shift.high = PpuReadChr(ppu, ppu->par.raw) * ppu->sprite_in_range;
             break;
         }
     }
@@ -857,8 +882,8 @@ void PPU_Tick(Ppu *ppu)
         if (ppu->skipped_cycle)
         {
             PpuCycleUpdate(ppu);
-            const uint16_t bank = ppu->ctrl.bg_pat_table_addr ? 0x1000 : 0;
-            PpuUpdateBus(ppu, bank + (ppu->tile_id << 4) + ppu->v.scrolling.fine_y);
+            PpuUpdatePAR(ppu, PICTURE_MODE_BG, NULL);
+            PpuUpdateBus(ppu, ppu->par.raw);
             ppu->skipped_cycle = false;
         }
 
