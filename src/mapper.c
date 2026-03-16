@@ -1136,6 +1136,7 @@ void Mmc3ClockIrqCounter(Cart *cart)
 
     if (!mmc3.irq_counter && mmc3.irq_enable)
     {
+        //printf("MMC3 IRQ pending on Line: %d Cycle: %d\n", SystemGetPpu()->scanline, SystemGetPpu()->cycle_counter);
         mmc3.irq_pending = true;
     }
 

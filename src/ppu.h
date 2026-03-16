@@ -262,6 +262,7 @@ typedef struct
     uint64_t frames;
     int32_t cycle_counter;
     int scanline;
+    int a12_low_count;
     uint32_t bus_addr;
 
     // Double buffer for SDL

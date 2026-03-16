@@ -168,11 +168,21 @@ static void PpuUpdateBus(Ppu *ppu, const uint16_t addr)
 {
     uint8_t prev_a12 = (ppu->bus_addr >> 12) & 1;
     uint8_t new_a12 = (addr >> 12) & 1;
+
     if (~prev_a12 & new_a12)
     {
-        //printf("New addr: 0x%X Bus Addr: 0x%X PPU A12: %d scanline:%d cycle: %d\n", addr, ppu->bus_addr, new_a12, ppu->scanline, ppu->cycle_counter);
-        PpuClockMMC3();
+        if (ppu->a12_low_count > 3)
+        {
+            //printf("Bus Addr: 0x%X -> 0x%X PPU A12: %d scanline:%d cycle: %d\n", ppu->bus_addr, addr, new_a12, ppu->scanline, ppu->cycle_counter);
+            PpuClockMMC3();
+        }
+        ppu->a12_low_count = 0;
     }
+    else
+    {
+        ++ppu->a12_low_count;
+    }
+
     ppu->bus_addr = addr;
 }
 
@@ -209,6 +219,16 @@ void PPU_WriteAddrReg(Ppu *ppu, const uint8_t value)
         ppu->copy_t = true;
     }
     ppu->w = !ppu->w;
+}
+
+static uint16_t PpuGetAttribAddr(Ppu *ppu)
+{
+    return 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
+}
+
+static uint16_t PpuGetNTAddr(Ppu *ppu)
+{
+    return 0x2000 | (ppu->v.raw & 0x0FFF);
 }
 
 static void PpuNametableWrite(Ppu *ppu, uint16_t addr, uint8_t data)
@@ -361,13 +381,14 @@ uint8_t PPU_ReadData(Ppu *ppu)
             // Grab the stale buffer value
             data = ppu->buffered_data;
             // Load new data into buffer
-            ppu->buffered_data = PpuBusReadChrRom(addr);
+            ppu->buffered_data = PpuReadChr(ppu, addr);
             break;
         }
 
         case 2:
         case 3:
         {
+            PpuUpdateBus(ppu, addr);
             if (addr < 0x3F00)
             {
                 // Return stale buffer value
@@ -639,7 +660,7 @@ static void PpuUpdatePAR(Ppu *ppu, PictureAddrMode mode, Sprite *curr_sprite)
             PpuSpriteRangeCheck(ppu, curr_sprite->y);
             const int y_offset = ppu->sprite_y_offset;
 
-            ppu->par.line = (curr_sprite->attribs.vert_flip ? ~y_offset : y_offset) & 7;
+            ppu->par.line = (curr_sprite->attribs.vert_flip ? ~y_offset : y_offset);
             ppu->par.bitplane = 0;
             ppu->par.tile_index = curr_sprite->tile_id;
             ppu->par.bank = ppu->ctrl.sprite_pat_table_addr;
@@ -652,11 +673,11 @@ static void PpuUpdatePAR(Ppu *ppu, PictureAddrMode mode, Sprite *curr_sprite)
             const int y_offset = ppu->sprite_y_offset;
             uint8_t output = (curr_sprite->attribs.vert_flip ? ~y_offset : y_offset);
 
-            ppu->par.line = output & 7;
+            ppu->par.line = output;
             ppu->par.bitplane = 0;
             ppu->par.ext_sprite.tile_index_bit0 = output >> 3;
             ppu->par.ext_sprite.tile_index = curr_sprite->tile_id >> 1;
-            ppu->par.bank = curr_sprite->tile_id & 1;
+            ppu->par.bank = curr_sprite->tile_id;
             break;
         }
     }
@@ -749,22 +770,26 @@ static void PpuRender(Ppu *ppu, int scanline)
         case 0:
         {
             PpuFetchShifters(ppu);
-            // TODO: should set the ppu bus addr here
-            ppu->tile_id = ExtNameTableRead(ppu, (0x2000 | (ppu->v.raw & 0x0FFF)), true);
+            PpuUpdateBus(ppu, PpuGetNTAddr(ppu));
             break;
         }
 
         case 1:
         {
+            ppu->tile_id = ExtNameTableRead(ppu, ppu->bus_addr, true);
+            break;
+        }
+
+        case 2:
+        {
             PpuUpdatePAR(ppu, PICTURE_MODE_BG, NULL);
+            PpuUpdateBus(ppu, PpuGetAttribAddr(ppu));
             break;
         }
 
         case 3:
         {
-            // TODO: should set the ppu bus addr here
-            const uint16_t attrib_addr = 0x23C0 | (ppu->v.raw & 0x0C00) | ((ppu->v.raw >> 4) & 0x38) | ((ppu->v.raw >> 2) & 0x07);
-            uint8_t attrib_data = ExtNameTableRead(ppu, attrib_addr, false);
+            uint8_t attrib_data = ExtNameTableRead(ppu, ppu->bus_addr, false);
             uint8_t shift = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
             ppu->attrib_data = (attrib_data >> shift) & 0x3;
             break;
@@ -817,19 +842,25 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
 
     switch (effective_cycle & 7)
     {
+        case 0:
+        {
+            PpuUpdateBus(ppu, PpuGetNTAddr(ppu));
+            break;
+        }
         case 1:
         {
-            ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), true);
+            ppu->tile_id = ExtNameTableRead(ppu, ppu->bus_addr, true);
             break;
         }
         case 2:
         {
             PpuUpdatePAR(ppu, PICTURE_MODE_SPRITES_8x8 + ppu->ctrl.sprite_size, curr_sprite);
+            PpuUpdateBus(ppu, PpuGetNTAddr(ppu));
             break;
         }
         case 3:
         {
-            ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), false);
+            ExtNameTableRead(ppu, ppu->bus_addr, true);
             ppu->fifo[sprite_num].attribs = curr_sprite->attribs;
             ppu->fifo[sprite_num].x = curr_sprite->x;
             break;
@@ -879,13 +910,13 @@ void PPU_Tick(Ppu *ppu)
 {
     if (ppu->scanline < 240 || ppu->scanline == 261)
     {
-        if (ppu->skipped_cycle)
+        if (!ppu->cycle_counter && !ppu->skipped_cycle)
         {
-            PpuCycleUpdate(ppu);
             PpuUpdatePAR(ppu, PICTURE_MODE_BG, NULL);
             PpuUpdateBus(ppu, ppu->par.raw);
-            ppu->skipped_cycle = false;
         }
+
+        ppu->skipped_cycle = false;
 
         if (ppu->cycle_counter && (ppu->cycle_counter <= 257 || (ppu->cycle_counter >= 321 && ppu->cycle_counter <= 336)))
             PpuRender(ppu, ppu->scanline);
@@ -936,11 +967,15 @@ void PPU_Tick(Ppu *ppu)
 
             if (ppu->cycle_counter == 337 || ppu->cycle_counter == 339)
             {
-                uint8_t nt_fetch = ExtNameTableRead(ppu, 0x2000 | (ppu->v.raw & 0x0FFF), true);
+                PpuUpdateBus(ppu, PpuGetNTAddr(ppu));
+                uint8_t nt_fetch = ExtNameTableRead(ppu, ppu->bus_addr, true);
                 if (ppu->cycle_counter == 337)
                     ppu->tile_id = nt_fetch;
                 if (ppu->cycle_counter == 339 && ppu->frames & 1 && ppu->scanline == 261)
+                {
+                    ++ppu->cycle_counter;
                     ppu->skipped_cycle = true;
+                }
             }
         }
     }
