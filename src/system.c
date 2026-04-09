@@ -252,34 +252,35 @@ uint8_t SystemRead(const uint16_t addr)
 
 uint8_t BusRead(const uint16_t addr)
 {
-    ++system_ptr->cpu->cycles;
+    System *system = system_ptr;
+    ++system->cpu->cycles;
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
 
-    if (ApuRegsActivated(system_ptr))
+    if (ApuRegsActivated(system))
     {
         uint8_t val = addr & 0x1F;
         if (val == 0x15)
         {
-            return ApuReadStatus(system_ptr->apu, system_ptr->bus_data);
+            return ApuReadStatus(system->apu, system->bus_data);
         }
         else if (val == 0x16)
         {
             // Clear bits 0–4
-            system_ptr->bus_data &= 0xE0;
+            system->bus_data &= 0xE0;
             // Update bits 0–4
-            system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad1) & 0x1F);
+            system->bus_data |= (ReadJoyPadReg(system->joy_pad1) & 0x1F);
         }
         else if (val == 0x17)
         {
             // Clear bits 0–4
-            system_ptr->bus_data &= 0xE0;
+            system->bus_data &= 0xE0;
             // Update bits 0–4
-            system_ptr->bus_data |= (ReadJoyPadReg(system_ptr->joy_pad2) & 0x1F);
+            system->bus_data |= (ReadJoyPadReg(system->joy_pad2) & 0x1F);
         }
         else if (addr >= 0x4000 && addr < 0x6000)
         {
-            DEBUG_LOG("Open bus read! addr: 0x%04X bus: %X\n", addr, system_ptr->bus_data);
+            DEBUG_LOG("Open bus read! addr: 0x%04X bus: %X\n", addr, system->bus_data);
         }
     }
 
@@ -287,22 +288,22 @@ uint8_t BusRead(const uint16_t addr)
     {
         // $0000 - $1FFF
         case 0x0:
-            system_ptr->bus_data = SystemRamRead(system_ptr, addr);
+            system->bus_data = SystemRamRead(system, addr);
             break;
 
         // $2000 - $3FFF
         case 0x1:
-            system_ptr->bus_data = ReadPPURegister(system_ptr->ppu, addr);
+            system->bus_data = ReadPPURegister(system->ppu, addr);
             break;
         default:
         {
-            for (int i = 0; i < system_ptr->mem_maps_r; i++)
+            for (int i = 0; i < system->mem_maps_r; i++)
             {
-                MemMap *mem_map = &system_ptr->mem_map_r[i];
+                MemMap *mem_map = &system->mem_map_r[i];
             
                 if (addr >= mem_map->start_addr && addr <= mem_map->end_addr)
                 {
-                    system_ptr->bus_data = SystemMemMappedRead(system_ptr, mem_map->op, addr);
+                    system->bus_data = SystemMemMappedRead(system, mem_map->op, addr);
                 }
             }
             break;
@@ -310,7 +311,7 @@ uint8_t BusRead(const uint16_t addr)
     }
 
     // Finally read the data from the bus
-    return system_ptr->bus_data;
+    return system->bus_data;
 }
 
 void SystemWrite(const uint16_t addr, const uint8_t data)
@@ -322,7 +323,8 @@ void SystemWrite(const uint16_t addr, const uint8_t data)
 
 void BusWrite(const uint16_t addr, const uint8_t data)
 {
-    ++system_ptr->cpu->cycles;
+    System *system = system_ptr;
+    ++system->cpu->cycles;
     // Extract A15, A14, and A13
     uint8_t region = (addr >> 13) & 0x7;
 
@@ -331,12 +333,12 @@ void BusWrite(const uint16_t addr, const uint8_t data)
         // $0000 - $1FFF
         case 0x0:
             // Internal RAM (mirrored)
-            SystemRamWrite(system_ptr, addr, data);
+            SystemRamWrite(system, addr, data);
             break;
 
         // $2000 - $3FFF
         case 0x1:
-            WritePPURegister(system_ptr->ppu, addr, data);
+            WritePPURegister(system->ppu, addr, data);
             break;
 
         // $4000 - $5FFF
@@ -345,33 +347,33 @@ void BusWrite(const uint16_t addr, const uint8_t data)
             if (addr == 0x4014)
             {
                 DEBUG_LOG("Requested OAM DMA 0x%04X\n", addr);
-                system_ptr->oam_dma_triggered = true;
-                system_ptr->dma_pending = true;
+                system->oam_dma_triggered = true;
+                system->dma_pending = true;
             }
             else if (addr == 0x4016)
             {
-                WriteJoyPadReg(system_ptr->joy_pad1, data);
-                WriteJoyPadReg(system_ptr->joy_pad2, data);
+                WriteJoyPadReg(system->joy_pad1, data);
+                WriteJoyPadReg(system->joy_pad2, data);
             }
             else if (addr < 0x4018)
             {
-                WriteAPURegister(system_ptr->apu, addr, data);
+                WriteAPURegister(system->apu, addr, data);
             }
             break;
         }
     }
 
-    for (int i = 0; i < system_ptr->mem_maps_w; i++)
+    for (int i = 0; i < system->mem_maps_w; i++)
     {
-        MemMap *mem_map = &system_ptr->mem_map_w[i];
+        MemMap *mem_map = &system->mem_map_w[i];
 
         if (addr >= mem_map->start_addr && addr <= mem_map->end_addr)
         {
-            SystemMemMappedWrite(system_ptr, mem_map->op, addr, data);
+            SystemMemMappedWrite(system, mem_map->op, addr, data);
         }
     }
 
-    system_ptr->bus_data = data;
+    system->bus_data = data;
 }
 
 Cart *SystemGetCart(void)
