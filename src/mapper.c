@@ -581,12 +581,9 @@ static inline uint32_t Mmc5ChrReadMode3(Cart *cart, uint16_t addr)
 
 static inline int32_t GetMmc5ChrAddr(Cart *cart, const uint16_t addr)
 {
-    if (mmc5.ext_ram_mode == 0x1)
+    if (mmc5.ext_ram_mode == 1 && mmc5.sub_mode && !mmc5.matches)
     {
-        const int bank = ((mmc5.chr_high << 2) | (mmc5.ext_ram[addr & 0x3FF] & 0x3F));
-        //const int bank = (mmc5.ext_ram[addr & 0x3FF] & 0x3F);
-        //if (bank)
-        //    printf("MMC5 ext-ram mode bank: %d\n", bank);
+        uint16_t bank = (mmc5.chr_high << 2 | (mmc5.ext_ram[SystemGetPpu()->v.raw & 0x3FF] & 0x3F));
         return ((bank * 0x1000) + (addr & 0xFFF)) & cart->chr_rom.mask;
     }
 
