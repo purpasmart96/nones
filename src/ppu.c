@@ -399,6 +399,8 @@ uint8_t PPU_ReadData(Ppu *ppu)
             {
                 ppu->buffered_data = ExtNameTableRead(ppu, addr, true);
                 data = (ppu->palettes[addr & 0x1F] & 0x3F) | (ppu->io_bus & 0xC0);
+                if (ppu->mask.grey_scale)
+                    data &= 0x10;
             }
             break;
         }
