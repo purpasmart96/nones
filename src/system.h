@@ -78,6 +78,8 @@ int SystemLoadCart(Arena *arena, System *System, const char *path);
 uint8_t PpuBusReadChrRom(const uint16_t addr);
 void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data);
 void PpuClockMMC3(void);
+void MapperClockAudio(void);
+void MapperClockAudioTimers(void);
 uint8_t ExtNameTableRead(Ppu *ppu, const uint16_t addr, const bool tile_fetch);
 
 void SystemAddCpuCycles(uint32_t cycles);

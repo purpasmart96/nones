@@ -313,7 +313,7 @@ static void ApuClockSweeps(Apu *apu)
     }
 }
 
-static void ApuClockEnvelope(ApuEnvelope *envelope, const uint8_t volume, const bool counter_halt)
+void ApuClockEnvelope(ApuEnvelope *envelope, const uint8_t volume, const bool counter_halt)
 {
     if (!envelope->start)
     {
@@ -684,6 +684,8 @@ static void ApuMixSample(Apu *apu)
 {
     float square1 = apu->pulse1.output * apu->pulse1.volume;
     float square2 = apu->pulse2.output * apu->pulse2.volume;
+    float ext_square1 = ((mmc5.audio.pulse1.output * mmc5.audio.pulse1.volume) / 15.0) - 0.5;
+    float ext_square2 = ((mmc5.audio.pulse2.output * mmc5.audio.pulse2.volume) / 15.0) - 0.5;
 
 #ifdef APU_FAST_MIXER
     float pulse = 0.00752f * (square1 + square2);
@@ -693,7 +695,9 @@ static void ApuMixSample(Apu *apu)
     float tnd = 1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0));
     float tnd_out = 159.79 / (tnd + 100);
 #endif
-    float raw_sample = pulse + tnd_out;
+    float ext_pulse = (ext_square1 + ext_square2) * 0.12;
+
+    float raw_sample = pulse + tnd_out + ext_pulse;
     // Apply a HPF to fix the the DC offset without affecting the FR too much
     apu->mixer.hpf_sample = ApplyFilter(raw_sample, apu->mixer.hpf_sample, apu->mixer.hpf_alpha);
     // Apply a LPF just for the buffer used as the input for soxr, could also just make this lowpass cutoff at 14khz
@@ -722,6 +726,7 @@ static void ApuGetClock(Apu *apu)
 static void ApuPutClock(Apu *apu)
 {
     ApuClockTimers(apu);
+    MapperClockAudioTimers();
     ApuClockDmc(apu);
     ApuMixSample(apu);
 
@@ -754,6 +759,8 @@ void APU_Tick(Apu *apu, bool put_cycle)
     {
         SystemSignalDmcDma();
     }
+
+    MapperClockAudio();
 
     if (apu->frame_counter.timer == step.cycles)
     {

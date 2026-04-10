@@ -8,6 +8,7 @@
 #include "cart.h"
 #include "ppu.h"
 #include "cpu.h"
+#include "apu.h"
 #include "mapper.h"
 #include "system.h"
 
@@ -946,6 +947,29 @@ static void NanjingRegWrite(const uint16_t addr, const uint8_t data)
     }
 }
 
+static const uint8_t mmc5_length_counter_table[] =
+{
+    10, 254, 20, 2, 40, 4, 80, 6, 160, 8, 60, 10, 14, 12, 26, 14,
+    12, 16, 24, 18, 48, 20, 96, 22, 192, 24, 72, 26, 16, 28, 32, 30
+};
+
+static uint8_t Mmc5ReadStatus(void)
+{
+    ApuStatus status = {
+        .pulse1 = mmc5.audio.pulse1.length_counter != 0,
+        .pulse2 = mmc5.audio.pulse2.length_counter != 0,
+    };
+
+    return status.raw;
+}
+
+static void Mmc5WriteStatus(const uint8_t data)
+{
+    mmc5.audio.status.raw = data;
+    mmc5.audio.pulse1.length_counter *= mmc5.audio.status.pulse1;
+    mmc5.audio.pulse2.length_counter *= mmc5.audio.status.pulse2;
+}
+
 static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
 {
     switch (addr)
@@ -957,6 +981,47 @@ static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
         // PPU Data Substitution Enable ($2001 = PPUMASK)
         case PPU_MASK_REG:
             mmc5.sub_mode = (data >> 3) & 3;
+            break;
+        case OAM_DMA_REG:
+            //printf("Resetting MMC5 Scanline counter! %d -> 0\n", mmc5.scanline);
+            mmc5.scanline = 0;
+            break;
+        // MMC5 audio regs $5000 --> $5015
+        case 0x5000:
+            mmc5.audio.pulse1.reg.raw = data;
+            break;
+        case 0x5002:
+            mmc5.audio.pulse1.timer_period.low = data;
+            break;
+        case 0x5003:
+            mmc5.audio.pulse1.timer_period.high = data & 0x7;
+            mmc5.audio.pulse1.length_counter_load = data >> 3;
+            mmc5.audio.pulse1.length_counter = mmc5_length_counter_table[mmc5.audio.pulse1.length_counter_load] * mmc5.audio.status.pulse1;
+            mmc5.audio.pulse1.envelope.start = true;
+            mmc5.audio.pulse1.duty_step = 0;
+            break;
+        case 0x5004:
+            mmc5.audio.pulse2.reg.raw = data;
+            break;
+        case 0x5006:
+            mmc5.audio.pulse2.timer_period.low = data;
+            break;
+        case 0x5007:
+            mmc5.audio.pulse2.timer_period.high = data & 0x7;
+            mmc5.audio.pulse2.length_counter_load = data >> 3;
+            mmc5.audio.pulse2.length_counter = mmc5_length_counter_table[mmc5.audio.pulse2.length_counter_load] * mmc5.audio.status.pulse2;
+            mmc5.audio.pulse2.envelope.start = true;
+            mmc5.audio.pulse2.duty_step = 0;
+            break;
+        case 0x5010:
+            mmc5.pcm_irq.raw = data;
+            break;
+        case 0x5011:
+            mmc5.audio.pcm_data = data;
+            break;
+        // Status (read/write)
+        case 0x5015:
+            Mmc5WriteStatus(data);
             break;
         // PRG mode ($5100)
         case 0x5100:
@@ -1048,7 +1113,11 @@ static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
             mmc5.irq_enable = data >> 7;
             //printf("MMC5 Irq enable: %d\n", mmc5.irq_enable);
             break;
-        case 0x5300:
+        case 0x5205:
+            mmc5.multiplier[0] = data;
+            break;
+        case 0x5206:
+            mmc5.multiplier[1] = data;
             break;
         default:
             if (addr >= 0x5C00)
@@ -1064,12 +1133,23 @@ static uint8_t Mmc5RegRead(const uint16_t addr)
 {
     switch (addr)
     {
+        // Status (read/write)
+        case 0x5015:
+            return Mmc5ReadStatus();
+
         case 0x5204:
         {
             Mmc5IrqStatusReg status = mmc5.irq_status;
             mmc5.irq_status.irq_pending = false;
             return status.raw;
         }
+
+        case 0x5205:
+            return ((uint16_t)(mmc5.multiplier[0] * mmc5.multiplier[1])) & 0xFF;
+
+        case 0x5206:
+            return ((uint16_t)(mmc5.multiplier[0] * mmc5.multiplier[1])) >> 8;
+
         case 0xFFFA:
         case 0xFFFB:
         {
@@ -1198,6 +1278,12 @@ uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr, const bool tile_fetch)
 
     const int nt_mapping_mode = Mmc5GetNTMapping(ppu);
 
+    if (mmc5.ext_ram_mode == 1 && mmc5.sub_mode && !mmc5.matches && !tile_fetch)
+    {
+        uint8_t attrib = (mmc5.ext_ram[SystemGetPpu()->v.raw & 0x3FF] >> 6) & 0x3;
+        // Duplicate the 2-bit attrib color 4 times to cover the full 8 bits
+        return attrib * 0x55;
+    }
     if (nt_mapping_mode == 2 && mmc5.ext_ram_mode >= 0x2)
     {
         printf("Ext-Ram NT override\n");
@@ -1210,17 +1296,99 @@ uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr, const bool tile_fetch)
     else if (nt_mapping_mode == 3 && mmc5.ext_ram_mode != 0x1 && !tile_fetch)
     {
         // Duplicate the 2-bit attrib color 4 times to cover the full 8 bits
-        // This gives the same result as below
         return mmc5.fillmode_color * 0x55;
-        //return mmc5.fillmode_color << 2 |
-        //        mmc5.fillmode_color << 4 |
-        //        mmc5.fillmode_color << 6 |
-        //        mmc5.fillmode_color;
     }
 
     return PpuNametableRead(ppu, addr);
 }
 
+static const uint8_t mmc5_duty_cycle_table[4][8] =
+{
+    // Normal Duty cycle table
+    // Duty  Output
+    // 0 	 0 1 0 0 0 0 0 0 (12.5%)
+    // 1 	 0 1 1 0 0 0 0 0 (25%)
+    // 2 	 0 1 1 1 1 0 0 0 (50%)
+    // 3 	 1 0 0 1 1 1 1 1 (25% negated)
+    { 0, 1, 0, 0, 0, 0, 0, 0 },
+    { 0, 1, 1, 0, 0, 0, 0, 0 },
+    { 0, 1, 1, 1, 1, 0, 0, 0 },
+    { 1, 0, 0, 1, 1, 1, 1, 1 }
+};
+
+void Mmc5ClockAudioTimers(void)
+{
+    mmc5.audio.pulse1.output = 0;
+    mmc5.audio.pulse2.output = 0;
+
+    if (mmc5.audio.pulse1.timer.raw > 0)
+        --mmc5.audio.pulse1.timer.raw;
+    else
+    {
+        mmc5.audio.pulse1.timer.raw = mmc5.audio.pulse1.timer_period.raw;
+        mmc5.audio.pulse1.duty_step = (mmc5.audio.pulse1.duty_step - 1) & 7;
+    }
+
+    if (mmc5.audio.pulse2.timer.raw > 0)
+        --mmc5.audio.pulse2.timer.raw;
+    else
+    {
+        mmc5.audio.pulse2.timer.raw = mmc5.audio.pulse2.timer_period.raw;
+        mmc5.audio.pulse2.duty_step = (mmc5.audio.pulse2.duty_step - 1) & 7;
+    }
+
+    if (mmc5.audio.pulse1.length_counter)
+    {
+        mmc5.audio.pulse1.output = mmc5_duty_cycle_table[mmc5.audio.pulse1.reg.duty][mmc5.audio.pulse1.duty_step];
+    }
+
+    if (mmc5.audio.pulse2.length_counter)
+    {
+        mmc5.audio.pulse2.output = mmc5_duty_cycle_table[mmc5.audio.pulse2.reg.duty][mmc5.audio.pulse2.duty_step];
+    }
+}
+
+static void Mmc5ClockEnvelopes(void)
+{
+    ApuClockEnvelope(&mmc5.audio.pulse1.envelope, mmc5.audio.pulse1.reg.volume_env, mmc5.audio.pulse1.reg.counter_halt);
+    ApuClockEnvelope(&mmc5.audio.pulse2.envelope, mmc5.audio.pulse2.reg.volume_env, mmc5.audio.pulse2.reg.counter_halt);
+
+    //printf("Pulse 1 envelope counter: %d\n", mmc5.audio.pulse1.envelope.counter);
+    //printf("Pulse 1 envelope decay counter: %d\n", mmc5.audio.pulse1.envelope.decay_counter);
+    //printf("Pulse 2 envelope counter: %d\n", mmc5.audio.pulse2.envelope.counter);
+    //printf("Pulse 2 envelope decay counter: %d\n", mmc5.audio.pulse2.envelope.decay_counter);
+
+    if (mmc5.audio.pulse1.reg.constant_volume)
+        mmc5.audio.pulse1.volume = mmc5.audio.pulse1.reg.volume_env;
+    else
+        mmc5.audio.pulse1.volume = mmc5.audio.pulse1.envelope.decay_counter;
+
+    if (mmc5.audio.pulse2.reg.constant_volume)
+        mmc5.audio.pulse2.volume = mmc5.audio.pulse2.reg.volume_env;
+    else
+        mmc5.audio.pulse2.volume = mmc5.audio.pulse2.envelope.decay_counter;
+}
+
+static void Mmc5ClockLengthCounters(void)
+{
+    if (mmc5.audio.pulse1.length_counter && !mmc5.audio.pulse1.reg.counter_halt)
+        --mmc5.audio.pulse1.length_counter;
+
+    if (mmc5.audio.pulse2.length_counter && !mmc5.audio.pulse2.reg.counter_halt)
+        --mmc5.audio.pulse2.length_counter;
+}
+
+void Mmc5ClockAudio(void)
+{
+    if (mmc5.audio.timer > 0)
+        --mmc5.audio.timer;
+    else
+    {
+        mmc5.audio.timer = 7457;
+        Mmc5ClockEnvelopes();
+        Mmc5ClockLengthCounters();
+    }
+}
 
 bool PollMapperIrq(void)
 {

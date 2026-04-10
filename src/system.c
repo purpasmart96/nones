@@ -417,6 +417,22 @@ void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data)
     MapperWriteChrRam(cart, addr, data);
 }
 
+void MapperClockAudioTimers(void)
+{
+    if (system_ptr->cart->mapper_num == MAPPER_MMC5)
+    {
+        Mmc5ClockAudioTimers();
+    }
+}
+
+void MapperClockAudio(void)
+{
+    if (system_ptr->cart->mapper_num == MAPPER_MMC5)
+    {
+        Mmc5ClockAudio();
+    }
+}
+
 void PpuClockMMC3(void)
 {
     if (system_ptr->cart->mapper_num != MAPPER_MMC3)

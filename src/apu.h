@@ -272,32 +272,31 @@ typedef struct
 #define LPF_CUTOFF 14000
 #define HPF_CUTOFF 37
 
-#define APU_PULSE_1_DUTY 0x4000
-#define APU_PULSE_1_SWEEP 0x4001
-#define APU_PULSE_1_TIMER_LOW 0x4002
-#define APU_PULSE_1_TIMER_HIGH 0x4003
+enum ApuRegs
+{
+    APU_PULSE_1_DUTY              = 0x4000,
+    APU_PULSE_1_SWEEP             = 0x4001,
+    APU_PULSE_1_TIMER_LOW         = 0x4002,
+    APU_PULSE_1_TIMER_HIGH        = 0x4003,
+    APU_PULSE_2_DUTY              = 0x4004,
+    APU_PULSE_2_SWEEP             = 0x4005,
+    APU_PULSE_2_TIMER_LOW         = 0x4006,
+    APU_PULSE_2_TIMER_HIGH        = 0x4007,
+    APU_TRIANGLE_LINEAR_COUNTER   = 0x4008,
+    APU_TRIANGLE_TIMER_LOW        = 0x400A,
+    APU_TRIANGLE_TIMER_HIGH       = 0x400B,
+    APU_NOISE                     = 0x400C,
+    APU_NOISE_PERIOD              = 0x400E,
+    APU_NOISE_LENGTH_COUNTER_LOAD = 0x400F,
+    APU_DMC_CONTROL               = 0x4010,
+    APU_DMC_DIRECT_LOAD           = 0x4011,
+    APU_DMC_SAMPLE_ADDR           = 0x4012,
+    APU_DMC_SAMPLE_LENGTH         = 0x4013,
+    APU_STATUS                    = 0x4015,
+    APU_FRAME_COUNTER             = 0x4017
+};
 
-#define APU_PULSE_2_DUTY 0x4004
-#define APU_PULSE_2_SWEEP 0x4005
-#define APU_PULSE_2_TIMER_LOW 0x4006
-#define APU_PULSE_2_TIMER_HIGH 0x4007
-
-#define APU_TRIANGLE_LINEAR_COUNTER 0x4008
-#define APU_TRIANGLE_TIMER_LOW 0x400A
-#define APU_TRIANGLE_TIMER_HIGH 0x400B
-
-#define APU_NOISE 0x400C
-#define APU_NOISE_PERIOD 0x400E
-#define APU_NOISE_LENGTH_COUNTER_LOAD 0x400F
-
-#define APU_DMC_CONTROL 0x4010
-#define APU_DMC_DIRECT_LOAD 0x4011
-#define APU_DMC_SAMPLE_ADDR 0x4012
-#define APU_DMC_SAMPLE_LENGTH 0x4013
-
-#define APU_STATUS 0x4015
-#define APU_FRAME_COUNTER 0x4017
-
+void ApuClockEnvelope(ApuEnvelope *envelope, const uint8_t volume, const bool counter_halt);
 uint8_t ApuReadStatus(Apu *apu, const uint8_t bus_data);
 void WriteAPURegister(Apu *apu, const uint16_t addr, const uint8_t data);
 bool PollApuIrqs(Apu *apu);
