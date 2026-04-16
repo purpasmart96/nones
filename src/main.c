@@ -8,7 +8,7 @@
 #include "nones.h"
 #include "utils.h"
 
-#define VERSION "v0.3.1"
+#define VERSION "v0.4.0"
 
 static void About(void)
 {
