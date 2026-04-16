@@ -255,7 +255,6 @@ typedef struct
     ApuPulse pulse1;
     ApuPulse pulse2;
     int timer;
-    int step;
     ApuStatus status;
     uint8_t pcm_data;
 } Mmc5Audio;
@@ -276,7 +275,6 @@ typedef struct
     uint8_t scanline;
     uint8_t matches;
     uint8_t fillmode_tile;
-    bool ppu_reading;
     uint8_t fillmode_color : 2;
     uint8_t ext_ram_mode : 2;
     // 1,2,3: Substitutions enabled; 0: substitutions disabled
@@ -287,6 +285,8 @@ typedef struct
     // 2 - One 16KB bank ($8000-$BFFF) and two 8KB banks ($C000-$DFFF and $E000-$FFFF);
     // 3 - Four 8KB banks;
     uint8_t prg_mode : 2;
+    uint8_t prg_ram_protect1 : 2;
+    uint8_t prg_ram_protect2 : 2;
     // CHR mode
     // 0 - 8KB CHR pages
     // 1 - 4KB CHR pages
@@ -432,6 +432,8 @@ typedef enum
     MAPPER_MMC2 = 9,
     MAPPER_COLORDREAMS = 11,
     MAPPER_BNROM_NINA = 34,
+    MAPPER_SUNSOFT4 = 68,
+    MAPPER_SUNSOFT5 = 69,
     MAPPER_CAMERICA = 71,
     MAPPER_NANJING = 163
 } MapperType;
@@ -449,7 +451,8 @@ typedef enum
     MEM_REG_READ,
     MEM_SWRAM_READ, 
     MEM_REG_WRITE,
-    MEM_SWRAM_WRITE
+    MEM_SWRAM_WRITE,
+    MEM_PRG_WRITE
 } MemOperation;
 
 typedef struct
@@ -463,6 +466,7 @@ typedef struct
 uint8_t MapperReadPrgRom(Cart *cart, const uint16_t addr);
 uint8_t MapperReadChrRom(Cart *cart, const uint16_t addr);
 uint8_t MapperReadReg(Cart *cart, const uint16_t addr);
+void MapperWritePrgRam(Cart *cart, const uint16_t addr, const uint8_t data);
 void MapperWriteChrRam(Cart *cart, const uint16_t addr, const uint8_t data);
 void MapperWriteReg(Cart *cart, const uint16_t addr, uint8_t data);
 

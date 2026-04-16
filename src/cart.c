@@ -9,15 +9,19 @@
 #include "ppu.h"
 #include "apu.h"
 #include "mapper.h"
+#include "utils.h"
 
 static void CartLoadSram(Cart *cart)
 {
+    if (!cart->battery)
+        return;
+
     char save_path[256];
     snprintf(save_path, sizeof(save_path), "%s.sav", cart->name);
     FILE *sav = fopen(save_path, "rb");
     if (sav)
     {
-        fread(cart->ram, CART_RAM_SIZE, 1, sav);
+        fread(cart->prg_ram.data, CART_RAM_SIZE, 1, sav);
         fclose(sav);
     }
 }
@@ -125,14 +129,29 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
 
     cart->chr_rom.mask = cart->chr_rom.size - 1;
 
-    // Sram / Wram
-    cart->ram = ArenaPush(arena, CART_RAM_SIZE);
+    const uint32_t sram_size = hdr.prg_ram_shift_count ? 64 << hdr.prg_ram_shift_count : 0;
+    const uint32_t nvram_size = hdr.prg_nvram_shift_count ? 64 << hdr.prg_nvram_shift_count : 0;
+
+    // We need to maintain backwards compatibility for iNES;
+    // So always allocate PRG RAM with a size of at least 8 Kib
+    cart->prg_ram.size = MAX(sram_size + nvram_size, CART_RAM_SIZE);
+
+    if (cart->battery && mapper_number == 5 && hdr.nes2_id != 2)
+    {
+        // For MMC5 iNES games, there is not much we can do.
+        // Since we have know way of knowing how big PRG RAM actually is.
+        // So I'm going to set the ram size to one that causes the least amount of issues (16 Kib).
+        cart->prg_ram.size = 0x4000;
+    }
+
+    if (cart->battery || hdr.prg_ram_shift_count || hdr.prg_nvram_shift_count)
+        printf("Prg Ram Size: %d KiB\n", cart->prg_ram.size >> 10);
+
+    cart->prg_ram.data = ArenaPush(arena, cart->prg_ram.size);
+    cart->prg_ram.mask = cart->prg_ram.size - 1;
 
     // Load Sram
-    if (cart->battery)
-    {
-        CartLoadSram(cart);
-    }
+    CartLoadSram(cart);
 
     fclose(fp);
     free(rom);
@@ -141,18 +160,43 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     return 0;
 }
 
+uint8_t CartReadPrgRam(Cart *cart, const uint32_t addr)
+{
+    return cart->prg_ram.data[addr & cart->prg_ram.mask];
+}
+
+void CartWritePrgRam(Cart *cart, const uint32_t addr, const uint8_t data)
+{
+    cart->prg_ram.data[addr & cart->prg_ram.mask] = data;
+}
+
+uint8_t CartReadPrgRom(Cart *cart, const uint32_t addr)
+{
+    return cart->prg_rom.data[addr & cart->prg_rom.mask];
+}
+
+uint8_t CartReadChr(Cart *cart, const uint32_t addr)
+{
+    return cart->chr_rom.data[addr & cart->chr_rom.mask];
+}
+
+void CartWriteChr(Cart *cart, const uint32_t addr, const uint8_t data)
+{
+    cart->chr_rom.data[addr & cart->chr_rom.mask] = data;
+}
+
 void CartSaveSram(Cart *cart)
 {
-    if (cart->battery)
-    {
-        char save_path[128];
-        snprintf(save_path, sizeof(save_path), "%s.sav", cart->name);
+    if (!cart->battery)
+        return;
 
-        FILE *sav = fopen(save_path, "wb");
-        if (sav != NULL)
-        {
-            fwrite(cart->ram, CART_RAM_SIZE, 1, sav);
-            fclose(sav);
-        }
+    char save_path[256];
+    snprintf(save_path, sizeof(save_path), "%s.sav", cart->name);
+
+    FILE *sav = fopen(save_path, "wb");
+    if (sav != NULL)
+    {
+        fwrite(cart->prg_ram.data, CART_RAM_SIZE, 1, sav);
+        fclose(sav);
     }
 }

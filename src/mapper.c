@@ -34,12 +34,12 @@ static const uint16_t mmc1_chr_bank_sizes[2] =
 
 static uint8_t NromReadPrgRom(Cart *cart, uint16_t addr)
 {
-    return cart->prg_rom.data[addr & cart->prg_rom.mask];
+    return CartReadPrgRom(cart, addr);
 }
 
 static void ChrWriteGeneric(Cart *cart, const uint16_t addr, const uint8_t data)
 {
-    cart->chr_rom.data[addr & cart->chr_rom.mask] = data;
+    CartWriteChr(cart, addr, data);
 }
 
 static inline int GetNumPrgRomBanks(const uint32_t prg_rom_size, const uint16_t bank_size)
@@ -47,17 +47,15 @@ static inline int GetNumPrgRomBanks(const uint32_t prg_rom_size, const uint16_t 
     return prg_rom_size / bank_size;
 }
 
-static inline uint32_t GetPrgBankAddr(const int bank, const uint16_t addr, const uint16_t bank_size, const uint32_t prg_rom_mask)
+static uint32_t GetPrgBankAddr(const int bank, const uint16_t addr, const uint16_t bank_size)
 {
-    return ((bank * bank_size) + (addr & (bank_size - 1))) & prg_rom_mask;
+    return ((bank * bank_size) + (addr & (bank_size - 1)));
 }
 
 // Prg bank mode 0 & 1: switch 32 KB at $8000, ignoring low bit of bank number;
 static uint8_t Mmc1PrgReadMode01(Cart *cart, int bank, const uint16_t addr)
 {
-    uint32_t final_addr = GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
-    //printf("0, 1, Reading from addr: 0x%X\n", final_addr);
-    return cart->prg_rom.data[final_addr];
+    return CartReadPrgRom(cart, GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_32KIB));
 }
 
 // Prg bank mode 2: fix first bank at $8000 and switch 16 KB bank at $C000;
@@ -67,18 +65,10 @@ static uint8_t Mmc1PrgReadMode2(Cart *cart, int bank, const uint16_t addr)
     {
         case 0:
         case 1:
-        {
-            uint32_t final_addr = GetPrgBankAddr(0, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
-            //printf("Mmc1 mode 2: 0, 1, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(0, addr, PRG_BANK_SIZE_16KIB));
         case 2:
         case 3:
-        {
-            uint32_t final_addr = GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
-            //printf("Mmc1 mode 2: 2, 3, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_16KIB));
     }
 
     return 0;
@@ -91,18 +81,10 @@ static uint8_t Mmc1PrgReadMode3(Cart *cart, int bank, const uint16_t addr)
     {
         case 0:
         case 1:
-        {
-            uint32_t final_addr = GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
-            //printf("0, 1, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(bank, addr, PRG_BANK_SIZE_16KIB));
         case 2:
         case 3:
-        {
-            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask); 
-            //printf("2, 3, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_16KIB));
     }
 
     return 0;
@@ -115,62 +97,30 @@ static uint8_t Mmc3ReadPrgRom(Cart *cart, const uint16_t addr)
         switch ((addr >> 13) & 0x3)
         {
             case 0:
-            {
                 // Read from second to last bank
-                uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 2, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-                //printf("0i, Reading from addr: 0x%X\n", final_addr);
-                return cart->prg_rom.data[final_addr];
-            }
+                return CartReadPrgRom(cart, GetPrgBankAddr(cart->prg_rom.num_banks - 2, addr, PRG_BANK_SIZE_8KIB));
             case 1:
-            {
-                uint32_t final_addr = GetPrgBankAddr(mmc3.regs[7], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-                //printf("1i, Reading from addr: 0x%X\n", final_addr);
-                return cart->prg_rom.data[final_addr];
-            }
-
+                return CartReadPrgRom(cart, GetPrgBankAddr(mmc3.regs[7], addr, PRG_BANK_SIZE_8KIB));
             case 2:
-            {
-                uint32_t final_addr = GetPrgBankAddr(mmc3.regs[6], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-                //printf("2i, Reading from addr: 0x%X\n", final_addr);
-                return cart->prg_rom.data[final_addr];
-            }
+                return CartReadPrgRom(cart, GetPrgBankAddr(mmc3.regs[6], addr, PRG_BANK_SIZE_8KIB));
             case 3:
-            {
                 // Read from the last bank
-                uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-                //printf("3i, Reading from addr: 0x%X\n", final_addr);
-                return cart->prg_rom.data[final_addr];
-            }
+                return CartReadPrgRom(cart, GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_8KIB));
         }
     }
 
     switch ((addr >> 13) & 0x3)
     {
         case 0:
-        {
-            uint32_t final_addr = GetPrgBankAddr(mmc3.regs[6], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-            //printf("0, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(mmc3.regs[6], addr, PRG_BANK_SIZE_8KIB));
         case 1:
-        {
-            uint32_t final_addr = GetPrgBankAddr(mmc3.regs[7], addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-            //printf("1, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
-
+            return CartReadPrgRom(cart, GetPrgBankAddr(mmc3.regs[7], addr, PRG_BANK_SIZE_8KIB));
         case 2:
-        {
-            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 2, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-            //printf("2, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            // Read from second to last bank
+            return CartReadPrgRom(cart, GetPrgBankAddr(cart->prg_rom.num_banks - 2, addr, PRG_BANK_SIZE_8KIB));
         case 3:
-        {
-            uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-            //printf("3, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            // Read from the last bank
+            return CartReadPrgRom(cart, GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_8KIB));
     }
 
     return 0;
@@ -182,14 +132,12 @@ static uint8_t Mmc2ReadPrgRom(Cart *cart, const uint16_t addr)
 
     if (!reg_index)
     {
-        uint32_t final_addr = GetPrgBankAddr(mmc2.prg_bank.select, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-        return cart->prg_rom.data[final_addr];
+        return CartReadPrgRom(cart, GetPrgBankAddr(mmc2.prg_bank.select, addr, PRG_BANK_SIZE_8KIB));
     }
     else
     {
         // Read from the last three banks
-        uint32_t final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - (4 - reg_index), addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-        return cart->prg_rom.data[final_addr];
+        return CartReadPrgRom(cart, GetPrgBankAddr(cart->prg_rom.num_banks - (4 - reg_index), addr, PRG_BANK_SIZE_8KIB));
     }
 }
 
@@ -200,8 +148,7 @@ static uint8_t Mmc5PrgReadMode0(Cart *cart, const uint16_t addr)
 {
     const int reg_index = 0;
     //printf("Mmc5 mode 0: Reading from addr: 0x%X\n", addr);
-    uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[reg_index].raw >> 1, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
-    return cart->prg_rom.data[final_addr];
+    return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[reg_index].raw >> 1, addr, PRG_BANK_SIZE_32KIB));
 }
 
 // PRG mode 1
@@ -215,16 +162,12 @@ static uint8_t Mmc5PrgReadMode1(Cart *cart, const uint16_t addr)
         case 0:
         case 1:
         {
-            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[2].raw >> 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
-            //printf("Mmc5 mode 1: 0, 1, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
+            return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[2].raw >> 1, addr, PRG_BANK_SIZE_16KIB));
         }
         case 2:
         case 3:
         {
-            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[4].raw >> 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
-            //printf("Mmc5 mode 1: 2, 3, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
+            return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[4].raw >> 1, addr, PRG_BANK_SIZE_16KIB));
         }
     }
 
@@ -242,41 +185,51 @@ static uint8_t Mmc5PrgReadMode2(Cart *cart, const uint16_t addr)
     {
         case 0:
         case 1:
-        {
-            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[2].raw >> 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
-            //printf("Mmc5 mode 2: 0, 1, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[2].raw >> 1, addr, PRG_BANK_SIZE_16KIB));
         case 2:
-        {
-            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[3].raw, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-            //printf("Mmc5 mode 2: 2, 3, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[3].raw, addr, PRG_BANK_SIZE_8KIB));
         case 3:
-        {
-            uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[4].raw, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-            //printf("Mmc5 mode 2: 2, 3, Reading from addr: 0x%X\n", final_addr);
-            return cart->prg_rom.data[final_addr];
-        }
+            return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[4].raw, addr, PRG_BANK_SIZE_8KIB));
     }
 
     return 0;
 }
 
 // PRG mode 3
-// CPU $6000-$7FFF: 8 KB switchable PRG RAM bank (Ignored here for now)
+// CPU $6000-$7FFF: 8 KB switchable PRG RAM bank
 // CPU $8000-$9FFF: 8 KB switchable PRG ROM/RAM bank
 // CPU $A000-$BFFF: 8 KB switchable PRG ROM/RAM bank
 // CPU $C000-$DFFF: 8 KB switchable PRG ROM/RAM bank
 // CPU $E000-$FFFF: 8 KB switchable PRG ROM bank
 static uint8_t Mmc5PrgReadMode3(Cart *cart, const uint16_t addr)
 {
-    const int reg_index = 1 + ((addr >> 13) & 3);
-    //printf("Mmc5 mode 3: Reading from addr: 0x%X\n", addr);
-    //printf("Prg reg index: %d\n", reg_index);
-    uint32_t final_addr = GetPrgBankAddr(mmc5.prg_bank[reg_index].raw, addr, PRG_BANK_SIZE_8KIB, cart->prg_rom.mask);
-    return cart->prg_rom.data[final_addr];
+    const int reg_index = ((addr >> 13) & 7) - 3;
+    Mmc5PrgBankReg *reg = &mmc5.prg_bank[reg_index];
+
+    if ((reg_index && reg->rom) || reg_index == 4)
+    {
+        const uint32_t bank_addr = GetPrgBankAddr(reg->raw, addr, PRG_BANK_SIZE_8KIB);
+        return CartReadPrgRom(cart, bank_addr);
+    }
+
+    switch (cart->prg_ram.size >> 14)
+    {
+        case 0:
+        case 1:
+        {
+            uint32_t ram_addr = GetPrgBankAddr(reg->a15, addr, PRG_BANK_SIZE_8KIB);
+            return CartReadPrgRam(cart, ram_addr);
+        }
+        case 2:
+        case 3:
+        {
+            uint32_t ram_addr = GetPrgBankAddr(reg->raw & 7, addr, PRG_BANK_SIZE_8KIB);
+            return CartReadPrgRam(cart, ram_addr);
+        }
+    }
+
+    printf("Unsupported PRG RAM CHIP CONFIG: %d\n", cart->prg_ram.size >> 14);
+    return 0;
 }
 
 static uint8_t Mmc5ReadPrgRom(Cart *cart, const uint16_t addr)
@@ -295,6 +248,52 @@ static uint8_t Mmc5ReadPrgRom(Cart *cart, const uint16_t addr)
 
     printf("MMC5 PRG MODE NOT IMPLEMNENTD: %d\n", mmc5.prg_mode);
     return 0;
+}
+
+// PRG mode 3
+// CPU $6000-$7FFF: 8 KB switchable PRG RAM bank
+// CPU $8000-$9FFF: 8 KB switchable PRG ROM/RAM bank
+// CPU $A000-$BFFF: 8 KB switchable PRG ROM/RAM bank
+// CPU $C000-$DFFF: 8 KB switchable PRG ROM/RAM bank
+// CPU $E000-$FFFF: 8 KB switchable PRG ROM bank
+static void Mmc5PrgWriteMode3(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    const int reg_index = ((addr >> 13) & 7) - 3;
+    Mmc5PrgBankReg *reg = &mmc5.prg_bank[reg_index];
+
+    if ((reg_index && reg->rom) || reg_index == 4)
+        return;
+
+    switch (cart->prg_ram.size >> 14)
+    {
+        case 0:
+        case 1:
+            CartWritePrgRam(cart, GetPrgBankAddr(reg->a15, addr, PRG_BANK_SIZE_8KIB), data);
+            break;
+        case 2:
+        case 3:
+            CartWritePrgRam(cart, GetPrgBankAddr(reg->raw & 7, addr, PRG_BANK_SIZE_8KIB), data);
+            break;
+        default:
+            printf("Unsupported PRG RAM CHIP CONFIG: %d\n", cart->prg_ram.size >> 14);
+            break;
+    }
+}
+
+static void Mmc5WritePrgRam(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    if (mmc5.prg_ram_protect1 != 0x2 || mmc5.prg_ram_protect2 != 0x1)
+        return;
+
+    switch (mmc5.prg_mode)
+    {
+        case 3:
+            Mmc5PrgWriteMode3(cart, addr, data);
+            break;
+        default:
+            printf("MMC5 PRG RAM MODE NOT IMPLEMNENTED: %d\n", mmc5.prg_mode);
+            break;
+    }
 }
 
 static uint8_t Mmc1ReadPrgRom(Cart *cart, const uint16_t addr)
@@ -329,51 +328,51 @@ static uint8_t CarmericaReadPrgRom(Cart *cart, const uint16_t addr)
     {
         case 0:
         case 1:
-            final_addr = GetPrgBankAddr(camerica.inner_bank, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            final_addr = GetPrgBankAddr(camerica.inner_bank, addr, PRG_BANK_SIZE_16KIB);
             break;
         case 2:
         case 3:
-            final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_16KIB, cart->prg_rom.mask);
+            final_addr = GetPrgBankAddr(cart->prg_rom.num_banks - 1, addr, PRG_BANK_SIZE_16KIB);
             break;
     }
 
-    return cart->prg_rom.data[final_addr];
+    return CartReadPrgRom(cart, final_addr);
 }
 
 static uint8_t AxRomReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    const uint32_t final_addr = GetPrgBankAddr(ax_rom.bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
-    return cart->prg_rom.data[final_addr];
+    const uint32_t final_addr = GetPrgBankAddr(ax_rom.bank, addr, PRG_BANK_SIZE_32KIB);
+    return CartReadPrgRom(cart, final_addr);
 }
 
 static uint8_t ColorDreamsReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    const uint32_t final_addr = GetPrgBankAddr(color_dreams.prg_bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
-    return cart->prg_rom.data[final_addr];
+    const uint32_t final_addr = GetPrgBankAddr(color_dreams.prg_bank, addr, PRG_BANK_SIZE_32KIB);
+    return CartReadPrgRom(cart, final_addr);
 }
 
 static uint8_t NinaReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    const uint32_t final_addr = GetPrgBankAddr(nina.prg_bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
-    return cart->prg_rom.data[final_addr];
+    const uint32_t final_addr = GetPrgBankAddr(nina.prg_bank, addr, PRG_BANK_SIZE_32KIB);
+    return CartReadPrgRom(cart, final_addr);
 }
 
 static uint8_t BnRomReadPrgRom(Cart *cart, const uint16_t addr)
 {
-    const uint32_t final_addr = GetPrgBankAddr(bn_rom.bank, addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
-    return cart->prg_rom.data[final_addr];
+    const uint32_t final_addr = GetPrgBankAddr(bn_rom.bank, addr, PRG_BANK_SIZE_32KIB);
+    return CartReadPrgRom(cart, final_addr);
 }
 
 static uint8_t NanjingReadPrgRom(Cart *cart, const uint16_t addr)
 {
     const int bank = nanjing.prg_high_reg << 4 | nanjing.prg_low_reg.prg_bank_low;
-    uint32_t final_addr = GetPrgBankAddr(bank , addr, PRG_BANK_SIZE_32KIB, cart->prg_rom.mask);
-    return cart->prg_rom.data[final_addr];
+    uint32_t final_addr = GetPrgBankAddr(bank , addr, PRG_BANK_SIZE_32KIB);
+    return CartReadPrgRom(cart, final_addr);
 }
 
 static uint8_t NromReadChrRom(Cart *cart, const uint16_t addr)
 {
-    return cart->chr_rom.data[addr & cart->chr_rom.mask];
+    return CartReadChr(cart, addr);
 }
 
 static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
@@ -393,7 +392,7 @@ static uint8_t Mmc1ReadChrRom(Cart *cart, const uint16_t addr)
     // Compute CHR-ROM address
     uint32_t final_addr = ((bank * bank_size) + (addr & (bank_size - 1)));
 
-    return cart->chr_rom.data[final_addr & cart->chr_rom.mask];
+    return CartReadChr(cart, final_addr);
 }
 
 static void Mmc2UpdateLatches(uint16_t addr, const bool read)
@@ -433,26 +432,26 @@ static void Mmc2UpdateLatches(uint16_t addr, const bool read)
     }
 }
 
-static uint32_t GetMmc2ChrAddr(Cart *cart, uint16_t addr, bool read)
+static uint32_t GetMmc2ChrAddr(uint16_t addr, bool read)
 {
     const bool latch_index = addr > 0x1000;
     uint32_t final_addr = ((mmc2.chr_bank_regs[mmc2.latches[latch_index]].bank * 0x1000) + (addr & 0xFFF));
     Mmc2UpdateLatches(addr, read);
 
-    return final_addr & cart->chr_rom.mask;
+    return final_addr;
 }
 
 static uint8_t Mmc2ReadChr(Cart *cart, const uint16_t addr)
 {
-    return cart->chr_rom.data[GetMmc2ChrAddr(cart, addr, true)];
+    return CartReadChr(cart, GetMmc2ChrAddr(addr, true));
 }
 
 static void Mmc2WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
 {
-    cart->chr_rom.data[GetMmc2ChrAddr(cart, addr, false)] = data;
+    CartWriteChr(cart, GetMmc2ChrAddr(addr, false), data);
 }
 
-static inline uint32_t GetMmc3ChrAddr(Cart *cart, const uint16_t addr)
+static uint32_t GetMmc3ChrAddr(const uint16_t addr)
 {
     const uint32_t effective_addr = addr ^ (mmc3.bank_sel.chr_a12_invert * 0x1000);
 
@@ -477,29 +476,29 @@ static inline uint32_t GetMmc3ChrAddr(Cart *cart, const uint16_t addr)
 
     uint32_t index = (effective_addr >> shift) - offset;
     uint32_t bank_base = mmc3.regs[index] << shift;
-    uint32_t final_addr = bank_base | (effective_addr & (bank_size - 1));
-    return final_addr & cart->chr_rom.mask;
+    return bank_base | (effective_addr & (bank_size - 1));
 }
 
 static uint8_t Mmc3ReadChr(Cart *cart, const uint16_t addr)
 {
-    return cart->chr_rom.data[GetMmc3ChrAddr(cart, addr)];
+    return CartReadChr(cart, GetMmc3ChrAddr(addr));
 }
 
 static void Mmc3WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
 {
-    cart->chr_rom.data[GetMmc3ChrAddr(cart, addr)] = data;
+    CartWriteChr(cart, GetMmc3ChrAddr(addr), data);
 }
 
 // CHR mode 0
 // PPU $0000-$1FFF: 8 KB switchable CHR bank
 static uint32_t Mmc5ChrReadMode0(Cart *cart, uint16_t addr)
 {
+    UNUSED(cart);
     int reg_index = 7;
     if (mmc5.sprite_mode && mmc5.sub_mode && !mmc5.matches)
         reg_index = 11;
 
-    return ((mmc5.chr_bank[reg_index] * 0x2000) + (addr & 0x1FFF)) & cart->chr_rom.mask;
+    return ((mmc5.chr_bank[reg_index] * 0x2000) + (addr & 0x1FFF));
 }
 
 // CHR mode 1
@@ -507,11 +506,12 @@ static uint32_t Mmc5ChrReadMode0(Cart *cart, uint16_t addr)
 // PPU $1000-$1FFF: 4 KB switchable CHR bank
 static uint32_t Mmc5ChrReadMode1(Cart *cart, uint16_t addr)
 {
+    UNUSED(cart);
     int reg_index = addr < 0x1000 ? 3 : 7;
     if (mmc5.sprite_mode && mmc5.sub_mode && !mmc5.matches)
         reg_index = 11;
 
-    return ((mmc5.chr_bank[reg_index] * 0x1000) + (addr & 0xFFF)) & cart->chr_rom.mask;
+    return ((mmc5.chr_bank[reg_index] * 0x1000) + (addr & 0xFFF));
 }
 
 // CHR mode 2:
@@ -519,8 +519,9 @@ static uint32_t Mmc5ChrReadMode1(Cart *cart, uint16_t addr)
 // PPU $0800-$0FFF: 2 KB switchable CHR bank
 // PPU $1000-$17FF: 2 KB switchable CHR bank
 // PPU $1800-$1FFF: 2 KB switchable CHR bank
-static inline uint32_t Mmc5ChrReadMode2(Cart *cart, uint16_t addr)
+static uint32_t Mmc5ChrReadMode2(Cart *cart, uint16_t addr)
 {
+    UNUSED(cart);
     int reg_index = 2 * (addr >> 11) + 1;
 
     if (mmc5.sprite_mode && mmc5.sub_mode && !mmc5.matches)
@@ -538,7 +539,7 @@ static inline uint32_t Mmc5ChrReadMode2(Cart *cart, uint16_t addr)
         }
     }
 
-    return ((mmc5.chr_bank[reg_index] * 0x800) + (addr & 0x7FF)) & cart->chr_rom.mask;
+    return ((mmc5.chr_bank[reg_index] * 0x800) + (addr & 0x7FF));
 }
 
 // CHR mode 3:
@@ -550,8 +551,9 @@ static inline uint32_t Mmc5ChrReadMode2(Cart *cart, uint16_t addr)
 // PPU $1400-$17FF: 1 KB switchable CHR bank;
 // PPU $1800-$1BFF: 1 KB switchable CHR bank;
 // PPU $1C00-$1FFF: 1 KB switchable CHR bank;
-static inline uint32_t Mmc5ChrReadMode3(Cart *cart, uint16_t addr)
+static uint32_t Mmc5ChrReadMode3(Cart *cart, uint16_t addr)
 {
+    UNUSED(cart);
     int reg_index = addr >> 10;
 
     if (mmc5.sprite_mode && mmc5.sub_mode && !mmc5.matches)
@@ -577,15 +579,15 @@ static inline uint32_t Mmc5ChrReadMode3(Cart *cart, uint16_t addr)
         }
     }
 
-    return ((mmc5.chr_bank[reg_index] * 0x400) + (addr & 0x3FF)) & cart->chr_rom.mask;
+    return ((mmc5.chr_bank[reg_index] * 0x400) + (addr & 0x3FF));
 }
 
-static inline int32_t GetMmc5ChrAddr(Cart *cart, const uint16_t addr)
+static int32_t GetMmc5ChrAddr(Cart *cart, const uint16_t addr)
 {
     if (mmc5.ext_ram_mode == 1 && mmc5.sub_mode && !mmc5.matches)
     {
         uint16_t bank = (mmc5.chr_high << 2 | (mmc5.ext_ram[SystemGetPpu()->v.raw & 0x3FF] & 0x3F));
-        return ((bank * 0x1000) + (addr & 0xFFF)) & cart->chr_rom.mask;
+        return ((bank * 0x1000) + (addr & 0xFFF));
     }
 
     switch (mmc5.chr_mode)
@@ -607,49 +609,49 @@ static inline int32_t GetMmc5ChrAddr(Cart *cart, const uint16_t addr)
 static uint8_t Mmc5ReadChr(Cart *cart, const uint16_t addr)
 {
     mmc5.prev_addr = addr;
-    return cart->chr_rom.data[GetMmc5ChrAddr(cart, addr)];
+    return CartReadChr(cart, GetMmc5ChrAddr(cart, addr));
 }
 
 static void Mmc5WriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
 {
-    cart->chr_rom.data[GetMmc5ChrAddr(cart, addr)] = data;
+    CartWriteChr(cart, GetMmc5ChrAddr(cart, addr), data);
 }
 
 static uint8_t CnromReadChrRom(Cart *cart, const uint16_t addr)
 {
-    return cart->chr_rom.data[((cn_rom.chr_bank * 0x2000) + (addr & 0x1FFF)) & cart->chr_rom.mask];
+    return CartReadChr(cart, ((cn_rom.chr_bank * 0x2000) + (addr & 0x1FFF)));
 }
 
 static uint8_t ColorDreamsReadChrRom(Cart *cart, const uint16_t addr)
 {
-    return cart->chr_rom.data[((color_dreams.chr_bank * 0x2000) + (addr & 0x1FFF)) & cart->chr_rom.mask];
+    return CartReadChr(cart, ((color_dreams.chr_bank * 0x2000) + (addr & 0x1FFF)));
 }
 
 static uint8_t NinaReadChrRom(Cart *cart, const uint16_t addr)
 {
     const int bank = addr < 0x1000 ? nina.chr_bank0 : nina.chr_bank1;
     //printf("BANK: %d ADDR: 0x%X\n", bank, addr);
-    return cart->chr_rom.data[((bank * 0x1000) + (addr & 0xFFF)) & cart->chr_rom.mask];
+    return CartReadChr(cart, ((bank * 0x1000) + (addr & 0xFFF)));
 }
 
-static uint16_t GetNanjingChrAddr(Cart *cart, uint16_t addr)
+static uint16_t GetNanjingChrAddr(const uint16_t addr)
 {
     uint16_t final_addr = addr;
     if (nanjing.prg_low_reg.chr_ram_auto_switch && addr < 0x1000)
     {
         final_addr = (SystemGetPpuA9() * 0x1000) + (addr & 0xFFF);
     }
-    return final_addr & cart->chr_rom.mask;
+    return final_addr;
 }
 
 static uint8_t NanjingReadChrRom(Cart *cart, const uint16_t addr)
 {
-    return cart->chr_rom.data[GetNanjingChrAddr(cart, addr)];
+    return CartReadChr(cart, GetNanjingChrAddr(addr));
 }
 
 static void NanjingWriteChr(Cart *cart, const uint16_t addr, const uint8_t data)
 {
-    cart->chr_rom.data[GetNanjingChrAddr(cart, addr)] = data;
+    CartWriteChr(cart, GetNanjingChrAddr(addr), data);
 }
 
 static void Mmc1SetArrangement(const int arrangement)
@@ -1035,11 +1037,13 @@ static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
             break;
         // PRG RAM Protect 1 ($5102)
         case 0x5102:
-            //printf("Mmc5 Prg Ram Protect addr: 0x%X data: 0x%X\n", addr, data);
+            mmc5.prg_ram_protect1 = data;
+            //printf("Mmc5 Prg Ram Protect1 data: 0x%X\n", data);
             break;
         // PRG RAM Protect 2 ($5103)
         case 0x5103:
-            //printf("Mmc5 Prg Ram Protect2 addr: 0x%X data: 0x%X\n", addr, data);
+            mmc5.prg_ram_protect2 = data;
+            //printf("Mmc5 Prg Ram Protect2 data: 0x%X\n", data);
             break;
         // Internal extended RAM mode ($5104)
         case 0x5104:
@@ -1188,6 +1192,11 @@ uint8_t MapperReadReg(Cart *cart, const uint16_t addr)
     return cart->RegReadFn(addr);
 }
 
+void MapperWritePrgRam(Cart *cart, const uint16_t addr, const uint8_t data)
+{
+    cart->PrgWriteFn(cart, addr, data);
+}
+
 void MapperWriteChrRam(Cart *cart, const uint16_t addr, const uint8_t data)
 {
     cart->ChrWriteFn(cart, addr, data);
@@ -1276,14 +1285,15 @@ uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr, const bool tile_fetch)
 {
     Mmc5ClockIrq(addr);
 
-    const int nt_mapping_mode = Mmc5GetNTMapping(ppu);
-
     if (mmc5.ext_ram_mode == 1 && mmc5.sub_mode && !mmc5.matches && !tile_fetch)
     {
         uint8_t attrib = (mmc5.ext_ram[SystemGetPpu()->v.raw & 0x3FF] >> 6) & 0x3;
         // Duplicate the 2-bit attrib color 4 times to cover the full 8 bits
         return attrib * 0x55;
     }
+
+    const int nt_mapping_mode = Mmc5GetNTMapping(ppu);
+
     if (nt_mapping_mode == 2 && mmc5.ext_ram_mode >= 0x2)
     {
         printf("Ext-Ram NT override\n");
@@ -1474,15 +1484,16 @@ void MapperInit(Cart *cart)
             cart->PrgReadFn = Mmc5ReadPrgRom;
             cart->ChrReadFn = Mmc5ReadChr;
             cart->ChrWriteFn = Mmc5WriteChr;
+            cart->PrgWriteFn = Mmc5WritePrgRam;
             cart->RegWriteFn = Mmc5RegWrite;
             cart->RegReadFn = Mmc5RegRead;
-            SystemAddMemMapWrite(0x2000, 0x2001, MEM_REG_WRITE);
-            SystemAddMemMapWrite(0x5000, 0x5FFF, MEM_REG_WRITE);
             SystemAddMemMapRead(0x5000, 0x5FFF, MEM_REG_READ);
-            SystemAddMemMapRead(0x6000, 0x7FFF, MEM_SWRAM_READ);
-            SystemAddMemMapWrite(0x6000, 0x7FFF, MEM_SWRAM_WRITE);
             SystemAddMemMapRead(0xFFFA, 0xFFFB, MEM_REG_READ);
-            SystemAddMemMapRead(0x8000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapRead(0x6000, 0xFFFF, MEM_PRG_READ);
+            SystemAddMemMapWrite(PPU_CTRL_REG, PPU_STATUS_REG, MEM_REG_WRITE);
+            SystemAddMemMapWrite(OAM_DMA_REG, OAM_DMA_REG, MEM_REG_WRITE);
+            SystemAddMemMapWrite(0x5000, 0x5FFF, MEM_REG_WRITE);
+            SystemAddMemMapWrite(0x6000, 0xDFFF, MEM_PRG_WRITE);
             cart->prg_rom.num_banks = GetNumPrgRomBanks(cart->prg_rom.size, PRG_BANK_SIZE_16KIB);
             break;
         case MAPPER_AXROM:

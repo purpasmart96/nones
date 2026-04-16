@@ -59,16 +59,6 @@ static uint8_t SystemRamRead(System *system, const uint16_t addr)
     return system->sys_ram[addr & 0x7FF];
 }
 
-static void SWramWrite(System *system, const uint16_t addr, const uint8_t data)
-{
-    system->cart->ram[addr & 0x1FFF] = data;
-}
-
-static uint8_t SWramRead(System *system, const uint16_t addr)
-{
-    return system->cart->ram[addr & 0x1FFF];
-}
-
 static bool ApuRegsActivated(System *system)
 {
     return system->cpu_addr >= 0x4000 && system->cpu_addr < 0x4020;
@@ -186,7 +176,7 @@ static uint8_t SystemMemMappedRead(System *system, MemOperation op, const uint16
         case MEM_REG_READ:
             return MapperReadReg(system->cart, addr);
         case MEM_SWRAM_READ:
-            return SWramRead(system, addr);
+            return CartReadPrgRam(system->cart, addr);
         default:
             return 0;
     }
@@ -196,11 +186,14 @@ static void SystemMemMappedWrite(System *system, MemOperation op, const uint16_t
 {
     switch (op)
     {
-        case MEM_SWRAM_WRITE:
-            SWramWrite(system, addr, data);
-            break;
         case MEM_REG_WRITE:
             MapperWriteReg(system->cart, addr, data);
+            break;
+        case MEM_SWRAM_WRITE:
+            CartWritePrgRam(system->cart, addr, data);
+            break;
+        case MEM_PRG_WRITE:
+            MapperWritePrgRam(system->cart, addr, data);
             break;
         default:
             break;
