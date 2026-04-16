@@ -361,8 +361,10 @@ uint8_t PPU_ReadStatus(Ppu *ppu)
 
     //printf("PPU_ReadStatus : %d scanline:%d cycle: %d\n", ppu->status.vblank, ppu->scanline, ppu->cycle_counter);
 
-    // Clear vblank and write toggle
+    // Clear vblank flag here and on the next ppu cycle
+    ppu->status.vblank = 0;
     ppu->clear_vblank = true;
+    // Clear write toggle
     ppu->w = 0;
 
     return ret_status.raw;
@@ -1000,10 +1002,9 @@ void PPU_Tick(Ppu *ppu)
         ppu->status.sprite_overflow = 0;
     }
 
-    // Seems like the vblank flag side effect from reading PpuStatus is delayed by one dot/cycle
+    // Reading PpuStatus causes vblank flag to be cleared again
     if (ppu->clear_vblank)
     {
-        // Clear vblank
         ppu->status.vblank = 0;
         ppu->clear_vblank = false;
     }
