@@ -216,16 +216,10 @@ static uint8_t Mmc5PrgReadMode3(Cart *cart, const uint16_t addr)
     {
         case 0:
         case 1:
-        {
-            uint32_t ram_addr = GetPrgBankAddr(reg->a15, addr, PRG_BANK_SIZE_8KIB);
-            return CartReadPrgRam(cart, ram_addr);
-        }
+            return CartReadPrgRam(cart, GetPrgBankAddr(reg->a15, addr, PRG_BANK_SIZE_8KIB));
         case 2:
         case 3:
-        {
-            uint32_t ram_addr = GetPrgBankAddr(reg->raw & 7, addr, PRG_BANK_SIZE_8KIB);
-            return CartReadPrgRam(cart, ram_addr);
-        }
+            return CartReadPrgRam(cart, GetPrgBankAddr(reg->raw & 7, addr, PRG_BANK_SIZE_8KIB));
     }
 
     printf("Unsupported PRG RAM CHIP CONFIG: %d\n", cart->prg_ram.size >> 14);
