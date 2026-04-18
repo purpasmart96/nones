@@ -220,6 +220,41 @@ static inline uint16_t GetIndirectYAddr(Cpu *cpu, bool page_cycle, bool dummy_re
     return final_addr;
 }
 
+static void HandleSHAInstr(Cpu *cpu, AddressingMode addr_mode, const uint8_t reg_value)
+{
+    uint8_t addr_low = 0;
+    uint8_t addr_high = 0;
+
+    if (addr_mode == AbsoluteX || addr_mode == AbsoluteY)
+    {
+        addr_low = CpuRead8(++cpu->pc);
+        addr_high = CpuRead8(++cpu->pc);
+    }
+    else
+    {
+        const uint8_t zp_addr = GetZPAddr(cpu);
+        addr_low = CpuRead8(zp_addr);
+        // Fetch high (with zero-page wraparound)
+        addr_high = CpuRead8((zp_addr + 1) & PAGE_MASK);
+    }
+
+    const uint8_t data = reg_value & (addr_high + 1);
+    uint16_t addr_low_final = addr_low + (addr_mode == AbsoluteX ? cpu->x : cpu->y);
+    bool page_cross = addr_low_final > 255;
+
+    if (page_cross)
+    {
+        ++addr_high;
+        addr_high = (addr_high & reg_value);
+    }
+
+    uint16_t final_addr = (uint16_t)addr_high << 8 | (uint8_t)(addr_low_final);
+
+    CpuRead8(final_addr);
+    CpuPollIRQ(cpu);
+    CpuWrite8(final_addr, data);
+}
+
 // PC += 1
 static inline uint16_t GetIndirectXAddr(Cpu *cpu, uint8_t reg)
 {
@@ -1430,13 +1465,12 @@ static inline void STY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
     CpuHandleInterrupts(cpu);
 }
 
-// TODO: This is wrong, will need to be fixed
-static inline void SHA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
+static void SHA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
-    const uint16_t operand_addr = GetOperandAddrFromMem(cpu, addr_mode, page_cycle, true);
+    // Unused
+    UNUSED(page_cycle);
 
-    CpuPollIRQ(cpu);
-    CpuWrite8(operand_addr, cpu->a & cpu->x & ((operand_addr >> 8) + 1));
+    HandleSHAInstr(cpu, addr_mode, cpu->a & cpu->x);
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
 }
@@ -1444,12 +1478,9 @@ static inline void SHA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 static inline void SHX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
-    UNUSED(addr_mode);
+    UNUSED(page_cycle);
 
-    const uint16_t operand_addr = GetAbsoluteYAddr(cpu, page_cycle, true);
-
-    CpuPollIRQ(cpu);
-    CpuWrite8(operand_addr, cpu->x & ((operand_addr >> 8) + 1));
+    HandleSHAInstr(cpu, addr_mode, cpu->x);
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
 }
@@ -1457,12 +1488,9 @@ static inline void SHX_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 static inline void SHY_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
-    UNUSED(addr_mode);
+    UNUSED(page_cycle);
 
-    const uint16_t operand_addr = GetAbsoluteXAddr(cpu, page_cycle, true);
-
-    CpuPollIRQ(cpu);
-    CpuWrite8(operand_addr, cpu->y & ((operand_addr >> 8) + 1));
+    HandleSHAInstr(cpu, addr_mode, cpu->y);
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
 }
@@ -1575,18 +1603,10 @@ static inline void TYA_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle
 static inline void TAS_Instr(Cpu *cpu, AddressingMode addr_mode, bool page_cycle)
 {
     // Unused
-    UNUSED(addr_mode);
+    UNUSED(page_cycle);
 
-    uint16_t addr = GetAbsoluteYAddr(cpu, page_cycle, true);
-    CpuPollIRQ(cpu);
-
-    const uint8_t a_and_x = cpu->a & cpu->x;
-
-    //const uint16_t new_addr = (a_and_x & ((addr >> 8) + 1)) << 8 | (addr & 0xFF);
-    //printf("TAS: ADDR3: %X\n", new_addr);
-
-    cpu->sp = a_and_x;
-    CpuWrite8(addr, a_and_x & ((addr >> 8) + 1));
+    cpu->sp = cpu->a & cpu->x;
+    HandleSHAInstr(cpu, addr_mode, cpu->sp);
     ++cpu->pc;
     CpuHandleInterrupts(cpu);
 }
