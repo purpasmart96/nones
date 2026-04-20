@@ -139,7 +139,7 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     if (cart->battery && mapper_number == 5 && hdr.nes2_id != 2)
     {
         // For MMC5 iNES games, there is not much we can do.
-        // Since we have know way of knowing how big PRG RAM actually is.
+        // Since we have no way of knowing how big PRG RAM actually is.
         // So I'm going to set the ram size to one that causes the least amount of issues (16 Kib).
         cart->prg_ram.size = 0x4000;
     }
