@@ -95,12 +95,13 @@ typedef union
 // Once the last step has executed, the count resets to 0 on the next APU cycle. 
 typedef struct
 {
-    ApuFrameCounterControl control;
     int timer;
     int reload;
     int reset_delay;
     int16_t step;
-    bool interrupt;
+    ApuFrameCounterControl ctrl;
+    bool irq;
+    bool clear_irq;
     bool reset;
 } ApuFrameCounter;
 
@@ -242,11 +243,10 @@ typedef struct
         uint8_t output_level : 7;
     } dmc;
 
-    ApuFrameCounter frame_counter;
+    ApuFrameCounter frame_ctr;
     ApuStatus status;
 
     int alignment;
-    bool clear_frame_irq;
     bool swap_duty_cycles;
 } Apu;
 
