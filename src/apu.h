@@ -100,7 +100,6 @@ typedef struct
     int reset_delay;
     int16_t step;
     ApuFrameCounterControl ctrl;
-    bool irq;
     bool clear_irq;
     bool reset;
 } ApuFrameCounter;

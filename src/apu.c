@@ -102,7 +102,7 @@ static const uint8_t dmc_table[16] =
 
 bool PollApuIrqs(Apu *apu)
 {
-    return apu->status.dmc_irq | (apu->frame_ctr.irq & ~apu->frame_ctr.ctrl.irq_inhibit);
+    return apu->status.dmc_irq | (apu->status.frame_irq & ~apu->frame_ctr.ctrl.irq_inhibit);
 }
 
 #define FCPU 1789773.0
@@ -307,24 +307,23 @@ static void ApuClockSweeps(Apu *apu)
 
 void ApuClockEnvelope(ApuEnvelope *envelope, const uint8_t volume, const bool counter_halt)
 {
-    if (!envelope->start)
-    {
-        if (envelope->counter > 0)
-            --envelope->counter;
-        else
-        {
-            envelope->counter = volume;
-            if (envelope->decay_counter > 0)
-                --envelope->decay_counter;
-            else if (counter_halt)
-                envelope->decay_counter = 15;
-        }
-    }
-    else
+    if (envelope->start)
     {
         envelope->start = false;
         envelope->decay_counter = 15;
         envelope->counter = volume;
+        return;
+    }
+
+    if (envelope->counter > 0)
+        --envelope->counter;
+    else
+    {
+        envelope->counter = volume;
+        if (envelope->decay_counter > 0)
+            --envelope->decay_counter;
+        else if (counter_halt)
+            envelope->decay_counter = 15;
     }
 }
 
@@ -426,7 +425,7 @@ static void ApuClockDmc(Apu *apu)
 
 static void ApuResetFrameCounter(Apu *apu)
 {
-    apu->frame_ctr.reload = apu->frame_ctr.ctrl.seq_mode ? 37282 : 29830;
+    apu->frame_ctr.reload = 29830;
     apu->frame_ctr.reset_delay = 2;
     apu->frame_ctr.step = 0;
     apu->frame_ctr.timer = 0;
@@ -435,6 +434,7 @@ static void ApuResetFrameCounter(Apu *apu)
     if (apu->frame_ctr.ctrl.seq_mode)
     {
         //printf("ApuResetFrameCounter Mode %d: Step %d cpu cycle: %ld\n", apu->frame_ctr.ctrl.seq_mode, apu->frame_ctr.step, apu->cycles);
+        apu->frame_ctr.reload = 37282;
         ApuClockEnvelopes(apu);
         ApuClockLinearCounters(apu);
         ApuClockLengthCounters(apu);
@@ -449,12 +449,7 @@ static void ApuWriteFrameCounter(Apu *apu, const uint8_t data)
     //printf("\nApu frame counter called on cycle: %d\n", apu->frame_ctr.timer);
     apu->frame_ctr.ctrl.raw = data;
     apu->frame_ctr.reset = true;
-
-    if (apu->frame_ctr.ctrl.irq_inhibit)
-    {
-        apu->frame_ctr.irq = false;
-        apu->status.frame_irq = false;
-    }
+    apu->status.frame_irq &= ~apu->frame_ctr.ctrl.irq_inhibit;
 }
 
 static void ApuWritePulse1Sweep(Apu *apu, const uint8_t data)
@@ -707,7 +702,6 @@ static void ApuGetClock(Apu *apu)
     }
 
     apu->status.frame_irq &= !apu->frame_ctr.clear_irq;
-    apu->frame_ctr.irq = apu->status.frame_irq;
     apu->frame_ctr.clear_irq = false;
 
     if (apu->frame_ctr.reset)
@@ -776,8 +770,7 @@ void APU_Tick(Apu *apu, bool put_cycle)
         }
         if (step.frame_interrupt)
         {
-            apu->frame_ctr.irq = !apu->frame_ctr.ctrl.irq_inhibit;
-            apu->status.frame_irq = apu->frame_ctr.timer != 29830 ? true : apu->frame_ctr.irq;
+            apu->status.frame_irq = apu->frame_ctr.timer != 29830 ? true : !apu->frame_ctr.ctrl.irq_inhibit;
             // Don't overwrite the newly set frame irq flag
             apu->frame_ctr.clear_irq = false;
         }
