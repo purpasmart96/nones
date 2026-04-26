@@ -89,7 +89,7 @@ typedef struct
     cpu->status.z = !var
 
 void CPU_Init(Cpu *cpu);
-void CPU_Update(Cpu *cpu, bool debug_info);
+void CPU_ExecuteInstr(Cpu *cpu, bool debug_info);
 void CPU_Reset(Cpu *cpu);
 
 #endif

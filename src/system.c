@@ -426,6 +426,14 @@ void MapperClockAudio(void)
     }
 }
 
+float MapperGetMixedAudio(void)
+{
+    if (system_ptr->cart->mapper_num != MAPPER_MMC5)
+        return 0;
+
+    return Mmc5GetMixedAudio();
+}
+
 void PpuClockMMC3(void)
 {
     if (system_ptr->cart->mapper_num != MAPPER_MMC3)
@@ -434,12 +442,12 @@ void PpuClockMMC3(void)
     Mmc3ClockIrqCounter(system_ptr->cart);
 }
 
-uint8_t ExtNameTableRead(Ppu *ppu, const uint16_t addr, const bool tile_fetch)
+uint8_t ExtNameTableRead(Ppu *ppu, const uint16_t addr)
 {
     if (system_ptr->cart->mapper_num != MAPPER_MMC5)
         return PpuNametableRead(ppu, addr);
 
-    return Mmc5ReadNameTable(ppu, addr, tile_fetch);
+    return Mmc5ReadNameTable(ppu, addr);
 }
 
 void SystemUpdateState(System *system, SystemState state)
@@ -460,7 +468,7 @@ void SystemRun(System *system, bool debug_info)
     system->ppu->frame_finished = false;
 
     do {
-        CPU_Update(system->cpu, debug_info);
+        CPU_ExecuteInstr(system->cpu, debug_info);
     } while (!system->ppu->frame_finished && system->state != STEP_INSTR);
 
     if ((system->state == STEP_FRAME && system->ppu->frame_finished) || system->state == STEP_INSTR)

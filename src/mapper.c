@@ -161,14 +161,10 @@ static uint8_t Mmc5PrgReadMode1(Cart *cart, const uint16_t addr)
     {
         case 0:
         case 1:
-        {
             return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[2].raw >> 1, addr, PRG_BANK_SIZE_16KIB));
-        }
         case 2:
         case 3:
-        {
             return CartReadPrgRom(cart, GetPrgBankAddr(mmc5.prg_bank[4].raw >> 1, addr, PRG_BANK_SIZE_16KIB));
-        }
     }
 
     return 0;
@@ -966,6 +962,32 @@ static void Mmc5WriteStatus(const uint8_t data)
     mmc5.audio.pulse2.length_counter *= mmc5.audio.status.pulse2;
 }
 
+static uint8_t Mmc5ReadPCMIrq(void)
+{
+    Mmc5PcmIrqMode pcm_irq = {
+        .enable = mmc5.pcm_irq.enable & mmc5.irq_trip
+    };
+
+    mmc5.irq_trip = false;
+
+    return pcm_irq.raw;
+}
+
+static void Mmc5DacWrite(const uint8_t data)
+{
+    if (mmc5.pcm_irq.mode)
+        return;
+
+    if (!data)
+    {
+        mmc5.irq_trip = true;
+        return;
+    }
+
+    mmc5.irq_trip = false;
+    mmc5.audio.pcm_data = data;
+}
+
 static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
 {
     switch (addr)
@@ -1013,7 +1035,7 @@ static void Mmc5RegWrite(const uint16_t addr, const uint8_t data)
             mmc5.pcm_irq.raw = data;
             break;
         case 0x5011:
-            mmc5.audio.pcm_data = data;
+            Mmc5DacWrite(data);
             break;
         // Status (read/write)
         case 0x5015:
@@ -1131,6 +1153,9 @@ static uint8_t Mmc5RegRead(const uint16_t addr)
 {
     switch (addr)
     {
+        case 0x5010:
+            return Mmc5ReadPCMIrq();
+
         // Status (read/write)
         case 0x5015:
             return Mmc5ReadStatus();
@@ -1138,7 +1163,7 @@ static uint8_t Mmc5RegRead(const uint16_t addr)
         case 0x5204:
         {
             Mmc5IrqStatusReg status = mmc5.irq_status;
-            mmc5.irq_status.irq_pending = false;
+            mmc5.irq_status.pending = false;
             return status.raw;
         }
 
@@ -1160,9 +1185,9 @@ static uint8_t Mmc5RegRead(const uint16_t addr)
             {
                 return mmc5.ext_ram[addr & 0x3FF];
             }
-            //printf("MMC5 Read UNK addr: 0x%X\n", addr);
-            return 0;
     }
+
+    return SystemReadOpenBus();
 }
 
 static uint8_t NanjingRegRead(const uint16_t addr)
@@ -1247,7 +1272,7 @@ static void Mmc5ClockIrq(const uint16_t addr)
         {
             if (++mmc5.scanline && mmc5.scanline == mmc5.target_scanline)
             {
-                mmc5.irq_status.irq_pending = 1;
+                mmc5.irq_status.pending = 1;
             }
         }
     }
@@ -1275,9 +1300,11 @@ static int Mmc5GetNTMapping(Ppu *ppu)
     return 0;
 }
 
-uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr, const bool tile_fetch)
+uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr)
 {
     Mmc5ClockIrq(addr);
+
+    const bool tile_fetch = (addr & 0x3FF) < 0x3C0;
 
     if (mmc5.ext_ram_mode == 1 && mmc5.sub_mode && !mmc5.matches && !tile_fetch)
     {
@@ -1394,9 +1421,17 @@ void Mmc5ClockAudio(void)
     }
 }
 
+float Mmc5GetMixedAudio(void)
+{
+    const float square1 = ((mmc5.audio.pulse1.output * mmc5.audio.pulse1.volume) / 15.0) - 0.5;
+    const float square2 = ((mmc5.audio.pulse2.output * mmc5.audio.pulse2.volume) / 15.0) - 0.5;
+    const float pcm = ((mmc5.audio.pcm_data) / 255.0) - 0.5;
+    return (square1 + square2 + pcm) * 0.12;
+}
+
 bool PollMapperIrq(void)
 {
-    return mmc3.irq_pending | (mmc5.irq_status.irq_pending & mmc5.irq_enable);
+    return mmc3.irq_pending | (mmc5.irq_status.pending & mmc5.irq_enable);
 }
 
 void MapperReset(Cart *cart)

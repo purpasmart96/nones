@@ -1901,7 +1901,13 @@ static const OpcodeHandler opcodes[256] =
     [0xFF] = { ISC_Instr,   "ISC abs,X",   3, false, AbsoluteX   },
 };
 
-static void ExecuteOpcode(Cpu *cpu, bool debug_info)
+void CPU_Init(Cpu *cpu)
+{
+    memset(cpu, 0, sizeof(*cpu));
+    CPU_Reset(cpu);
+}
+
+void CPU_ExecuteInstr(Cpu *cpu, bool debug_info)
 {
     const uint8_t opcode = CpuRead8(cpu->pc);
     const OpcodeHandler *handler = &opcodes[opcode];
@@ -1922,17 +1928,6 @@ static void ExecuteOpcode(Cpu *cpu, bool debug_info)
         printf("Cycles done: %lu\n", cpu->cycles);
         exit(EXIT_FAILURE);
     }
-}
-
-void CPU_Init(Cpu *cpu)
-{
-    memset(cpu, 0, sizeof(*cpu));
-    CPU_Reset(cpu);
-}
-
-void CPU_Update(Cpu *cpu, bool debug_info)
-{
-    ExecuteOpcode(cpu, debug_info);
 }
 
 void CPU_Reset(Cpu *cpu)

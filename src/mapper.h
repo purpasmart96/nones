@@ -234,7 +234,7 @@ typedef union
     {
         uint8_t : 6;
         uint8_t in_frame : 1;
-        uint8_t irq_pending : 1;
+        uint8_t pending : 1;
     };
 
 } Mmc5IrqStatusReg;
@@ -244,9 +244,9 @@ typedef union
     uint8_t raw;
     struct
     {
-        uint8_t rw_mode : 1;
+        uint8_t mode : 1;
         uint8_t : 6;
-        uint8_t irq_enable : 1;
+        uint8_t enable : 1;
     };
 } Mmc5PcmIrqMode;
 
@@ -296,6 +296,7 @@ typedef struct
     uint8_t chr_high : 2;
     uint8_t sprite_mode : 1;
     uint8_t irq_enable : 1;
+    uint8_t irq_trip : 1;
 } Mmc5;
 
 typedef struct
@@ -473,7 +474,8 @@ void MapperWriteReg(Cart *cart, const uint16_t addr, uint8_t data);
 void Mmc3ClockIrqCounter(Cart *cart);
 void Mmc5ClockAudio(void);
 void Mmc5ClockAudioTimers(void);
-uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr, const bool tile_fetch);
+float Mmc5GetMixedAudio(void);
+uint8_t Mmc5ReadNameTable(Ppu *ppu, const uint16_t addr);
 bool PollMapperIrq(void);
 void MapperReset(Cart *cart);
 void MapperInit(Cart *cart);

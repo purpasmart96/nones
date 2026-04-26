@@ -61,7 +61,6 @@ void SystemAddMemMap(const uint16_t start_addr, const uint16_t end_addr, MemOper
 void SystemAddMemMapRead(const uint16_t start_addr, const uint16_t end_addr, MemOperation op);
 void SystemAddMemMapWrite(const uint16_t start_addr, const uint16_t end_addr, MemOperation op);
 void SystemTick(void);
-void SystemPrePollAllIrqs(void);
 bool SystemPollAllIrqs(void);
 void SystemReset(System *system);
 void SystemShutdown(System *system);
@@ -80,7 +79,8 @@ void PpuBusWriteChrRam(const uint16_t addr, const uint8_t data);
 void PpuClockMMC3(void);
 void MapperClockAudio(void);
 void MapperClockAudioTimers(void);
-uint8_t ExtNameTableRead(Ppu *ppu, const uint16_t addr, const bool tile_fetch);
+float MapperGetMixedAudio(void);
+uint8_t ExtNameTableRead(Ppu *ppu, const uint16_t addr);
 
 void SystemAddCpuCycles(uint32_t cycles);
 void SystemUpdateJPButtons(System *system, const bool *buttons);

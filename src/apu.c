@@ -644,11 +644,13 @@ static void ApuClockTimers(Apu *apu)
     if (apu->pulse1.length_counter && !apu->pulse1.muting)
     {
         apu->pulse1.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse1.reg.duty][apu->pulse1.duty_step];
+        apu->pulse1.output *= apu->pulse1.volume;
     }
 
     if (apu->pulse2.length_counter && !apu->pulse2.muting)
     {
         apu->pulse2.output = duty_cycle_table[apu->swap_duty_cycles][apu->pulse2.reg.duty][apu->pulse2.duty_step];
+        apu->pulse2.output *= apu->pulse2.volume;
     }
 
     if (apu->noise.length_counter && !apu->noise.shift_reg.bit0)
@@ -672,22 +674,15 @@ static float ApplyFilter(float sample, float prev_sample, float alpha)
 
 static void ApuMixSample(Apu *apu)
 {
-    float square1 = apu->pulse1.output * apu->pulse1.volume;
-    float square2 = apu->pulse2.output * apu->pulse2.volume;
-    float ext_square1 = ((mmc5.audio.pulse1.output * mmc5.audio.pulse1.volume) / 15.0) - 0.5;
-    float ext_square2 = ((mmc5.audio.pulse2.output * mmc5.audio.pulse2.volume) / 15.0) - 0.5;
-
 #ifdef APU_FAST_MIXER
-    float pulse = 0.00752f * (square1 + square2);
+    float pulse = 0.00752f * (apu->pulse1.output + apu->pulse2.output);
     float tnd_out = 0.00851f * apu->triangle.output + 0.00494f * apu->noise.output + 0.00335f * apu->dmc.output_level;
 #else
-    float pulse = 95.88 / ((8128.0 / (square1 + square2)) + 100);
+    float pulse = 95.88 / ((8128.0 / (apu->pulse1.output + apu->pulse2.output)) + 100);
     float tnd = 1 / ((apu->triangle.output / 8227.0) + (apu->noise.output / 12241.0) + (apu->dmc.output_level / 22638.0));
     float tnd_out = 159.79 / (tnd + 100);
 #endif
-    float ext_pulse = (ext_square1 + ext_square2) * 0.12;
-
-    float raw_sample = pulse + tnd_out + ext_pulse;
+    float raw_sample = pulse + tnd_out + MapperGetMixedAudio();
     // Apply a HPF to fix the the DC offset without affecting the FR too much
     apu->mixer.hpf_sample = ApplyFilter(raw_sample, apu->mixer.hpf_sample, apu->mixer.hpf_alpha);
     // Apply a LPF just for the buffer used as the input for soxr, could also just make this lowpass cutoff at 14khz

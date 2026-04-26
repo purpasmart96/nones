@@ -359,7 +359,8 @@ uint8_t PPU_ReadStatus(Ppu *ppu)
     PpuStatus ret_status = ppu->status;
     ret_status.open_bus = ppu->io_bus & 0x1F;
 
-    //printf("PPU_ReadStatus : %d scanline:%d cycle: %d\n", ppu->status.vblank, ppu->scanline, ppu->cycle_counter);
+    //if (SystemGetCpu()->pc != 0xF073)
+    //    printf("PPU_ReadStatus : %d scanline:%d cycle: %d\n", ppu->status.vblank, ppu->scanline, ppu->cycle_counter);
 
     // Clear vblank flag here and on the next ppu cycle
     ppu->status.vblank = 0;
@@ -395,11 +396,11 @@ uint8_t PPU_ReadData(Ppu *ppu)
             {
                 // Return stale buffer value
                 data = ppu->buffered_data;
-                ppu->buffered_data = ExtNameTableRead(ppu, addr, true);
+                ppu->buffered_data = ExtNameTableRead(ppu, addr);
             }
             else
             {
-                ppu->buffered_data = ExtNameTableRead(ppu, addr, true);
+                ppu->buffered_data = ExtNameTableRead(ppu, addr);
                 data = (ppu->palettes[addr & 0x1F] & 0x3F) | (ppu->io_bus & 0xC0);
                 if (ppu->mask.grey_scale)
                     data &= 0x10;
@@ -780,7 +781,7 @@ static void PpuRender(Ppu *ppu, int scanline)
 
         case 1:
         {
-            ppu->tile_id = ExtNameTableRead(ppu, ppu->bus_addr, true);
+            ppu->tile_id = ExtNameTableRead(ppu, ppu->bus_addr);
             break;
         }
 
@@ -793,7 +794,7 @@ static void PpuRender(Ppu *ppu, int scanline)
 
         case 3:
         {
-            uint8_t attrib_data = ExtNameTableRead(ppu, ppu->bus_addr, false);
+            uint8_t attrib_data = ExtNameTableRead(ppu, ppu->bus_addr);
             uint8_t shift = ((ppu->v.scrolling.coarse_y & 2) << 1) | (ppu->v.scrolling.coarse_x & 2);
             ppu->attrib_data = (attrib_data >> shift) & 0x3;
             break;
@@ -853,7 +854,7 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
         }
         case 1:
         {
-            ppu->tile_id = ExtNameTableRead(ppu, ppu->bus_addr, true);
+            ppu->tile_id = ExtNameTableRead(ppu, ppu->bus_addr);
             break;
         }
         case 2:
@@ -864,7 +865,7 @@ static void PpuFetchSprite(Ppu *ppu, int sprite_num)
         }
         case 3:
         {
-            ExtNameTableRead(ppu, ppu->bus_addr, true);
+            ExtNameTableRead(ppu, ppu->bus_addr);
             ppu->fifo[sprite_num].attribs = curr_sprite->attribs;
             ppu->fifo[sprite_num].x = curr_sprite->x;
             break;
@@ -972,7 +973,7 @@ void PPU_Tick(Ppu *ppu)
             if (ppu->cycle_counter == 337 || ppu->cycle_counter == 339)
             {
                 PpuUpdateBus(ppu, PpuGetNTAddr(ppu));
-                uint8_t nt_fetch = ExtNameTableRead(ppu, ppu->bus_addr, true);
+                uint8_t nt_fetch = ExtNameTableRead(ppu, ppu->bus_addr);
                 if (ppu->cycle_counter == 337)
                     ppu->tile_id = nt_fetch;
                 if (ppu->cycle_counter == 339 && ppu->frames & 1 && ppu->scanline == 261)
