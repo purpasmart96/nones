@@ -215,6 +215,7 @@ static uint8_t Mmc5PrgReadMode3(Cart *cart, const uint16_t addr)
             return CartReadPrgRam(cart, GetPrgBankAddr(reg->a15, addr, PRG_BANK_SIZE_8KIB));
         case 2:
         case 3:
+        case 4:
             return CartReadPrgRam(cart, GetPrgBankAddr(reg->raw & 7, addr, PRG_BANK_SIZE_8KIB));
     }
 
@@ -262,6 +263,7 @@ static void Mmc5PrgWriteMode3(Cart *cart, const uint16_t addr, const uint8_t dat
             break;
         case 2:
         case 3:
+        case 4:
             CartWritePrgRam(cart, GetPrgBankAddr(reg->raw & 7, addr, PRG_BANK_SIZE_8KIB), data);
             break;
         default:

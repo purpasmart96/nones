@@ -136,12 +136,12 @@ int CartLoad(Arena *arena, Cart *cart, const char *path)
     // So always allocate PRG RAM with a size of at least 8 Kib
     cart->prg_ram.size = MAX(sram_size + nvram_size, CART_RAM_SIZE);
 
-    if (cart->battery && mapper_number == 5 && hdr.nes2_id != 2)
+    if (cart->battery && mapper_number == 5 && hdr.nes2_id != 0x2)
     {
         // For MMC5 iNES games, there is not much we can do.
         // Since we have no way of knowing how big PRG RAM actually is.
-        // So I'm going to set the ram size to one that causes the least amount of issues (16 Kib).
-        cart->prg_ram.size = 0x4000;
+        // So I'm going to set the ram size to one that causes the least amount of issues (64 Kib).
+        cart->prg_ram.size = 0x10000;
     }
 
     if (cart->battery || hdr.prg_ram_shift_count || hdr.prg_nvram_shift_count)
