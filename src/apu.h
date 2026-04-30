@@ -268,7 +268,6 @@ typedef struct
 
 #define APU_FREQ 894886.5
 #define APU_CYCLES_PER_FRAME 14890.0f
-#define LPF_CUTOFF 14000
 #define HPF_CUTOFF 37
 
 enum ApuRegs

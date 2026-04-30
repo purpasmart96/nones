@@ -796,6 +796,8 @@ void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_ra
     const int samples_per_frame = apu->mixer.sample_rate / 60;
     // Set the sample ratio to be used by soxr, 
     const int soxr_sample_ratio = 3;
+    // LPF freq cutoff based on sample rate
+    const float lpf_cutoff = apu->mixer.sample_rate * 0.45;
     apu->mixer.input_len = samples_per_frame * soxr_sample_ratio;
     apu->mixer.output_len = samples_per_frame;
     apu->mixer.accum_delta = APU_CYCLES_PER_FRAME / apu->mixer.input_len;
@@ -803,8 +805,7 @@ void APU_Init(Apu *apu, Arena *arena, const bool swap_duty_cycles, int sample_ra
     apu->mixer.output_size = apu->mixer.output_len * sizeof(int16_t);
     apu->mixer.input_buffer = ArenaPush(arena, apu->mixer.input_size);
     apu->mixer.output_buffer = ArenaPush(arena, apu->mixer.output_size);
-    //const float max_cutoff = apu->mixer.sample_rate * soxr_sample_ratio * 0.45;
-    apu->mixer.lpf_alpha = ComputeFilterAlpha(APU_FREQ, LPF_CUTOFF);
+    apu->mixer.lpf_alpha = ComputeFilterAlpha(APU_FREQ, lpf_cutoff);
     apu->mixer.hpf_alpha = ComputeFilterAlpha(APU_FREQ, HPF_CUTOFF);
 
     apu->noise.shift_reg.raw = 1;
