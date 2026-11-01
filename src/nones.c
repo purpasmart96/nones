@@ -12,6 +12,8 @@
 #include "cart.h"
 #include "nones.h"
 
+#include "utils.h"
+
 static SDL_AudioStream *stream = NULL;
 
 void NonesPutSoundData(int16_t *buffer, const int buffer_size)
@@ -350,7 +352,7 @@ void NonesRun(Nones *nones, bool ppu_warmup, bool fullscreen, const int aspect_r
         uint64_t start_time = SDL_GetTicksNS();
         previous_time = current_time;
         current_time = start_time;
-        uint64_t delta_time = current_time - previous_time;
+        uint64_t delta_time = MIN(accum_delta, current_time - previous_time);
         accumulator += delta_time;
 
         while (SDL_PollEvent(&event))
