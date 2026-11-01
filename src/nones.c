@@ -268,13 +268,26 @@ static void NonesInit(Nones *nones, const char *path, const char *audio_driver, 
         SDL_TEXTUREACCESS_STREAMING,
         SCREEN_WIDTH, SCREEN_HEIGHT);
 
+    const int sdl_compiled_ver = SDL_VERSION;
+    const int sdl_linked_ver = SDL_GetVersion();
+
 #if SDL_VERSION_ATLEAST(3, 4, 0)
     // Make sure the linked SDL3 library being used is also the correct version.
-    SDL_ScaleMode scale_mode = (SDL_GetVersion() >= SDL_VERSIONNUM(3,4,0) ? SDL_SCALEMODE_PIXELART : SDL_SCALEMODE_NEAREST);
+    SDL_ScaleMode scale_mode = (sdl_linked_ver >= SDL_VERSIONNUM(3, 4, 0) ? SDL_SCALEMODE_PIXELART : SDL_SCALEMODE_NEAREST);
     SDL_SetTextureScaleMode(nones->texture, scale_mode);
 #else
     SDL_SetTextureScaleMode(nones->texture, SDL_SCALEMODE_NEAREST);
 #endif
+
+    SDL_Log("Compiled against SDL version %d.%d.%d\n",
+            SDL_VERSIONNUM_MAJOR(sdl_compiled_ver),
+            SDL_VERSIONNUM_MINOR(sdl_compiled_ver),
+            SDL_VERSIONNUM_MICRO(sdl_compiled_ver));
+
+    SDL_Log("Linked against SDL version %d.%d.%d\n",
+            SDL_VERSIONNUM_MAJOR(sdl_linked_ver),
+            SDL_VERSIONNUM_MINOR(sdl_linked_ver),
+            SDL_VERSIONNUM_MICRO(sdl_linked_ver));
 
     SDL_SetWindowPosition(nones->window,  SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
 }
