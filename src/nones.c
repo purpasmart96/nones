@@ -396,6 +396,9 @@ void NonesRun(Nones *nones, bool ppu_warmup, bool fullscreen, const int aspect_r
 
             accumulator -= accum_delta;
 
+            SDL_SetRenderDrawColor(nones->renderer, 0, 0, 0, SDL_ALPHA_OPAQUE);
+            SDL_RenderClear(nones->renderer);
+
             SDL_LockTexture(nones->texture, NULL, &raw_pixels, &raw_pitch);
             memcpy(raw_pixels, nones->system->ppu->buffers[1], buffer_size);
             SDL_UnlockTexture(nones->texture);
