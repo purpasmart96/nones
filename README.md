@@ -4,7 +4,7 @@ A small cycle accurate NTSC NES emulator written in C.
 
 ### Current State
 
-Games that use the following mapper chips are supported:
+#### Games that use the following mapper chips are supported:
 <table>
     <tr>
         <td align="center">Mapper name</td>
@@ -44,6 +44,17 @@ Games that use the following mapper chips are supported:
         <td align="center">Nanjing</td><td align="center">163</td>
     </tr>
 </table>
+
+#### Games that use the following mapper chips are only partially supported:
+<table>
+    <tr>
+        <td align="center">Mapper name</td>
+        <td align="center">Mapper number</td>
+    </tr>
+    <tr>
+        <td align="center">MMC5</td><td align="center">5</td>
+    </tr>
+<table>
 
 Supports all of the original NES audio channels, which includes square, triangle, noise, and dmc audio channels.
 
@@ -141,3 +152,37 @@ Step by one frame and pause
 * `F11`
 
 Step by one instruction and pause
+
+### Keyboard Controls:
+
+* `Dpad-Up`
+
+W, ↑
+
+* `Dpad-Down`
+
+S, ↓
+
+* `Dpad-Left`
+
+A, ←
+
+* `Dpad-Right`
+
+D, →
+
+* `A`
+
+Space
+
+* `B`
+
+Shift
+
+* `Start`
+
+Enter
+
+* `Select`
+
+Tab
