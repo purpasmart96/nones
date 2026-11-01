@@ -51,6 +51,7 @@ ifeq ($(OS_NAME), windows)
 	cp /ucrt64/bin/libgomp-1.dll .
 	cp /ucrt64/bin/libwinpthread-1.dll .
 	cp /ucrt64/bin/libgcc_s_seh-1.dll .
+	cp /ucrt64/bin/libiconv-2.dll .
 endif
 	@cp $< $(BIN)
 
@@ -69,6 +70,7 @@ ifeq ($(OS_NAME), windows)
 	cp /ucrt64/bin/libgomp-1.dll .
 	cp /ucrt64/bin/libwinpthread-1.dll .
 	cp /ucrt64/bin/libgcc_s_seh-1.dll .
+	cp /ucrt64/bin/libiconv-2.dll .
 endif
 	@cp $< $(BIN)
 
@@ -91,6 +93,7 @@ clean:
 	@if [ -f "libgomp-1.dll" ]; then rm "libgomp-1.dll"; fi
 	@if [ -f "libwinpthread-1.dll" ]; then rm "libwinpthread-1.dll"; fi
 	@if [ -f "libgcc_s_seh-1.dll" ]; then rm "libgcc_s_seh-1.dll"; fi
+	@if [ -f "libiconv-2.dll" ]; then rm "libiconv-2.dll"; fi
 
 tarball:
 	@if [ -f "$(BIN)" ]; then \
@@ -104,7 +107,7 @@ tarball:
 win_zip:
 	@if [ -f "$(BIN)" ]; then \
 		strip $(BIN).exe; \
-		7z a $(ARCHIVE) $(BIN).exe "SDL3.dll" "libsoxr.dll" "libgomp-1.dll" "libwinpthread-1.dll" "libgcc_s_seh-1.dll" "LICENSE" "README.md"; \
+		7z a $(ARCHIVE) $(BIN).exe "SDL3.dll" "libsoxr.dll" "libgomp-1.dll" "libwinpthread-1.dll" "libgcc_s_seh-1.dll" "libiconv-2.dll" "LICENSE" "README.md"; \
 		echo "Created zip $(ARCHIVE)..."; \
 	else \
 		echo "Please run 'make' before creating a zip."; \
